@@ -1,4 +1,4 @@
-package com.schedule.app.ui.screens
+package com.schedule.app
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -32,6 +32,8 @@ import com.schedule.app.data.model.LessonEntry
 import com.schedule.app.data.model.ScheduleDay
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
+import com.schedule.app.ui.screens.ScheduleViewModel
+import com.schedule.app.ui.screens.ScheduleUiState
 import com.schedule.app.ui.theme.LocalAppColors
 
 // ─── ScheduleScreen ───────────────────────────────────────────────────────────
@@ -42,12 +44,12 @@ fun ScheduleScreen(
     onBack: () -> Unit,
     vm: ScheduleViewModel = viewModel(),
 ) {
+    val c         = LocalAppColors.current
     val uiState   by vm.uiState.collectAsState()
     val progress  by vm.progress.collectAsState()
     val groupName by AppPrefs.groupName.collectAsState()
-    val clockMin  by vm.clockMin.collectAsState()
     // clockMin обновляется каждые 30 с — запускает живой пересчёт isNow/isNext
-    val clockMin  by vm.clockMin.collectAsStateWithLifecycle()
+    val clockMin  by vm.clockMin.collectAsState()
 
     LaunchedEffect(file.name) { vm.load(file) }
 
@@ -152,8 +154,6 @@ private fun SchedHeader(
 private fun SchedContent(day: ScheduleDay, clockMin: Int) {
     val c = LocalAppColors.current
 
-    // Все статусы считаются живо от clockMin (меняется каждые 30 с),
-    // а не заморожены на момент открытия файла.
     val liveStatuses = remember(day, clockMin) {
         day.lessons.map { lesson ->
             val hasTime = lesson.startMin >= 0
@@ -181,7 +181,7 @@ private fun SchedContent(day: ScheduleDay, clockMin: Int) {
         contentPadding = PaddingValues(bottom = 100.dp),
     ) {
         if (currentLesson != null && currentStatus != null) {
-            item { LiveBar(lesson = currentLesson, status = currentStatus) }
+            item { LiveBar(lesson = currentLesson, status = status) }
         }
 
         item {
@@ -203,8 +203,6 @@ private fun SchedContent(day: ScheduleDay, clockMin: Int) {
     }
 }
 
-// Контейнер живых статусов — отдельный от LessonEntry, чтобы не хранить
-// замороженные значения в модели
 private data class LessonStatus(
     val isNow: Boolean      = false,
     val isNext: Boolean     = false,
