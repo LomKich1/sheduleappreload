@@ -18,6 +18,21 @@ import java.util.Calendar
 //  5. parseTeacher() — отдельная, чистая функция
 // ══════════════════════════════════════════════════════════════════════════════
 
+// ── Файловые хелперы: little-endian чтение из ByteArray ─────────────────────
+// Объявлены на уровне файла (не внутри object), чтобы были доступны
+// и из DocParser, и из вложенного класса Ole2Reader (вложенный класс
+// в Kotlin не имеет доступа к членам родительского object).
+
+private fun u16(data: ByteArray, off: Int): Int =
+    (data[off].toInt() and 0xFF) or
+    ((data[off + 1].toInt() and 0xFF) shl 8)
+
+private fun u32(data: ByteArray, off: Int): Long =
+    (data[off].toLong() and 0xFF) or
+    ((data[off + 1].toLong() and 0xFF) shl 8) or
+    ((data[off + 2].toLong() and 0xFF) shl 16) or
+    ((data[off + 3].toLong() and 0xFF) shl 24)
+
 object DocParser {
 
     // ── Расписание звонков ────────────────────────────────────────────────────
@@ -535,10 +550,10 @@ object DocParser {
         val m = Regex("""\(?\s*к\.\s*(\d+[а-яa-zА-ЯA-Z]?)\s*(?:\((\d)\))?\s*\)?""", RegexOption.IGNORE_CASE)
             .find(line) ?: return line.trim() to null
 
-        var teacher = line.substring(0, m.range.first).trim()
+        var teacher: String? = line.substring(0, m.range.first).trim()
         // Двойная точка на стыке "И.О." + "." — убираем только лишнюю
-        if (teacher.endsWith("..")) teacher = teacher.dropLast(1)
-        teacher = teacher.trim().ifBlank { null }
+        if (teacher?.endsWith("..") == true) teacher = teacher?.dropLast(1)
+        teacher = teacher?.trim()?.ifBlank { null }
 
         val num = m.groupValues[1]
         val korpus = m.groupValues.getOrNull(2)?.takeIf { it.isNotBlank() }
