@@ -27,7 +27,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.schedule.app.data.model.LessonEntry
 import com.schedule.app.data.model.ScheduleDay
@@ -43,10 +42,10 @@ fun ScheduleScreen(
     onBack: () -> Unit,
     vm: ScheduleViewModel = viewModel(),
 ) {
-    val c         = LocalAppColors.current
-    val uiState   by vm.uiState.collectAsStateWithLifecycle()
-    val progress  by vm.progress.collectAsStateWithLifecycle()
-    val groupName by AppPrefs.groupName.collectAsStateWithLifecycle()
+    val uiState   by vm.uiState.collectAsState()
+    val progress  by vm.progress.collectAsState()
+    val groupName by AppPrefs.groupName.collectAsState()
+    val clockMin  by vm.clockMin.collectAsState()
     // clockMin обновляется каждые 30 с — запускает живой пересчёт isNow/isNext
     val clockMin  by vm.clockMin.collectAsStateWithLifecycle()
 

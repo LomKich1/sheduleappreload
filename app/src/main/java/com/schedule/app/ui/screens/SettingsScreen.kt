@@ -35,7 +35,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.theme.AppColors
 import com.schedule.app.ui.theme.AppTheme
@@ -56,9 +55,9 @@ fun SettingsScreen(onBack: () -> Unit) {
     val c = LocalAppColors.current
     val scope = rememberCoroutineScope()
 
-    val savedUrl   by AppPrefs.yandexUrl.collectAsStateWithLifecycle()
-    val savedGroup by AppPrefs.groupName.collectAsStateWithLifecycle()
-    val theme      by AppPrefs.themePreset.collectAsStateWithLifecycle()
+    val savedUrl   by AppPrefs.yandexUrl.collectAsState()
+    val savedGroup by AppPrefs.groupName.collectAsState()
+    val theme      by AppPrefs.themePreset.collectAsState()
 
     var urlField    by remember(savedUrl) { mutableStateOf(savedUrl) }
     var groupField  by remember(savedGroup) { mutableStateOf(savedGroup) }

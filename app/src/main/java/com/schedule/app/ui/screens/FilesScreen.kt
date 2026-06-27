@@ -22,7 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
@@ -42,8 +42,8 @@ fun FilesScreen(
     onFileClick: (ScheduleFile) -> Unit = {},
     onSettingsClick: () -> Unit = {},
 ) {
-    val uiState by vm.uiState.collectAsStateWithLifecycle()
-    val groupName by AppPrefs.groupName.collectAsStateWithLifecycle()
+    val uiState by vm.uiState.collectAsState()
+    val groupName by AppPrefs.groupName.collectAsState()
 
     Column(
         modifier = Modifier
