@@ -1,4 +1,4 @@
-package com.schedule.app
+package com.schedule.app.ui.screens
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -181,7 +181,7 @@ private fun SchedContent(day: ScheduleDay, clockMin: Int) {
         contentPadding = PaddingValues(bottom = 100.dp),
     ) {
         if (currentLesson != null && currentStatus != null) {
-            item { LiveBar(lesson = currentLesson, status = status) }
+            item { LiveBar(lesson = currentLesson, status = currentStatus) }
         }
 
         item {
