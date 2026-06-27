@@ -16,7 +16,7 @@ class MainActivity : ComponentActivity() {
         AppPrefs.init(applicationContext)   // до setContent — остальной код читает AppPrefs синхронно
         enableEdgeToEdge()
         setContent {
-            val theme by AppPrefs.themePreset.collectAsStateWithLifecycle()
+	    val theme by AppPrefs.themePreset.collectAsState()
             AppTheme(preset = theme) {
                 AppScaffold()
             }
