@@ -1,0 +1,32 @@
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+bin/
+gen/
+out/
+build/
+.gradle/
+
+# Keystore — НИКОГДА не коммитить в git
+*.jks
+*.keystore
+keystore.properties
+
+# Локальные настройки — содержат пути и токены конкретной машины
+local.properties
+
+# IDE
+.idea/
+*.iml
+*.iws
+.DS_Store
+Thumbs.db
+
+# Gradle cache
+.gradle/
+gradle/wrapper/gradle-wrapper.jar
+
+# Capture files (Android Studio profiler)
+captures/
