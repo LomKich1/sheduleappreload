@@ -7,10 +7,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.Icon
@@ -32,8 +36,6 @@ import com.schedule.app.data.model.LessonEntry
 import com.schedule.app.data.model.ScheduleDay
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
-import com.schedule.app.ui.screens.ScheduleViewModel
-import com.schedule.app.ui.screens.ScheduleUiState
 import com.schedule.app.ui.theme.LocalAppColors
 
 // ─── ScheduleScreen ───────────────────────────────────────────────────────────
@@ -48,7 +50,6 @@ fun ScheduleScreen(
     val uiState   by vm.uiState.collectAsState()
     val progress  by vm.progress.collectAsState()
     val groupName by AppPrefs.groupName.collectAsState()
-    // clockMin обновляется каждые 30 с — запускает живой пересчёт isNow/isNext
     val clockMin  by vm.clockMin.collectAsState()
 
     LaunchedEffect(file.name) { vm.load(file) }
@@ -58,7 +59,13 @@ fun ScheduleScreen(
             .fillMaxSize()
             .background(c.bg),
     ) {
-        SchedHeader(groupName = groupName, dateText = file.dateLabel, onBack = onBack)
+        SchedHeader(
+            groupName     = groupName,
+            dateText      = file.dateLabel,
+            onBack        = onBack,
+            // Карандаш виден только когда группа уже выбрана
+            onChangeGroup = if (groupName.isNotBlank()) { { vm.clearGroup() } } else null,
+        )
 
         if (uiState is ScheduleUiState.Loading) {
             LinearProgressIndicator(
@@ -71,13 +78,18 @@ fun ScheduleScreen(
 
         when (val state = uiState) {
             is ScheduleUiState.Idle,
-            is ScheduleUiState.Loading    -> SchedLoading()
+            is ScheduleUiState.Loading     -> SchedLoading()
 
-            is ScheduleUiState.Success    -> SchedContent(day = state.day, clockMin = clockMin)
+            is ScheduleUiState.GroupPicker -> GroupPickerScreen(
+                groups   = state.groups,
+                onSelect = { group -> vm.selectGroup(group, file.name) },
+            )
 
-            is ScheduleUiState.OnPractice -> SchedOnPractice(headerText = state.headerText)
+            is ScheduleUiState.Success     -> SchedContent(day = state.day, clockMin = clockMin)
 
-            is ScheduleUiState.Error      -> SchedError(
+            is ScheduleUiState.OnPractice  -> SchedOnPractice(headerText = state.headerText)
+
+            is ScheduleUiState.Error       -> SchedError(
                 message = state.message,
                 onRetry = { vm.load(file) },
             )
@@ -92,6 +104,7 @@ private fun SchedHeader(
     groupName: String,
     dateText: String,
     onBack: () -> Unit,
+    onChangeGroup: (() -> Unit)? = null,
 ) {
     val c = LocalAppColors.current
     Column(
@@ -123,11 +136,12 @@ private fun SchedHeader(
                 )
             }
 
+            // Название группы или плейсхолдер
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = groupName,
-                    color = c.accent,
-                    fontSize = 22.sp,
+                    text = if (groupName.isBlank()) "Выберите группу" else groupName,
+                    color = if (groupName.isBlank()) c.textSub else c.accent,
+                    fontSize = if (groupName.isBlank()) 16.sp else 22.sp,
                     fontWeight = FontWeight.Bold,
                     lineHeight = 24.sp,
                 )
@@ -137,6 +151,25 @@ private fun SchedHeader(
                     fontSize = 11.sp,
                     modifier = Modifier.padding(top = 2.dp),
                 )
+            }
+
+            // Кнопка «Сменить группу» — карандаш, только если группа задана
+            if (onChangeGroup != null) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(c.surface2)
+                        .clickable(onClick = onChangeGroup),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Edit,
+                        contentDescription = "Сменить группу",
+                        tint = c.textSub,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
             }
         }
         Box(
@@ -148,7 +181,71 @@ private fun SchedHeader(
     }
 }
 
-// ─── Контент: расписание дня ──────────────────────────────────────────────────
+// ─── Пикер группы ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun GroupPickerScreen(
+    groups: List<String>,
+    onSelect: (String) -> Unit,
+) {
+    val c = LocalAppColors.current
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Подсказка
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+        ) {
+            Text(
+                text = "Выберите вашу группу",
+                color = c.text,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Найдено ${groups.size} групп · выбор сохранится автоматически",
+                color = c.textSub,
+                fontSize = 11.5.sp,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+        }
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 14.dp, end = 14.dp,
+                bottom = 80.dp, top = 2.dp,
+            ),
+            verticalArrangement   = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            gridItems(groups) { group ->
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(c.surface)
+                        .border(1.dp, c.border, RoundedCornerShape(12.dp))
+                        .clickable { onSelect(group) }
+                        .padding(vertical = 14.dp, horizontal = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = group,
+                        color = c.text,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 15.sp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─── Расписание дня ───────────────────────────────────────────────────────────
 
 @Composable
 private fun SchedContent(day: ScheduleDay, clockMin: Int) {
@@ -227,22 +324,11 @@ private fun LiveBar(lesson: LessonEntry, status: LessonStatus) {
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                text = "▶ ${lesson.subject}",
-                color = c.accent,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = status.remainText ?: "",
-                color = c.textSub,
-                fontSize = 11.sp,
-            )
+            Text("▶ ${lesson.subject}", color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(status.remainText ?: "", color = c.textSub, fontSize = 11.sp)
         }
         Box(
             modifier = Modifier
@@ -287,7 +373,7 @@ private fun PairCard(lesson: LessonEntry, status: LessonStatus) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 0.dp)
+            .padding(horizontal = 18.dp)
             .padding(bottom = 9.dp)
             .then(if (lesson.isWindow) Modifier.alpha(0.6f) else Modifier),
     ) {
@@ -318,9 +404,7 @@ private fun PairCard(lesson: LessonEntry, status: LessonStatus) {
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = 0.05.sp,
-                        modifier = Modifier
-                            .width(24.dp)
-                            .padding(top = 2.dp),
+                        modifier = Modifier.width(24.dp).padding(top = 2.dp),
                     )
 
                     Column(modifier = Modifier.weight(1f)) {
@@ -333,12 +417,7 @@ private fun PairCard(lesson: LessonEntry, status: LessonStatus) {
                                     .background(badgeColor)
                                     .padding(horizontal = 8.dp, vertical = 2.dp),
                             ) {
-                                Text(
-                                    text = badgeText,
-                                    color = Color.White,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
+                                Text(badgeText, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                             Spacer(Modifier.height(5.dp))
                         }
@@ -370,7 +449,7 @@ private fun PairCard(lesson: LessonEntry, status: LessonStatus) {
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     if (lesson.timeStart.isNotEmpty()) {
-                        TimeRow(time = "${lesson.timeStart}–${lesson.timeEnd}", tag = "ПАРА",  muted = false)
+                        TimeRow(time = "${lesson.timeStart}–${lesson.timeEnd}", tag = "ПАРА", muted = false)
                     }
                     if (lesson.breakStart != null && lesson.breakEnd != null) {
                         TimeRow(time = "${lesson.breakStart}–${lesson.breakEnd}", tag = "ПЕРЕМ", muted = true)
@@ -415,18 +494,12 @@ private fun TimeRow(time: String, tag: String, muted: Boolean) {
                 .background(c.surface3)
                 .padding(horizontal = 5.dp, vertical = 2.dp),
         ) {
-            Text(
-                text = tag,
-                color = c.textSub,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.07.sp,
-            )
+            Text(text = tag, color = c.textSub, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.07.sp)
         }
     }
 }
 
-// ─── Состояние: загрузка ──────────────────────────────────────────────────────
+// ─── Скелетон загрузки ────────────────────────────────────────────────────────
 
 @Composable
 private fun SchedLoading() {
@@ -470,15 +543,13 @@ private fun SchedLoading() {
     }
 }
 
-// ─── Состояние: группа на практике ────────────────────────────────────────────
+// ─── На практике ──────────────────────────────────────────────────────────────
 
 @Composable
 private fun SchedOnPractice(headerText: String) {
     val c = LocalAppColors.current
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -488,17 +559,9 @@ private fun SchedOnPractice(headerText: String) {
                 .clip(CircleShape)
                 .background(c.todayAccent.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center,
-        ) {
-            Text(text = "🎓", fontSize = 28.sp)
-        }
+        ) { Text("🎓", fontSize = 28.sp) }
         Spacer(Modifier.height(18.dp))
-        Text(
-            text = "Группа на практике",
-            color = c.text,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-        )
+        Text("Группа на практике", color = c.text, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
         Text(
             text = "На эту дату ($headerText) у вашей группы нет занятий — она проходит производственную практику.",
@@ -511,27 +574,20 @@ private fun SchedOnPractice(headerText: String) {
     }
 }
 
-// ─── Состояние: ошибка ────────────────────────────────────────────────────────
+// ─── Ошибка ───────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SchedError(message: String, onRetry: () -> Unit) {
     val c = LocalAppColors.current
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(c.surface2),
+            modifier = Modifier.size(56.dp).clip(CircleShape).background(c.surface2),
             contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Outlined.WifiOff, null, tint = c.textSub, modifier = Modifier.size(26.dp))
-        }
+        ) { Icon(Icons.Outlined.WifiOff, null, tint = c.textSub, modifier = Modifier.size(26.dp)) }
         Spacer(Modifier.height(16.dp))
         Text("Не удалось загрузить расписание", color = c.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))

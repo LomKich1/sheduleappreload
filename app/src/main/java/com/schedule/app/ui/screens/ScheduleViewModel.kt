@@ -20,31 +20,31 @@ import java.util.Calendar
 // ─── UI-состояния ScheduleScreen ──────────────────────────────────────────────
 
 sealed interface ScheduleUiState {
-    data object Idle      : ScheduleUiState
-    data object Loading   : ScheduleUiState
-    data class  Success(val day: ScheduleDay)        : ScheduleUiState
-    data class  OnPractice(val headerText: String)   : ScheduleUiState
-    data class  Error(val message: String)           : ScheduleUiState
+    data object Idle                                           : ScheduleUiState
+    data object Loading                                        : ScheduleUiState
+    data class  GroupPicker(val groups: List<String>)          : ScheduleUiState
+    data class  Success(val day: ScheduleDay)                  : ScheduleUiState
+    data class  OnPractice(val headerText: String)             : ScheduleUiState
+    data class  Error(val message: String)                     : ScheduleUiState
 }
 
 // ─── ViewModel ────────────────────────────────────────────────────────────────
 
 class ScheduleViewModel : ViewModel() {
 
-    private val _uiState = MutableStateFlow<ScheduleUiState>(ScheduleUiState.Idle)
+    private val _uiState  = MutableStateFlow<ScheduleUiState>(ScheduleUiState.Idle)
     val uiState: StateFlow<ScheduleUiState> = _uiState.asStateFlow()
 
-    // Прогресс скачивания (0..1) — для тонкой полоски под шапкой
     private val _progress = MutableStateFlow(0f)
     val progress: StateFlow<Float> = _progress.asStateFlow()
 
     // ── Живые часы ────────────────────────────────────────────────────────────
-    // Обновляются каждые 30 секунд. ScheduleScreen подписывается через
-    // collectAsStateWithLifecycle() и пересчитывает isNow/isNext/remain/progress
-    // прямо в Composable — без пересоздания экрана.
-
     private val _clockMin = MutableStateFlow(nowMin())
     val clockMin: StateFlow<Int> = _clockMin.asStateFlow()
+
+    // Кеш байтов файла — чтобы selectGroup() и clearGroup() не делали
+    // повторный сетевой запрос: пикер ↔ расписание без скачивания.
+    private var cachedBytes: ByteArray? = null
 
     init {
         viewModelScope.launch {
@@ -55,12 +55,8 @@ class ScheduleViewModel : ViewModel() {
         }
     }
 
-    // ── Загрузка расписания ───────────────────────────────────────────────────
+    // ── Загрузка ──────────────────────────────────────────────────────────────
 
-    /**
-     * Скачивает файл [file], парсит его и публикует результат в [uiState].
-     * URL и группа читаются из AppPrefs в момент вызова — всегда свежие.
-     */
     fun load(file: ScheduleFile) {
         viewModelScope.launch {
             _uiState.value  = ScheduleUiState.Loading
@@ -69,34 +65,84 @@ class ScheduleViewModel : ViewModel() {
             val url   = AppPrefs.yandexUrl.value
             val group = AppPrefs.groupName.value
 
-            runCatching {
-                val bytes = ScheduleRepository.downloadFile(
+            // Скачиваем
+            val bytes = try {
+                ScheduleRepository.downloadFile(
                     publicKey  = url,
                     file       = file,
-                    onProgress = { _progress.value = it * 0.8f },
+                    onProgress = { _progress.value = it * 0.85f },
                 )
-                withContext(Dispatchers.Default) {
-                    _progress.value = 0.95f
-                    val result = DocParser.parseForGroup(bytes, group, file.name)
-                    _progress.value = 1f
-                    result
-                }
-            }.onSuccess { result ->
-                _uiState.value = when (result) {
-                    is ScheduleParseResult.Found      -> ScheduleUiState.Success(result.day)
-                    is ScheduleParseResult.OnPractice -> ScheduleUiState.OnPractice(result.header)
-                    is ScheduleParseResult.NotFound   -> ScheduleUiState.Error(
-                        "Группа $group не найдена в файле"
-                    )
-                }
-            }.onFailure { err ->
+            } catch (e: Exception) {
                 _progress.value = 0f
-                _uiState.value  = ScheduleUiState.Error(err.message ?: "Неизвестная ошибка")
+                _uiState.value  = ScheduleUiState.Error(e.message ?: "Ошибка скачивания")
+                return@launch
+            }
+
+            cachedBytes     = bytes
+            _progress.value = 0.9f
+
+            parseWithGroup(bytes, group, file.name)
+        }
+    }
+
+    /** Парсим байты под нужную группу. Если группа пустая — показываем пикер. */
+    private suspend fun parseWithGroup(bytes: ByteArray, group: String, fileName: String) {
+        withContext(Dispatchers.Default) {
+            if (group.isBlank()) {
+                // Первый запуск — группа не задана, показываем все группы из файла
+                runCatching { DocParser.detectGroups(bytes) }
+                    .onSuccess { groups ->
+                        _progress.value = 1f
+                        _uiState.value  = ScheduleUiState.GroupPicker(groups)
+                    }
+                    .onFailure { err ->
+                        _uiState.value = ScheduleUiState.Error(
+                            err.message ?: "Не удалось получить список групп"
+                        )
+                    }
+            } else {
+                runCatching { DocParser.parseForGroup(bytes, group, fileName) }
+                    .onSuccess { result ->
+                        _progress.value = 1f
+                        _uiState.value  = when (result) {
+                            is ScheduleParseResult.Found      -> ScheduleUiState.Success(result.day)
+                            is ScheduleParseResult.OnPractice -> ScheduleUiState.OnPractice(result.header)
+                            is ScheduleParseResult.NotFound   -> ScheduleUiState.Error(
+                                "Группа «$group» не найдена в файле"
+                            )
+                        }
+                    }
+                    .onFailure { err ->
+                        _uiState.value = ScheduleUiState.Error(
+                            err.message ?: "Ошибка парсинга"
+                        )
+                    }
             }
         }
     }
 
-    // ── Хелперы ──────────────────────────────────────────────────────────────
+    /** Пользователь выбрал группу из пикера — сохраняем и сразу парсим из кеша */
+    fun selectGroup(group: String, fileName: String) {
+        AppPrefs.saveDataSource(AppPrefs.yandexUrl.value, group)
+        val bytes = cachedBytes ?: return
+        viewModelScope.launch {
+            _uiState.value = ScheduleUiState.Loading
+            parseWithGroup(bytes, group, fileName)
+        }
+    }
+
+    /** Кнопка «Сменить группу» — сбрасываем и возвращаемся к пикеру из кеша */
+    fun clearGroup() {
+        AppPrefs.saveDataSource(AppPrefs.yandexUrl.value, "")
+        val bytes = cachedBytes ?: return
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.Default) { DocParser.detectGroups(bytes) }
+            }.onSuccess { groups ->
+                _uiState.value = ScheduleUiState.GroupPicker(groups)
+            }
+        }
+    }
 
     private fun nowMin(): Int {
         val cal = Calendar.getInstance()
