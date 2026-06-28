@@ -4,11 +4,11 @@ import com.schedule.app.data.model.ScheduleFile
 import java.time.LocalDate
 import java.util.Locale
 
-// ─── Разбор имени файла "16_06_2026_ВТОРНИК.doc" ─────────────────────────────
-// Формат: dd_MM_yyyy_ДЕНЬНЕДЕЛИ.doc  (реальный формат файлов с Я.Диска/GitHub)
+// ─── Разбор имени файла "26.06.2026 ПЯТНИЦА.doc" ────────────────────────────
+// Реальный формат файлов с Я.Диска: dd.MM.yyyy ДЕНЬ.doc (точки + пробел)
 
 private val FILE_NAME_REGEX = Regex(
-    """^(\d{1,2})_(\d{1,2})_(\d{4})_(\S+)$""",
+    """^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\S+)$""",
 )
 
 private val WEEKDAY_RU = mapOf(
