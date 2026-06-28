@@ -16,62 +16,75 @@ data class AppColors(
     val textSub: Color,
     val accent: Color,
     val border: Color,
-    // Плавающий пузырёк-навигация
     val pillBg: Color,
     val pillActive: Color,
     val pillActiveText: Color,
     val pillInactiveText: Color,
-    // Подсветка «сегодня»
     val todayAccent: Color,
     val todayBg: Color,
 )
 
-// ─── Тёмная тема (по умолчанию) ──────────────────────────────────────────────
+// ─── Тёмная (Android Dark) ────────────────────────────────────────────────────
+// Нейтральные тёмно-серые тона без фиолетового оттенка + синий акцент,
+// как в системных приложениях Android (Настройки, Messages, Phone).
 
 val DarkColors = AppColors(
-    bg            = Color(0xFF0F0F17),
-    surface       = Color(0xFF1A1A2E),
-    surface2      = Color(0xFF1E1E3E),
-    surface3      = Color(0xFF252545),
-    text          = Color(0xFFE0E0F0),
-    textSub       = Color(0xFF6666AA),
-    accent        = Color(0xFF7777DD),
-    border        = Color(0xFF2A2A5A),
-    pillBg        = Color(0xFF1A1A2E),
-    pillActive    = Color(0xFF3A3A8A),
-    pillActiveText   = Color(0xFFC0C0FF),
-    pillInactiveText = Color(0xFF555588),
-    todayAccent   = Color(0xFF7777FF),
-    todayBg       = Color(0x1A7777FF),
+    bg             = Color(0xFF121212),   // Material Design dark baseline
+    surface        = Color(0xFF1E1E1E),
+    surface2       = Color(0xFF252525),
+    surface3       = Color(0xFF2E2E2E),
+    text           = Color(0xFFEEEEEE),
+    textSub        = Color(0xFF757575),   // Material Grey 600
+    accent         = Color(0xFF90CAF9),   // Material Blue 200 — стандарт тёмной темы
+    border         = Color(0xFF3A3A3A),
+    pillBg         = Color(0xFF1E1E1E),
+    pillActive     = Color(0xFF2D3E52),   // dark blue tint
+    pillActiveText = Color(0xFF90CAF9),
+    pillInactiveText = Color(0xFF606060),
+    todayAccent    = Color(0xFF64B5F6),   // Blue 300
+    todayBg        = Color(0x1A64B5F6),
 )
 
-// ─── Светлая тема ─────────────────────────────────────────────────────────────
+// ─── Светлая (Android Light) ──────────────────────────────────────────────────
+// Чистые белые и светло-серые поверхности + синий акцент (#1976D2),
+// как в светлой теме Google-приложений.
 
 val LightColors = AppColors(
-    bg            = Color(0xFFF4F4FF),
-    surface       = Color(0xFFFFFFFF),
-    surface2      = Color(0xFFF0F0FF),
-    surface3      = Color(0xFFE8E8FF),
-    text          = Color(0xFF1A1A3E),
-    textSub       = Color(0xFF8888BB),
-    accent        = Color(0xFF5050BB),
-    border        = Color(0xFFDDDDFF),
-    pillBg        = Color(0xFFFFFFFF),
-    pillActive    = Color(0xFF5050BB),
-    pillActiveText   = Color.White,
-    pillInactiveText = Color(0xFF9999CC),
-    todayAccent   = Color(0xFF5050FF),
-    todayBg       = Color(0x1A5050FF),
+    bg             = Color(0xFFF2F2F2),
+    surface        = Color(0xFFFFFFFF),
+    surface2       = Color(0xFFF5F5F5),
+    surface3       = Color(0xFFEEEEEE),
+    text           = Color(0xFF212121),   // Material Grey 900
+    textSub        = Color(0xFF757575),   // Material Grey 600
+    accent         = Color(0xFF1976D2),   // Material Blue 700
+    border         = Color(0xFFDEDEDE),
+    pillBg         = Color(0xFFFFFFFF),
+    pillActive     = Color(0xFFE3F2FD),   // Blue 50
+    pillActiveText = Color(0xFF1565C0),   // Blue 800
+    pillInactiveText = Color(0xFF9E9E9E),
+    todayAccent    = Color(0xFF1976D2),
+    todayBg        = Color(0x1A1976D2),
 )
 
-// ─── AMOLED ───────────────────────────────────────────────────────────────────
+// ─── Монохром (AMOLED Mono) ───────────────────────────────────────────────────
+// Чистый чёрный фон + серые поверхности + почти белый акцент.
+// Ноль цвета — только градации серого. Идеально для AMOLED-экранов.
 
-val AmoledColors = DarkColors.copy(
-    bg       = Color(0xFF000000),
-    surface  = Color(0xFF0A0A18),
-    surface2 = Color(0xFF0E0E20),
-    surface3 = Color(0xFF141430),
-    pillBg   = Color(0xFF0A0A18),
+val AmoledColors = AppColors(
+    bg             = Color(0xFF000000),
+    surface        = Color(0xFF0F0F0F),
+    surface2       = Color(0xFF1A1A1A),
+    surface3       = Color(0xFF232323),
+    text           = Color(0xFFF0F0F0),
+    textSub        = Color(0xFF646464),
+    accent         = Color(0xFFDEDEDE),   // почти белый — монохром
+    border         = Color(0xFF2C2C2C),
+    pillBg         = Color(0xFF0F0F0F),
+    pillActive     = Color(0xFF232323),
+    pillActiveText = Color(0xFFFFFFFF),
+    pillInactiveText = Color(0xFF4A4A4A),
+    todayAccent    = Color(0xFFAAAAAA),   // серый вместо цветного
+    todayBg        = Color(0x1AAAAAAA),
 )
 
 // ─── Enum тем ─────────────────────────────────────────────────────────────────
@@ -79,7 +92,7 @@ val AmoledColors = DarkColors.copy(
 enum class ThemePreset(val label: String) {
     DARK("Тёмная"),
     LIGHT("Светлая"),
-    AMOLED("AMOLED"),
+    AMOLED("Монохром"),
 }
 
 fun colorsFor(preset: ThemePreset): AppColors = when (preset) {
