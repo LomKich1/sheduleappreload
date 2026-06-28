@@ -1,5 +1,11 @@
 package com.schedule.app.ui
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
@@ -23,6 +29,9 @@ import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
 
+// Длительность анимации перехода (мс)
+private const val NAV_ANIM_MS = 280
+
 @Composable
 fun AppScaffold() {
     val c = LocalAppColors.current
@@ -30,7 +39,6 @@ fun AppScaffold() {
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: Screen.Files.route
 
-    // Пузырёк навигации виден только на корневых экранах
     val showPill = currentRoute in listOf(Screen.Files.route, Screen.Bells.route)
 
     Box(
@@ -44,13 +52,39 @@ fun AppScaffold() {
             startDestination = Screen.Files.route,
             modifier         = Modifier
                 .fillMaxSize()
-                .then(
-                    if (showPill) Modifier.padding(bottom = 76.dp) else Modifier
-                ),
+                .then(if (showPill) Modifier.padding(bottom = 76.dp) else Modifier),
+
+            // ── Telegram-стиль: сдвиг по горизонтали + затухание ─────────
+            // Вперёд: новый экран едет справа, старый уходит влево
+            enterTransition = {
+                slideInHorizontally(
+                    initialOffsetX = { it },
+                    animationSpec  = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
+                ) + fadeIn(animationSpec = tween(NAV_ANIM_MS - 60))
+            },
+            exitTransition = {
+                slideOutHorizontally(
+                    targetOffsetX = { -it / 4 },
+                    animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
+                ) + fadeOut(animationSpec = tween(NAV_ANIM_MS - 60))
+            },
+            // Назад: текущий едет вправо, предыдущий возвращается справа налево
+            popEnterTransition = {
+                slideInHorizontally(
+                    initialOffsetX = { -it / 4 },
+                    animationSpec  = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
+                ) + fadeIn(animationSpec = tween(NAV_ANIM_MS - 60))
+            },
+            popExitTransition = {
+                slideOutHorizontally(
+                    targetOffsetX = { it },
+                    animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
+                ) + fadeOut(animationSpec = tween(NAV_ANIM_MS - 60))
+            },
         ) {
             composable(Screen.Files.route) {
                 FilesScreen(
-                    onFileClick = { file ->
+                    onFileClick     = { file ->
                         NavigationHolder.pendingFile = file
                         navController.navigate(Screen.Schedule.route)
                     },
