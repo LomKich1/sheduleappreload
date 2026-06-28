@@ -59,14 +59,12 @@ fun SettingsScreen(onBack: () -> Unit) {
     val savedGroup by AppPrefs.groupName.collectAsState()
     val theme      by AppPrefs.themePreset.collectAsState()
 
-    var urlField    by remember(savedUrl) { mutableStateOf(savedUrl) }
-    var groupField  by remember(savedGroup) { mutableStateOf(savedGroup) }
-    var showToast   by remember { mutableStateOf(false) }
+    var urlField      by remember(savedUrl) { mutableStateOf(savedUrl) }
+    var showToast     by remember { mutableStateOf(false) }
     var justRefreshed by remember { mutableStateOf(false) }
 
-    val urlLooksValid   = "disk.yandex.ru" in urlField
-    val groupLooksValid = GROUP_HINT_RE.matches(groupField.trim())
-    val canSave          = urlField.isNotBlank() && groupField.isNotBlank()
+    val urlLooksValid = "disk.yandex.ru" in urlField
+    val canSave       = urlField.isNotBlank()
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -117,22 +115,34 @@ fun SettingsScreen(onBack: () -> Unit) {
 
                 Spacer(Modifier.height(22.dp))
 
-                SettingsSectionLabel("Моя группа")
+                // Текущая группа — только для просмотра, меняется через пикер в файле
+                SettingsSectionLabel("Текущая группа")
                 SettingsCard {
-                    FieldLabel("Код группы")
-                    SettingsInputRow(
-                        value = groupField,
-                        onValueChange = { groupField = it },
-                        leadingIcon = Icons.Outlined.Group,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(
+                            Icons.Outlined.Group,
+                            contentDescription = null,
+                            tint = c.textSub,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = if (savedGroup.isBlank()) "Не выбрана" else savedGroup,
+                            color = if (savedGroup.isBlank()) c.textSub else c.text,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                     Spacer(Modifier.height(7.dp))
                     Text(
-                        text = if (groupLooksValid)
-                            "Например: МПД-2-24, ИС-1-23"
-                        else
-                            "Формат обычно: БУКВЫ-цифра-цифра (МПД-2-24)",
-                        color = if (groupLooksValid) c.textSub else c.accent,
+                        text = "Выбирается при открытии файла расписания — нажмите ✎ в шапке чтобы сменить",
+                        color = c.textSub,
                         fontSize = 11.sp,
+                        lineHeight = 15.sp,
                     )
                 }
 
@@ -149,7 +159,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 SaveButton(
                     enabled = canSave,
                     onClick = {
-                        AppPrefs.saveDataSource(urlField, groupField)
+                        AppPrefs.saveYandexUrl(urlField)
                         showToast = true
                         scope.launch { delay(900); onBack() }
                     },
@@ -181,10 +191,6 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
 }
-
-// Лёгкая подсказка по формату группы — НЕ источник истины (тот живёт в DocParser.GRP_RE),
-// просто визуальный хинт, чтобы не дублировать private-доступ к парсеру.
-private val GROUP_HINT_RE = Regex("""^\d{0,2}[А-ЯЁа-яёA-Za-z]{1,6}-?\d-\d{2}$""")
 
 // ─── Шапка ────────────────────────────────────────────────────────────────────
 

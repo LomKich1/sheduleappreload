@@ -67,6 +67,13 @@ object AppPrefs {
         prefs?.edit { putString(KEY_THEME, preset.name) }
     }
 
+    /** Сохраняет только URL папки, не трогая группу. */
+    fun saveYandexUrl(url: String) {
+        val clean = url.trim()
+        prefs?.edit { putString(KEY_YANDEX_URL, clean) }
+        _yandexUrl.value = clean
+    }
+
     /** Сохраняет URL папки и группу одной транзакцией. */
     fun saveDataSource(url: String, group: String) {
         val cleanUrl   = url.trim()

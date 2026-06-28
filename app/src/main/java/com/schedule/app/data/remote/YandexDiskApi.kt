@@ -1,15 +1,14 @@
 package com.schedule.app.data.remote
 
+import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-// ─── Яндекс.Диск — публичная папка ───────────────────────────────────────────
-// GET /v1/disk/public/resources?public_key=...&limit=100
-// Возвращает список (name, downloadUrl). downloadUrl — временная прямая ссылка.
-
 object YandexDiskApi {
+
+    private const val TAG = "YaDisk"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(12, TimeUnit.SECONDS)
@@ -17,80 +16,91 @@ object YandexDiskApi {
         .build()
 
     data class RemoteFile(
-        val name: String,       // "Понедельник 09.06.doc"
-        val path: String,       // "disk:/папка/Понедельник 09.06.doc"  — нужен для скачивания
+        val name: String,
+        val path: String,
         val size: Long,
     )
 
-    /**
-     * Получает список .doc-файлов из публичной папки.
-     * [publicKey] — полный URL вида https://disk.yandex.ru/d/xxxx
-     * Бросает исключение при сетевой ошибке или неверном ответе.
-     */
     fun listFiles(publicKey: String): List<RemoteFile> {
         val enc = java.net.URLEncoder.encode(publicKey, "UTF-8")
         val url = "https://cloud-api.yandex.net/v1/disk/public/resources" +
                   "?public_key=$enc&limit=100&sort=name"
 
+        Log.d(TAG, "listFiles() → GET $url")
+
         val req = Request.Builder().url(url)
             .header("User-Agent", "ScheduleApp/1.0")
             .build()
 
-        val body = client.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) {
-                val msg = resp.body?.string()?.let {
-                    runCatching { JSONObject(it).optString("message") }.getOrNull()
-                } ?: "HTTP ${resp.code}"
-                throw Exception("Яндекс.Диск: $msg")
-            }
-            resp.body!!.string()
+        val (code, body) = client.newCall(req).execute().use { resp ->
+            val b = resp.body?.string() ?: ""
+            Log.d(TAG, "listFiles() ← HTTP ${resp.code}, body[${b.length}]: ${b.take(400)}")
+            resp.code to b
         }
 
-        val items = JSONObject(body)
-            .getJSONObject("_embedded")
-            .getJSONArray("items")
+        if (code !in 200..299) {
+            val msg = runCatching { JSONObject(body).optString("message") }.getOrNull()
+                ?: "HTTP $code"
+            Log.e(TAG, "listFiles() ОШИБКА: $msg")
+            throw Exception("Яндекс.Диск: $msg")
+        }
+
+        val items = try {
+            JSONObject(body).getJSONObject("_embedded").getJSONArray("items")
+        } catch (e: Exception) {
+            Log.e(TAG, "listFiles() не удалось распарсить JSON: ${e.message}\nbody=$body")
+            throw Exception("Яндекс.Диск: неверный формат ответа — ${e.message}")
+        }
+
+        Log.d(TAG, "listFiles() всего items в ответе: ${items.length()}")
 
         return buildList {
             for (i in 0 until items.length()) {
-                val obj = items.getJSONObject(i)
+                val obj  = items.getJSONObject(i)
                 val name = obj.optString("name", "")
-                if (!name.endsWith(".doc", ignoreCase = true)) continue
-                add(RemoteFile(
+                val type = obj.optString("type", "")
+                Log.d(TAG, "  item[$i]: name='$name' type='$type'")
+                if (!name.endsWith(".doc", ignoreCase = true)) {
+                    Log.d(TAG, "  ↳ пропущен (не .doc)")
+                    continue
+                }
+                val remote = RemoteFile(
                     name = name,
                     path = obj.optString("path", ""),
                     size = obj.optLong("size", 0L),
-                ))
+                )
+                Log.d(TAG, "  ↳ добавлен: path='${remote.path}' size=${remote.size}")
+                add(remote)
             }
-        }
+        }.also { Log.d(TAG, "listFiles() итого .doc файлов: ${it.size}") }
     }
 
-    /**
-     * Получает временную прямую ссылку на скачивание файла по его [path].
-     * [publicKey] — тот же URL папки.
-     */
     fun getDownloadUrl(publicKey: String, path: String): String {
         val enc     = java.net.URLEncoder.encode(publicKey, "UTF-8")
         val pathEnc = java.net.URLEncoder.encode(path, "UTF-8")
         val url = "https://cloud-api.yandex.net/v1/disk/public/resources/download" +
                   "?public_key=$enc&path=$pathEnc"
 
+        Log.d(TAG, "getDownloadUrl() → GET $url")
+
         val req = Request.Builder().url(url)
             .header("User-Agent", "ScheduleApp/1.0")
             .build()
 
         val body = client.newCall(req).execute().use { resp ->
+            val b = resp.body?.string() ?: ""
+            Log.d(TAG, "getDownloadUrl() ← HTTP ${resp.code}, body: ${b.take(200)}")
             if (!resp.isSuccessful) throw Exception("Яндекс.Диск download: HTTP ${resp.code}")
-            resp.body!!.string()
+            b
         }
 
-        return JSONObject(body).optString("href")
-            ?: throw Exception("Яндекс.Диск не вернул href")
+        return (JSONObject(body).optString("href").takeIf { it.isNotEmpty() }
+            ?: throw Exception("Яндекс.Диск не вернул href"))
+            .also { Log.d(TAG, "getDownloadUrl() href получен (${it.length} символов)") }
     }
 
-    /**
-     * Скачивает файл по прямому URL. Используется после [getDownloadUrl].
-     */
     fun downloadBytes(href: String, onProgress: (Float) -> Unit = {}): ByteArray {
+        Log.d(TAG, "downloadBytes() → ${href.take(80)}...")
         onProgress(0.1f)
         val req = Request.Builder().url(href)
             .header("User-Agent", "ScheduleApp/1.0")
@@ -101,6 +111,7 @@ object YandexDiskApi {
             onProgress(0.5f)
             val bytes = resp.body!!.bytes()
             onProgress(1f)
+            Log.d(TAG, "downloadBytes() скачано ${bytes.size} байт")
             bytes
         }
     }
