@@ -82,7 +82,16 @@ fun AppScaffold() {
                 ) + fadeOut(animationSpec = tween(NAV_ANIM_MS - 60))
             },
         ) {
-            composable(Screen.Files.route) {
+            // ── Вкладки: лёгкий crossfade (без slide) ────────────────────
+            // slide для вкладок вызывает лаг — двигать весь экран туда-обратно
+            // при каждом тапе слишком тяжело. Быстрый fade: мгновенно и чисто.
+            composable(
+                route              = Screen.Files.route,
+                enterTransition    = { fadeIn(tween(160)) },
+                exitTransition     = { fadeOut(tween(120)) },
+                popEnterTransition = { fadeIn(tween(160)) },
+                popExitTransition  = { fadeOut(tween(120)) },
+            ) {
                 FilesScreen(
                     onFileClick     = { file ->
                         NavigationHolder.pendingFile = file
@@ -92,10 +101,17 @@ fun AppScaffold() {
                 )
             }
 
-            composable(Screen.Bells.route) {
+            composable(
+                route              = Screen.Bells.route,
+                enterTransition    = { fadeIn(tween(160)) },
+                exitTransition     = { fadeOut(tween(120)) },
+                popEnterTransition = { fadeIn(tween(160)) },
+                popExitTransition  = { fadeOut(tween(120)) },
+            ) {
                 BellsScreen()
             }
 
+            // ── Глубокие экраны: slide в стиле Telegram ───────────────────
             composable(Screen.Schedule.route) {
                 val file = NavigationHolder.pendingFile
                 if (file != null) {
