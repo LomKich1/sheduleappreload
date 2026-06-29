@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -57,7 +58,7 @@ private fun isForward(from: String?, to: String?): Boolean {
 //    левый  край входящего  = screenW × (1 − f(t))   ← совпадают всегда
 //  → экраны движутся бок о бок, как страницы журнала.
 
-private val tabSpec = tween<Int>(TAB_ANIM_MS, easing = FastOutSlowInEasing)
+private val tabSpec = tween<IntOffset>(TAB_ANIM_MS, easing = FastOutSlowInEasing)
 
 // forward=true  → входящий приезжает справа (Files→Bells)
 // forward=false → входящий приезжает слева  (Bells→Files)
