@@ -29,8 +29,51 @@ import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
 
-// Длительность анимации перехода (мс)
-private const val NAV_ANIM_MS = 280
+// ── Длительности ─────────────────────────────────────────────────────────────
+private const val NAV_ANIM_MS = 280   // глубокие экраны: Schedule, Settings
+private const val TAB_ANIM_MS = 250   // вкладки: Files ↔ Bells
+
+// ── Порядок вкладок ───────────────────────────────────────────────────────────
+//  Files = 0 (левая страница), Bells = 1 (правая страница).
+//  Используется для определения направления слайда.
+private val TAB_INDEX = mapOf(
+    Screen.Files.route to 0,
+    Screen.Bells.route to 1,
+)
+
+// true = движение вперёд (Files→Bells), false = назад (Bells→Files)
+private fun isForward(from: String?, to: String?): Boolean {
+    val a = TAB_INDEX[from] ?: return true
+    val b = TAB_INDEX[to]   ?: return true
+    return b > a
+}
+
+// ── Скоординированный слайд вкладок ──────────────────────────────────────────
+//
+//  Ключевое правило «без наложений»:
+//  Enter и Exit используют ОДИНАКОВЫЙ easing + ОДИНАКОВУЮ длительность.
+//  Тогда в любой момент t:
+//    правый край уходящего  = screenW × (1 − f(t))
+//    левый  край входящего  = screenW × (1 − f(t))   ← совпадают всегда
+//  → экраны движутся бок о бок, как страницы журнала.
+
+private val tabSpec = tween<Int>(TAB_ANIM_MS, easing = FastOutSlowInEasing)
+
+// forward=true  → входящий приезжает справа (Files→Bells)
+// forward=false → входящий приезжает слева  (Bells→Files)
+private fun tabEnter(forward: Boolean) = slideInHorizontally(
+    initialOffsetX = { if (forward) it else -it },
+    animationSpec  = tabSpec,
+)
+
+// forward=true  → уходящий едет влево  (Files→Bells: Files уходит влево)
+// forward=false → уходящий едет вправо (Bells→Files: Bells уходит вправо)
+private fun tabExit(forward: Boolean) = slideOutHorizontally(
+    targetOffsetX = { if (forward) -it else it },
+    animationSpec = tabSpec,
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun AppScaffold() {
@@ -54,8 +97,9 @@ fun AppScaffold() {
                 .fillMaxSize()
                 .then(if (showPill) Modifier.padding(bottom = 76.dp) else Modifier),
 
-            // ── Telegram-стиль: сдвиг по горизонтали + затухание ─────────
-            // Вперёд: новый экран едет справа, старый уходит влево
+            // ── Глобальные анимации — только для глубоких экранов ─────────
+            //  Telegram-стиль: новый экран едет справа, старый уходит влево.
+            //  Вкладки Files/Bells переопределяют эти значения (см. ниже).
             enterTransition = {
                 slideInHorizontally(
                     initialOffsetX = { it },
@@ -68,7 +112,6 @@ fun AppScaffold() {
                     animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
                 ) + fadeOut(animationSpec = tween(NAV_ANIM_MS - 60))
             },
-            // Назад: текущий едет вправо, предыдущий возвращается справа налево
             popEnterTransition = {
                 slideInHorizontally(
                     initialOffsetX = { -it / 4 },
@@ -82,15 +125,34 @@ fun AppScaffold() {
                 ) + fadeOut(animationSpec = tween(NAV_ANIM_MS - 60))
             },
         ) {
-            // ── Вкладки: лёгкий crossfade (без slide) ────────────────────
-            // slide для вкладок вызывает лаг — двигать весь экран туда-обратно
-            // при каждом тапе слишком тяжело. Быстрый fade: мгновенно и чисто.
+
+            // ── Вкладка: Файлы (левая страница) ──────────────────────────
             composable(
-                route              = Screen.Files.route,
-                enterTransition    = { fadeIn(tween(160)) },
-                exitTransition     = { fadeOut(tween(120)) },
-                popEnterTransition = { fadeIn(tween(160)) },
-                popExitTransition  = { fadeOut(tween(120)) },
+                route = Screen.Files.route,
+
+                enterTransition = {
+                    val from = initialState.destination.route ?: ""
+                    val to   = targetState.destination.route  ?: ""
+                    // Возврат с Bells → Files едет слева
+                    if (from in TAB_INDEX && to in TAB_INDEX) tabEnter(isForward(from, to))
+                    else fadeIn(tween(160))
+                },
+                exitTransition = {
+                    val from = initialState.destination.route ?: ""
+                    val to   = targetState.destination.route  ?: ""
+                    // Files → Bells: Files едет влево
+                    // Files → Settings/Schedule: глобальный (null = NavHost default)
+                    if (from in TAB_INDEX && to in TAB_INDEX) tabExit(isForward(from, to))
+                    else null
+                },
+                popEnterTransition = {
+                    val from = initialState.destination.route ?: ""
+                    val to   = targetState.destination.route  ?: ""
+                    // popUpTo возвращает на Files с Bells: Files едет слева
+                    if (from in TAB_INDEX && to in TAB_INDEX) tabEnter(isForward(from, to))
+                    else null   // глобальный popEnterTransition (слайд назад)
+                },
+                popExitTransition = { null },  // глобальный
             ) {
                 FilesScreen(
                     onFileClick     = { file ->
@@ -101,17 +163,43 @@ fun AppScaffold() {
                 )
             }
 
+            // ── Вкладка: Звонки (правая страница) ────────────────────────
             composable(
-                route              = Screen.Bells.route,
-                enterTransition    = { fadeIn(tween(160)) },
-                exitTransition     = { fadeOut(tween(120)) },
-                popEnterTransition = { fadeIn(tween(160)) },
-                popExitTransition  = { fadeOut(tween(120)) },
+                route = Screen.Bells.route,
+
+                enterTransition = {
+                    val from = initialState.destination.route ?: ""
+                    val to   = targetState.destination.route  ?: ""
+                    // Files → Bells: Bells приезжает справа
+                    if (from in TAB_INDEX && to in TAB_INDEX) tabEnter(isForward(from, to))
+                    else fadeIn(tween(160))
+                },
+                exitTransition = {
+                    val from = initialState.destination.route ?: ""
+                    val to   = targetState.destination.route  ?: ""
+                    // Bells → Files: Bells едет вправо
+                    if (from in TAB_INDEX && to in TAB_INDEX) tabExit(isForward(from, to))
+                    else null
+                },
+                popEnterTransition = {
+                    val from = initialState.destination.route ?: ""
+                    val to   = targetState.destination.route  ?: ""
+                    if (from in TAB_INDEX && to in TAB_INDEX) tabEnter(isForward(from, to))
+                    else fadeIn(tween(160))
+                },
+                popExitTransition = {
+                    val from = initialState.destination.route ?: ""
+                    val to   = targetState.destination.route  ?: ""
+                    // popUpTo с Bells обратно на Files: Bells едет вправо
+                    if (from in TAB_INDEX && to in TAB_INDEX) tabExit(isForward(from, to))
+                    else null
+                },
             ) {
                 BellsScreen()
             }
 
-            // ── Глубокие экраны: slide в стиле Telegram ───────────────────
+            // ── Глубокие экраны: слайд в стиле Telegram ──────────────────
+            //  Используют глобальные анимации NavHost (без переопределения)
             composable(Screen.Schedule.route) {
                 val file = NavigationHolder.pendingFile
                 if (file != null) {
