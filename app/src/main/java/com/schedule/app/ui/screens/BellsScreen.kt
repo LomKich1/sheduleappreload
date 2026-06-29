@@ -4,6 +4,9 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+// Примечание: animateColorAsState/spring сохранены для BellDayTabs (анимация при тапе по табу).
+// В BellCard используются статические цвета — они не меняются в рантайме,
+// а animateColorAsState там создавал 24 лишних Animatable при каждом входе на экран.
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -315,33 +318,22 @@ private fun BellCard(
 ) {
     val c = LocalAppColors.current
 
-    val barColor by animateColorAsState(
-        targetValue = when {
-            isNow  -> c.todayAccent
-            isNext -> Color(0xFF50C878)
-            else   -> c.accent.copy(alpha = 0.55f)
-        },
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "bellBar",
-    )
-    val cardBg by animateColorAsState(
-        targetValue = if (isNow) c.todayAccent.copy(alpha = 0.10f) else c.surface,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "bellCardBg",
-    )
-    val borderColor by animateColorAsState(
-        targetValue = when {
-            isNow  -> c.todayAccent.copy(alpha = 0.30f)
-            isNext -> Color(0xFF50C878).copy(alpha = 0.30f)
-            else   -> c.border
-        },
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "bellBorder",
-    )
-    val timeColor by animateColorAsState(
-        targetValue = if (isNow) c.todayAccent else c.text,
-        label = "bellTime",
-    )
+    // Статические цвета — без animateColorAsState.
+    // isNow/isNext меняются раз в 30 с (тик), мгновенная смена цвета незаметна.
+    // Убрав 4 Animatable × 6 карточек = 24 объекта, снижаем стоимость первой
+    // компоновки BellsScreen и убираем лаг при переключении вкладок.
+    val barColor    = when {
+        isNow  -> c.todayAccent
+        isNext -> Color(0xFF50C878)
+        else   -> c.accent.copy(alpha = 0.55f)
+    }
+    val cardBg      = if (isNow) c.todayAccent.copy(alpha = 0.10f) else c.surface
+    val borderColor = when {
+        isNow  -> c.todayAccent.copy(alpha = 0.30f)
+        isNext -> Color(0xFF50C878).copy(alpha = 0.30f)
+        else   -> c.border
+    }
+    val timeColor   = if (isNow) c.todayAccent else c.text
 
     Row(
         modifier = Modifier
