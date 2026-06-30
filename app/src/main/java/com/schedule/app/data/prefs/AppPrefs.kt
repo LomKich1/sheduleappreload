@@ -32,7 +32,7 @@ object AppPrefs {
     private const val KEY_PINNED_GROUP   = "pinned_group"
 
     const val DEFAULT_YANDEX_URL = "https://disk.yandex.ru/d/mjhoc7kysmQEuQ"
-    const val DEFAULT_GROUP_NAME = "МПД-2-24"
+    const val DEFAULT_GROUP_NAME = ""   // пусто → новый пользователь сразу видит пикер
     private val DEFAULT_THEME    = ThemePreset.DARK
 
     private var prefs: SharedPreferences? = null
