@@ -2,6 +2,8 @@ package com.schedule.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -55,9 +57,11 @@ fun SettingsScreen(onBack: () -> Unit) {
     val c = LocalAppColors.current
     val scope = rememberCoroutineScope()
 
-    val savedUrl   by AppPrefs.yandexUrl.collectAsState()
-    val savedGroup by AppPrefs.groupName.collectAsState()
-    val theme      by AppPrefs.themePreset.collectAsState()
+    val savedUrl      by AppPrefs.yandexUrl.collectAsState()
+    val savedGroup    by AppPrefs.groupName.collectAsState()
+    val theme         by AppPrefs.themePreset.collectAsState()
+    val rememberOn    by AppPrefs.rememberGroup.collectAsState()
+    val pinnedGroup   by AppPrefs.pinnedGroup.collectAsState()
 
     var urlField      by remember(savedUrl) { mutableStateOf(savedUrl) }
     var showToast     by remember { mutableStateOf(false) }
@@ -115,8 +119,8 @@ fun SettingsScreen(onBack: () -> Unit) {
 
                 Spacer(Modifier.height(22.dp))
 
-                // Текущая группа — только для просмотра, меняется через пикер в файле
-                SettingsSectionLabel("Текущая группа")
+                // ── Группа: текущая + переключатель запоминания ────────────
+                SettingsSectionLabel("Группа")
                 SettingsCard {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -143,6 +147,17 @@ fun SettingsScreen(onBack: () -> Unit) {
                         color = c.textSub,
                         fontSize = 11.sp,
                         lineHeight = 15.sp,
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Переключатель «Запоминать группу»
+                SettingsCard {
+                    GroupRememberRow(
+                        rememberOn  = rememberOn,
+                        pinnedGroup = pinnedGroup,
+                        onToggle    = { AppPrefs.setRememberGroup(!rememberOn) },
                     )
                 }
 
@@ -456,6 +471,93 @@ private fun SaveButton(enabled: Boolean, onClick: () -> Unit) {
             color = if (enabled) Color.White else c.textSub,
             fontSize = 14.5.sp,
             fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+// ─── Переключатель запоминания группы ─────────────────────────────────────────
+
+@Composable
+private fun GroupRememberRow(
+    rememberOn: Boolean,
+    pinnedGroup: String,
+    onToggle: () -> Unit,
+) {
+    val c = LocalAppColors.current
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Запоминать группу",
+                    color = c.text,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = if (rememberOn && pinnedGroup.isNotBlank())
+                        "Запомнена: $pinnedGroup"
+                    else
+                        "Выключено",
+                    color = c.textSub,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            TogglePill(checked = rememberOn, onToggle = onToggle)
+        }
+
+        AnimatedVisibility(
+            visible = rememberOn,
+            enter   = fadeIn(tween(200)) + slideInVertically(tween(200)) { -it / 2 },
+            exit    = fadeOut(tween(150)) + slideOutVertically(tween(150)) { -it / 2 },
+        ) {
+            Text(
+                text = "Запомненная группа отображается первой при открытии расписания",
+                color = c.textSub,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+    }
+}
+
+// ─── Кастомный переключатель (pill toggle) ────────────────────────────────────
+
+@Composable
+private fun TogglePill(checked: Boolean, onToggle: () -> Unit) {
+    val c = LocalAppColors.current
+
+    val trackColor by animateColorAsState(
+        targetValue   = if (checked) c.accent else c.surface3,
+        animationSpec = tween(200),
+        label         = "toggleTrack",
+    )
+    // Анимируем start-padding большого контейнера: 3.dp (выкл) → 23.dp (вкл)
+    // Ширина трека 46.dp, паддинг 3.dp, кнопка 20.dp → 46-3-3-20=20.dp хода
+    val thumbStart by animateDpAsState(
+        targetValue   = if (checked) 23.dp else 3.dp,
+        animationSpec = tween(200),
+        label         = "toggleThumb",
+    )
+
+    Box(
+        modifier = Modifier
+            .size(width = 46.dp, height = 26.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(trackColor)
+            .clickable(onClick = onToggle),
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(start = thumbStart, top = 3.dp, bottom = 3.dp)
+                .size(20.dp)
+                .clip(CircleShape)
+                .background(Color.White),
         )
     }
 }

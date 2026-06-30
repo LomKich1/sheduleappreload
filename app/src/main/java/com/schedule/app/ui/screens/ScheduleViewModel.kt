@@ -123,7 +123,7 @@ class ScheduleViewModel : ViewModel() {
 
     /** Пользователь выбрал группу из пикера — сохраняем и сразу парсим из кеша */
     fun selectGroup(group: String, fileName: String) {
-        AppPrefs.saveDataSource(AppPrefs.yandexUrl.value, group)
+        AppPrefs.saveGroupName(group)          // ← сохраняет + pinnedGroup если нужно
         val bytes = cachedBytes ?: return
         viewModelScope.launch {
             _uiState.value = ScheduleUiState.Loading
@@ -133,7 +133,7 @@ class ScheduleViewModel : ViewModel() {
 
     /** Кнопка «Сменить группу» — сбрасываем и возвращаемся к пикеру из кеша */
     fun clearGroup() {
-        AppPrefs.saveDataSource(AppPrefs.yandexUrl.value, "")
+        AppPrefs.clearGroupName()              // ← только groupName, pinnedGroup жива
         val bytes = cachedBytes ?: return
         viewModelScope.launch {
             runCatching {
