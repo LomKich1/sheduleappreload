@@ -106,7 +106,7 @@ fun FloatingPillNav(
                     .offset { IntOffset(indicatorXPx.roundToInt(), 0) }
                     .fillMaxHeight()
                     .width(with(density) { indicatorWPx.toDp() })
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(CircleShape)
                     .background(c.pillActive),
             )
         }
@@ -133,7 +133,7 @@ fun FloatingPillNav(
                             indication        = null, // у индикатора своя анимация — серая вспышка тут лишняя
                         ) { onNavigate(item.route) }
                         .padding(
-                            horizontal = if (isActive) 22.dp else 12.dp,
+                            horizontal = if (isActive) 16.dp else 12.dp,
                             vertical   = 9.dp,
                         )
                         .onGloballyPositioned { coords ->
