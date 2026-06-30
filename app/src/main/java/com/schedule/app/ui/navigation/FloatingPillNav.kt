@@ -59,8 +59,8 @@ fun FloatingPillNav(
 
     val items = remember {
         listOf(
-            PillNavItem(Screen.Files.route, Icons.Outlined.CalendarMonth,   "Расписание"),
-            PillNavItem(Screen.Bells.route, Icons.Outlined.NotificationsNone, "Звонки"),
+            PillNavItem(Screen.Files.route, Icons.Outlined.CalendarMonth,   "  Расписание"),
+            PillNavItem(Screen.Bells.route, Icons.Outlined.NotificationsNone, "Звонки  "),
         )
     }
 
