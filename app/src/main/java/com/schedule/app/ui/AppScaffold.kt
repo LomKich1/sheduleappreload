@@ -1,5 +1,7 @@
 package com.schedule.app.ui
 
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -79,6 +81,7 @@ private fun tabExit(forward: Boolean) = slideOutHorizontally(
 @Composable
 fun AppScaffold() {
     val c = LocalAppColors.current
+    val context = LocalContext.current
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: Screen.Files.route
@@ -154,8 +157,14 @@ fun AppScaffold() {
                     else null   // глобальный popEnterTransition (слайд назад)
                 },
                 popExitTransition = { null },  // глобальный
-            ) {
+              ) {
+                    // Используем встроенную фабрику, чтобы ViewModel жила в бэкстеке навигации
+                    val filesViewModel: FilesViewModel = viewModel {
+                        FilesViewModel(context)
+                    }
+                    
                 FilesScreen(
+                    viewModel       = filesViewModel,
                     onFileClick     = { file ->
                         NavigationHolder.pendingFile = file
                         navController.navigate(Screen.Schedule.route)
