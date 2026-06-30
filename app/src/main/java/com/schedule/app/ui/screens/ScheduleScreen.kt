@@ -7,14 +7,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.Icon
@@ -188,7 +187,14 @@ private fun GroupPickerScreen(
     groups: List<String>,
     onSelect: (String) -> Unit,
 ) {
-    val c = LocalAppColors.current
+    val c           = LocalAppColors.current
+    val rememberOn  by AppPrefs.rememberGroup.collectAsState()
+    val pinnedGroup by AppPrefs.pinnedGroup.collectAsState()
+
+    // Подсвечиваем только если rememberGroup ON + группа реально есть в этом файле
+    val pinnedInFile = if (rememberOn && pinnedGroup.isNotBlank() && pinnedGroup in groups)
+        pinnedGroup else null
+    val otherGroups = if (pinnedInFile != null) groups.filter { it != pinnedInFile } else groups
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Подсказка
@@ -204,43 +210,139 @@ private fun GroupPickerScreen(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Найдено ${groups.size} групп · выбор сохранится автоматически",
+                text = if (pinnedInFile != null)
+                    "Найдено ${groups.size} групп · запомненная — вверху"
+                else
+                    "Найдено ${groups.size} групп · выбор сохранится автоматически",
                 color = c.textSub,
                 fontSize = 11.5.sp,
                 modifier = Modifier.padding(top = 3.dp),
             )
         }
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
+        LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 14.dp, end = 14.dp,
                 bottom = 80.dp, top = 2.dp,
             ),
-            verticalArrangement   = Arrangement.spacedBy(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            gridItems(groups) { group ->
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(c.surface)
-                        .border(1.dp, c.border, RoundedCornerShape(12.dp))
-                        .clickable { onSelect(group) }
-                        .padding(vertical = 14.dp, horizontal = 6.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = group,
-                        color = c.text,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 15.sp,
-                    )
+            if (pinnedInFile != null) {
+                item(key = "lbl_pinned") {
+                    GroupSectionLabel("ЗАПОМНЕННАЯ")
+                }
+                item(key = "pinned_$pinnedInFile") {
+                    GroupCard(name = pinnedInFile, isPinned = true) { onSelect(pinnedInFile) }
+                }
+                item(key = "spacer_sep") {
+                    Spacer(Modifier.height(6.dp))
+                }
+                item(key = "lbl_all") {
+                    GroupSectionLabel("ВСЕ ГРУППЫ")
+                }
+                items(otherGroups, key = { "g_$it" }) { group ->
+                    GroupCard(name = group, isPinned = false) { onSelect(group) }
+                }
+            } else {
+                item(key = "lbl_all") {
+                    GroupSectionLabel("ВСЕ ГРУППЫ")
+                }
+                items(groups, key = { "g_$it" }) { group ->
+                    GroupCard(name = group, isPinned = false) { onSelect(group) }
                 }
             }
+        }
+    }
+}
+
+// ─── Секционный заголовок в пикере ────────────────────────────────────────────
+
+@Composable
+private fun GroupSectionLabel(text: String) {
+    val c = LocalAppColors.current
+    Text(
+        text           = text,
+        color          = c.textSub,
+        fontSize       = 10.sp,
+        fontWeight     = FontWeight.Bold,
+        letterSpacing  = 0.08.sp,
+        modifier       = Modifier.padding(start = 4.dp, bottom = 2.dp),
+    )
+}
+
+// ─── Карточка группы (стиль FileCard: иконка + название + бейдж/шеврон) ──────
+
+@Composable
+private fun GroupCard(
+    name: String,
+    isPinned: Boolean,
+    onClick: () -> Unit,
+) {
+    val c           = LocalAppColors.current
+    val bg          = if (isPinned) c.todayAccent.copy(alpha = 0.09f) else c.surface
+    val borderColor = if (isPinned) c.todayAccent.copy(alpha = 0.32f) else c.border
+    val iconBg      = if (isPinned) c.todayAccent.copy(alpha = 0.18f) else c.surface2
+    val iconTint    = if (isPinned) c.todayAccent else c.textSub
+    val nameColor   = if (isPinned) c.todayAccent else c.text
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(bg)
+            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Иконка-кружок (как в FileCard)
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(iconBg),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector        = Icons.Outlined.Group,
+                contentDescription = null,
+                tint               = iconTint,
+                modifier           = Modifier.size(20.dp),
+            )
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        Text(
+            text       = name,
+            color      = nameColor,
+            fontSize   = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier   = Modifier.weight(1f),
+        )
+
+        if (isPinned) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(c.todayAccent)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text       = "ЗАПОМНЕНА",
+                    color      = c.bg,
+                    fontSize   = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        } else {
+            Icon(
+                imageVector        = Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint               = c.textSub,
+                modifier           = Modifier.size(18.dp),
+            )
         }
     }
 }
