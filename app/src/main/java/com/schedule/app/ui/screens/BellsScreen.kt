@@ -38,6 +38,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.schedule.app.ui.components.StaggeredSwapItem
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  BellsScreen — живое расписание звонков
@@ -185,18 +187,24 @@ fun BellsScreen(entranceTrigger: Int = 0) {
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            itemsIndexed(periods, key = { _, period -> period.roman }) { index, period ->
-                val isNow  = isLiveDay &&
-                             nowMin in toMin(period.totalStart)..toMin(period.totalEnd)
-                val isNext = isLiveDay && !isNow &&
-                             toMin(period.totalStart) - nowMin in 1..30
+            itemsIndexed(periods, key = { index, _ -> index }) { index, _ ->
                 CascadeEntranceItem(
                     index      = index,
                     triggerKey = entranceTrigger,
                     enabled    = entranceEnabled,
                     edge       = CascadeEdge.RIGHT,
                 ) {
-                    BellCard(period = period, isNow = isNow, isNext = isNext)
+                    StaggeredSwapItem(
+                        index       = index,
+                        targetState = selectedType,
+                        enabled     = entranceEnabled,
+                    ) { dayType ->
+                        val period = bellsFor(dayType)[index]
+                        val isLive = dayType == todayType
+                        val isNow  = isLive && nowMin in toMin(period.totalStart)..toMin(period.totalEnd)
+                        val isNext = isLive && !isNow && toMin(period.totalStart) - nowMin in 1..30
+                        BellCard(period = period, isNow = isNow, isNext = isNext)
+                    }
                 }
             }
 
@@ -325,7 +333,10 @@ private fun BellDayTabs(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(10.dp))
-                        .clickable { onSelect(type) }
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication        = null,
+                        ) { onSelect(type) }
                         .padding(vertical = 10.dp)
                         .onGloballyPositioned { coords ->
                             itemXsPx[idx] = coords.positionInParent().x
