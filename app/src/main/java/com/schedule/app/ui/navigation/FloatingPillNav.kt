@@ -133,7 +133,7 @@ fun FloatingPillNav(
                             indication        = null, // у индикатора своя анимация — серая вспышка тут лишняя
                         ) { onNavigate(item.route) }
                         .padding(
-                            horizontal = 9.dp,
+                            horizontal = 0.dp,
                             vertical   = 9.dp,
                         )
                         .onGloballyPositioned { coords ->
