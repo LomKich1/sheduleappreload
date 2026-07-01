@@ -6,7 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +26,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
+import com.schedule.app.ui.components.CascadeEdge
+import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.components.FileCard
 import com.schedule.app.ui.components.FilesHeader
 import com.schedule.app.ui.theme.AppTheme
@@ -41,6 +43,7 @@ fun FilesScreen(
     vm: FilesViewModel = viewModel(),
     onFileClick: (ScheduleFile) -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    entranceTrigger: Int = 0,
 ) {
     val uiState by vm.uiState.collectAsState()
     val groupName by AppPrefs.groupName.collectAsState()
@@ -64,6 +67,7 @@ fun FilesScreen(
             is FilesUiState.Success -> FilesList(
                 files     = state.files,
                 onClick   = onFileClick,
+                entranceTrigger = entranceTrigger,
             )
             is FilesUiState.Error   -> FilesError(
                 message  = state.message,
@@ -94,14 +98,24 @@ private fun SectionLabel() {
 private fun FilesList(
     files: List<ScheduleFile>,
     onClick: (ScheduleFile) -> Unit,
+    entranceTrigger: Int,
 ) {
+    val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        items(files, key = { it.name }) { file ->
-            FileCard(file = file, onClick = { onClick(file) })
+        itemsIndexed(files, key = { _, file -> file.name }) { index, file ->
+            CascadeEntranceItem(
+                index      = index,
+                triggerKey = entranceTrigger,
+                enabled    = entranceEnabled,
+                edge       = CascadeEdge.LEFT,
+            ) {
+                FileCard(file = file, onClick = { onClick(file) })
+            }
         }
     }
 }

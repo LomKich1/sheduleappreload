@@ -53,17 +53,26 @@ fun ScheduleScreen(
 
     LaunchedEffect(file.name) { vm.load(file) }
 
+    // Пока показывается пикер (или идёт загрузка) — заголовок не должен
+    // показывать старое сохранённое имя группы, это сбивает с толку.
+    // Карандаш «сменить группу» тоже имеет смысл только когда группа
+    // реально подтверждена и расписание уже показано.
+    val headerGroupName = when (uiState) {
+        is ScheduleUiState.Success, is ScheduleUiState.OnPractice -> groupName
+        else -> ""
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg),
     ) {
         SchedHeader(
-            groupName     = groupName,
+            groupName     = headerGroupName,
             dateText      = file.dateLabel,
             onBack        = onBack,
-            // Карандаш виден только когда группа уже выбрана
-            onChangeGroup = if (groupName.isNotBlank()) { { vm.clearGroup() } } else null,
+            // Карандаш виден только когда группа уже выбрана и расписание показано
+            onChangeGroup = if (headerGroupName.isNotBlank()) { { vm.clearGroup() } } else null,
         )
 
         if (uiState is ScheduleUiState.Loading) {

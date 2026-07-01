@@ -11,7 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -24,6 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.schedule.app.data.prefs.AppPrefs
+import com.schedule.app.ui.components.CascadeEdge
+import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
@@ -114,7 +117,7 @@ private fun toMin(t: String): Int {
 // ─── BellsScreen ─────────────────────────────────────────────────────────────
 
 @Composable
-fun BellsScreen() {
+fun BellsScreen(entranceTrigger: Int = 0) {
     val c = LocalAppColors.current
 
     // Живой тик каждые 30 с — обновляет текущее время и статус пары
@@ -170,17 +173,25 @@ fun BellsScreen() {
         // ── Список пар ────────────────────────────────────────────────────
         val periods    = bellsFor(selectedType)
         val isLiveDay  = selectedType == todayType
+        val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
         LazyColumn(
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(periods, key = { it.roman }) { period ->
+            itemsIndexed(periods, key = { _, period -> period.roman }) { index, period ->
                 val isNow  = isLiveDay &&
                              nowMin in toMin(period.totalStart)..toMin(period.totalEnd)
                 val isNext = isLiveDay && !isNow &&
                              toMin(period.totalStart) - nowMin in 1..30
-                BellCard(period = period, isNow = isNow, isNext = isNext)
+                CascadeEntranceItem(
+                    index      = index,
+                    triggerKey = entranceTrigger,
+                    enabled    = entranceEnabled,
+                    edge       = CascadeEdge.RIGHT,
+                ) {
+                    BellCard(period = period, isNow = isNow, isNext = isNext)
+                }
             }
 
             // Нижний отступ — чтобы последняя карточка не лезла под FloatingPillNav

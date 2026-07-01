@@ -62,8 +62,7 @@ class ScheduleViewModel : ViewModel() {
             _uiState.value  = ScheduleUiState.Loading
             _progress.value = 0f
 
-            val url   = AppPrefs.yandexUrl.value
-            val group = AppPrefs.groupName.value
+            val url = AppPrefs.yandexUrl.value
 
             // Скачиваем
             val bytes = try {
@@ -81,43 +80,49 @@ class ScheduleViewModel : ViewModel() {
             cachedBytes     = bytes
             _progress.value = 0.9f
 
-            parseWithGroup(bytes, group, file.name)
+            // Пикер показывается всегда — даже если группа уже когда-то выбиралась.
+            // Запомненная группа (pinnedGroup) только подсвечивается вверху списка
+            // (см. GroupPickerScreen), но не пропускает этот экран автоматически —
+            // выбор всегда подтверждается одним тапом.
+            showGroupPicker(bytes)
         }
     }
 
-    /** Парсим байты под нужную группу. Если группа пустая — показываем пикер. */
-    private suspend fun parseWithGroup(bytes: ByteArray, group: String, fileName: String) {
+    /** Показывает список групп из файла (детект по байтам, уже скачанным). */
+    private suspend fun showGroupPicker(bytes: ByteArray) {
         withContext(Dispatchers.Default) {
-            if (group.isBlank()) {
-                // Первый запуск — группа не задана, показываем все группы из файла
-                runCatching { DocParser.detectGroups(bytes) }
-                    .onSuccess { groups ->
-                        _progress.value = 1f
-                        _uiState.value  = ScheduleUiState.GroupPicker(groups)
-                    }
-                    .onFailure { err ->
-                        _uiState.value = ScheduleUiState.Error(
-                            err.message ?: "Не удалось получить список групп"
+            runCatching { DocParser.detectGroups(bytes) }
+                .onSuccess { groups ->
+                    _progress.value = 1f
+                    _uiState.value  = ScheduleUiState.GroupPicker(groups)
+                }
+                .onFailure { err ->
+                    _uiState.value = ScheduleUiState.Error(
+                        err.message ?: "Не удалось получить список групп"
+                    )
+                }
+        }
+    }
+
+    /** Парсим байты под конкретную группу (после выбора в пикере). */
+    private suspend fun parseForGroup(bytes: ByteArray, group: String, fileName: String) {
+        withContext(Dispatchers.Default) {
+            runCatching { DocParser.parseForGroup(bytes, group, fileName) }
+                .onSuccess { result ->
+                    _progress.value = 1f
+                    _uiState.value  = when (result) {
+                        is ScheduleParseResult.Found      -> ScheduleUiState.Success(result.day)
+                        is ScheduleParseResult.OnPractice -> ScheduleUiState.OnPractice(result.header)
+                        is ScheduleParseResult.NotFound   -> ScheduleUiState.Error(
+                            "Группа «$group» не найдена в файле"
                         )
                     }
-            } else {
-                runCatching { DocParser.parseForGroup(bytes, group, fileName) }
-                    .onSuccess { result ->
-                        _progress.value = 1f
-                        _uiState.value  = when (result) {
-                            is ScheduleParseResult.Found      -> ScheduleUiState.Success(result.day)
-                            is ScheduleParseResult.OnPractice -> ScheduleUiState.OnPractice(result.header)
-                            is ScheduleParseResult.NotFound   -> ScheduleUiState.Error(
-                                "Группа «$group» не найдена в файле"
-                            )
-                        }
-                    }
-                    .onFailure { err ->
-                        _uiState.value = ScheduleUiState.Error(
-                            err.message ?: "Ошибка парсинга"
-                        )
-                    }
-            }
+                }
+                .onFailure { err ->
+                    _uiState.value = ScheduleUiState.Error(
+                        err.message ?: "Ошибка парсинга"
+                    )
+                }
         }
     }
 
@@ -127,7 +132,7 @@ class ScheduleViewModel : ViewModel() {
         val bytes = cachedBytes ?: return
         viewModelScope.launch {
             _uiState.value = ScheduleUiState.Loading
-            parseWithGroup(bytes, group, fileName)
+            parseForGroup(bytes, group, fileName)
         }
     }
 
@@ -136,11 +141,7 @@ class ScheduleViewModel : ViewModel() {
         AppPrefs.clearGroupName()              // ← только groupName, pinnedGroup жива
         val bytes = cachedBytes ?: return
         viewModelScope.launch {
-            runCatching {
-                withContext(Dispatchers.Default) { DocParser.detectGroups(bytes) }
-            }.onSuccess { groups ->
-                _uiState.value = ScheduleUiState.GroupPicker(groups)
-            }
+            showGroupPicker(bytes)
         }
     }
 

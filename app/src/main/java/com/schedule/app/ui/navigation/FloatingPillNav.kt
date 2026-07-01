@@ -59,8 +59,8 @@ fun FloatingPillNav(
 
     val items = remember {
         listOf(
-            PillNavItem(Screen.Files.route, Icons.Outlined.CalendarMonth,   "Расписание  "),
-            PillNavItem(Screen.Bells.route, Icons.Outlined.NotificationsNone, "  Звонки"),
+            PillNavItem(Screen.Files.route, Icons.Outlined.CalendarMonth,   "Расписание"),
+            PillNavItem(Screen.Bells.route, Icons.Outlined.NotificationsNone, "Звонки"),
         )
     }
 
@@ -68,8 +68,8 @@ fun FloatingPillNav(
 
     // ── Измеренные позиции элементов (обновляются после каждого layout) ───────
     // Хранятся в пикселях — тот же масштаб, что у offset { IntOffset(...) }.
-    val itemXsPx = remember { mutableStateListOf(5f, 5f) }
-    val itemWsPx = remember { mutableStateListOf(5f, 5f) }
+    val itemXsPx = remember { mutableStateListOf(0f, 0f) }
+    val itemWsPx = remember { mutableStateListOf(0f, 0f) }
 
     // ── Анимация индикатора — spring с лёгким overshoot для «живости» ─────────
     val springSpec = spring<Float>(
@@ -133,7 +133,7 @@ fun FloatingPillNav(
                             indication        = null, // у индикатора своя анимация — серая вспышка тут лишняя
                         ) { onNavigate(item.route) }
                         .padding(
-                            horizontal = if (isActive) 12.dp else 12.dp,
+                            horizontal = if (isActive) 40.dp else 12.dp,
                             vertical   = 9.dp,
                         )
                         .onGloballyPositioned { coords ->

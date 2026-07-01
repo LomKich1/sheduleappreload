@@ -30,6 +30,7 @@ object AppPrefs {
     private const val KEY_THEME          = "theme_preset"
     private const val KEY_REMEMBER_GROUP = "remember_group"
     private const val KEY_PINNED_GROUP   = "pinned_group"
+    private const val KEY_LIST_ENTRANCE_ANIM = "list_entrance_anim"
 
     const val DEFAULT_YANDEX_URL = "https://disk.yandex.ru/d/mjhoc7kysmQEuQ"
     const val DEFAULT_GROUP_NAME = ""   // пусто → новый пользователь сразу видит пикер
@@ -56,6 +57,10 @@ object AppPrefs {
     private val _pinnedGroup = MutableStateFlow("")
     val pinnedGroup: StateFlow<String> = _pinnedGroup.asStateFlow()
 
+    // ── Анимация появления элементов списка (каскад при переключении вкладки) ──
+    private val _listEntranceAnim = MutableStateFlow(true)
+    val listEntranceAnim: StateFlow<Boolean> = _listEntranceAnim.asStateFlow()
+
     // Дёргается вручную («Обновить список файлов» в настройках), даже если URL
     // не менялся — например, в той же папке на Я.Диске появились новые файлы.
     private val _refreshTick = MutableStateFlow(0)
@@ -73,6 +78,7 @@ object AppPrefs {
             ?: DEFAULT_THEME
         _rememberGroup.value = sp.getBoolean(KEY_REMEMBER_GROUP, false)
         _pinnedGroup.value   = sp.getString(KEY_PINNED_GROUP, "") ?: ""
+        _listEntranceAnim.value = sp.getBoolean(KEY_LIST_ENTRANCE_ANIM, true)
     }
 
     /** Мгновенно применяет и сохраняет тему — без ожидания «Сохранить». */
@@ -136,5 +142,11 @@ object AppPrefs {
     fun requestFilesRefresh() {
         ScheduleRepository.clearCache()
         _refreshTick.value++
+    }
+
+    /** Включает / выключает каскадную spring-анимацию появления карточек в списках. */
+    fun setListEntranceAnim(enabled: Boolean) {
+        _listEntranceAnim.value = enabled
+        prefs?.edit { putBoolean(KEY_LIST_ENTRANCE_ANIM, enabled) }
     }
 }
