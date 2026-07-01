@@ -32,6 +32,12 @@ import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
 import kotlinx.coroutines.delay
 import java.util.Calendar
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  BellsScreen — живое расписание звонков
@@ -251,67 +257,104 @@ private fun BellDayTabs(
     onSelect: (BellDayType) -> Unit,
 ) {
     val c = LocalAppColors.current
-    Row(
+    val itemXsPx = remember { mutableStateListOf(0f, 0f, 0f) }
+    val itemWsPx = remember { mutableStateListOf(0f, 0f, 0f) }
+    val selectedIndex = BellDayType.values().indexOf(selected)
+
+    // ── Целевой цвет индикатора: обычный акцент или today-акцент ──────────
+    val indicatorColor by animateColorAsState(
+        targetValue = if (selected == todayType) c.todayAccent.copy(alpha = 0.20f) else c.surface3,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "bellIndicatorColor",
+    )
+
+    // ── Анимация позиции/ширины индикатора ─────────────────────────────────
+    val springSpec = spring<Float>(
+        stiffness = Spring.StiffnessMediumLow,
+        dampingRatio = Spring.DampingRatioMediumBouncy,
+    )
+    val indicatorXPx by animateFloatAsState(
+        targetValue = itemXsPx.getOrElse(selectedIndex) { 0f },
+        animationSpec = springSpec,
+        label = "bellIndicatorX",
+    )
+    val indicatorWPx by animateFloatAsState(
+        targetValue = itemWsPx.getOrElse(selectedIndex) { 0f },
+        animationSpec = springSpec,
+        label = "bellIndicatorW",
+    )
+    val hasPositions = itemWsPx.any { it > 0f }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
+            .height(IntrinsicSize.Min)
             .padding(horizontal = 18.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(c.surface2)
             .padding(4.dp),
     ) {
-        BellDayType.values().forEach { type ->
-            val isSelected = type == selected
-            val isToday    = type == todayType
-
-            val bg by animateColorAsState(
-                targetValue = when {
-                    isSelected && isToday -> c.todayAccent.copy(alpha = 0.20f)
-                    isSelected            -> c.surface3
-                    else                  -> Color.Transparent
-                },
-                animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                label = "bellTabBg",
-            )
-            val txt by animateColorAsState(
-                targetValue = when {
-                    isSelected && isToday -> c.todayAccent
-                    isSelected            -> c.accent
-                    else                  -> c.textSub
-                },
-                animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                label = "bellTabTxt",
-            )
-
+        // ── Скользящий индикатор (слой ПОД табами) ─────────────────────────
+        if (hasPositions) {
             Box(
                 modifier = Modifier
-                    .weight(1f)
+                    .offset { IntOffset(indicatorXPx.roundToInt(), 0) }
+                    .fillMaxHeight()
+                    .width(with(LocalDensity.current) { indicatorWPx.toDp() })
                     .clip(RoundedCornerShape(10.dp))
-                    .background(bg)
-                    .clickable { onSelect(type) }
-                    .padding(vertical = 10.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                    .background(indicatorColor),
+            )
+        }
+
+        Row {
+            BellDayType.values().forEachIndexed { idx, type ->
+                val isSelected = type == selected
+                val isToday = type == todayType
+
+                val txt by animateColorAsState(
+                    targetValue = when {
+                        isSelected && isToday -> c.todayAccent
+                        isSelected -> c.accent
+                        else -> c.textSub
+                    },
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                    label = "bellTabTxt",
+                )
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onSelect(type) }
+                        .padding(vertical = 10.dp)
+                        .onGloballyPositioned { coords ->
+                            itemXsPx[idx] = coords.positionInParent().x
+                            itemWsPx[idx] = coords.size.width.toFloat()
+                        },
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = type.label,
-                        color = txt,
-                        fontSize = 13.sp,
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                    )
-                    // Точка под ярлыком — «сегодня»
-                    if (isToday) {
-                        Box(
-                            modifier = Modifier
-                                .size(4.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isSelected) c.todayAccent
-                                    else c.textSub.copy(alpha = 0.5f)
-                                ),
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Text(
+                            text = type.label,
+                            color = txt,
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                         )
+                        // Точка под ярлыком — «сегодня»
+                        if (isToday) {
+                            Box(
+                                modifier = Modifier
+                                    .size(4.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (isSelected) c.todayAccent
+                                        else c.textSub.copy(alpha = 0.5f)
+                                    ),
+                            )
+                        }
                     }
                 }
             }
