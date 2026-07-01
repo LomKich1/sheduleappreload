@@ -71,18 +71,29 @@ fun FloatingPillNav(
     val itemXsPx = remember { mutableStateListOf(0f, 0f) }
     val itemWsPx = remember { mutableStateListOf(0f, 0f) }
 
+    // ─── Настройка внутреннего отступа для выделения ────────────────────────
+    // Сколько «воздуха» добавить слева и справа от контента внутри синей пилюли
+    val extraPaddingDp = 12.dp 
+    val extraPaddingPx = with(density) { extraPaddingDp.toPx() }
+
     // ── Анимация индикатора — spring с лёгким overshoot для «живости» ─────────
     val springSpec = spring<Float>(
         stiffness    = Spring.StiffnessMediumLow,
-        dampingRatio = Spring.DampingRatioMediumBouncy,   // небольшой отскок
+        dampingRatio = Spring.DampingRatioMediumBouncy,
     )
+    
+    // Сдвигаем позицию влево на величину отступа, чтобы синий фон начинался раньше контента
+    val targetXPx = (itemXsPx.getOrElse(selectedIndex) { 0f } - extraPaddingPx).coerceAtLeast(0f)
     val indicatorXPx by animateFloatAsState(
-        targetValue   = itemXsPx.getOrElse(selectedIndex) { 0f },
+        targetValue   = targetXPx,
         animationSpec = springSpec,
         label         = "pillX",
     )
+    
+    // Увеличиваем ширину на x2 отступа (чтобы компенсировать левый и правый «воздух»)
+    val targetWPx = itemWsPx.getOrElse(selectedIndex) { 0f } + (extraPaddingPx * 2)
     val indicatorWPx by animateFloatAsState(
-        targetValue   = itemWsPx.getOrElse(selectedIndex) { 0f },
+        targetValue   = targetWPx,
         animationSpec = springSpec,
         label         = "pillW",
     )
