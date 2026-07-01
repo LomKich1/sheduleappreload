@@ -14,10 +14,10 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideOutVertically
 
-private const val SWAP_STAGGER_MS    = 45L
-private const val SWAP_EXIT_MS       = 180
-private const val SWAP_ENTER_MS      = 220
-private const val SWAP_EXIT_SLIDE_PX = 28
+private const val SWAP_STAGGER_MS    = 80L
+private const val SWAP_EXIT_MS       = 300
+private const val SWAP_ENTER_MS      = 340
+private const val SWAP_EXIT_SLIDE_PX = 50
 
 @Composable
 fun <T : Any> StaggeredSwapItem(
