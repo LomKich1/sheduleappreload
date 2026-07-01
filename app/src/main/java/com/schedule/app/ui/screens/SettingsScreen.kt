@@ -38,6 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.schedule.app.data.prefs.AppPrefs
+import com.schedule.app.ui.components.CascadeEdge
+import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.theme.AppColors
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
@@ -87,111 +89,133 @@ fun SettingsScreen(onBack: () -> Unit) {
             ) {
                 Spacer(Modifier.height(18.dp))
 
-                SettingsSectionLabel("Источник данных")
-                SettingsCard {
-                    FieldLabel("Папка на Яндекс.Диске")
-                    SettingsInputRow(
-                        value = urlField,
-                        onValueChange = { urlField = it },
-                        leadingIcon = Icons.Outlined.Cloud,
-                    )
-                    Spacer(Modifier.height(7.dp))
-                    Text(
-                        text = if (urlLooksValid)
-                            "Публичная ссылка на папку с файлами .doc"
-                        else
-                            "Похоже, это не ссылка на Я.Диск — проверь адрес",
-                        color = if (urlLooksValid) c.textSub else c.accent,
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp,
-                    )
+                CascadeEntranceItem(index = 0, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
+                    Column {
+                        SettingsSectionLabel("Источник данных")
+                        SettingsCard {
+                            FieldLabel("Папка на Яндекс.Диске")
+                            SettingsInputRow(
+                                value = urlField,
+                                onValueChange = { urlField = it },
+                                leadingIcon = Icons.Outlined.Cloud,
+                            )
+                            Spacer(Modifier.height(7.dp))
+                            Text(
+                                text = if (urlLooksValid)
+                                    "Публичная ссылка на папку с файлами .doc"
+                                else
+                                    "Похоже, это не ссылка на Я.Диск — проверь адрес",
+                                color = if (urlLooksValid) c.textSub else c.accent,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                            )
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(10.dp))
 
-                RefreshFilesRow(
-                    justRefreshed = justRefreshed,
-                    onClick = {
-                        AppPrefs.requestFilesRefresh()
-                        justRefreshed = true
-                        scope.launch { delay(1400); justRefreshed = false }
-                    },
-                )
+                CascadeEntranceItem(index = 1, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
+                    RefreshFilesRow(
+                        justRefreshed = justRefreshed,
+                        onClick = {
+                            AppPrefs.requestFilesRefresh()
+                            justRefreshed = true
+                            scope.launch { delay(1400); justRefreshed = false }
+                        },
+                    )
+                }
 
                 Spacer(Modifier.height(22.dp))
 
-                // ── Группа: текущая + переключатель запоминания ────────────
-                SettingsSectionLabel("Группа")
-                SettingsCard {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Icon(
-                            Icons.Outlined.Group,
-                            contentDescription = null,
-                            tint = c.textSub,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Text(
-                            text = if (savedGroup.isBlank()) "Не выбрана" else savedGroup,
-                            color = if (savedGroup.isBlank()) c.textSub else c.text,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f),
-                        )
+                CascadeEntranceItem(index = 2, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
+                    Column {
+                        // ── Группа: текущая + переключатель запоминания ────────────
+                        SettingsSectionLabel("Группа")
+                        SettingsCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Group,
+                                    contentDescription = null,
+                                    tint = c.textSub,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Text(
+                                    text = if (savedGroup.isBlank()) "Не выбрана" else savedGroup,
+                                    color = if (savedGroup.isBlank()) c.textSub else c.text,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            Spacer(Modifier.height(7.dp))
+                            Text(
+                                text = "Выбирается при открытии файла расписания — нажмите ✎ в шапке чтобы сменить",
+                                color = c.textSub,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                            )
+                        }
                     }
-                    Spacer(Modifier.height(7.dp))
-                    Text(
-                        text = "Выбирается при открытии файла расписания — нажмите ✎ в шапке чтобы сменить",
-                        color = c.textSub,
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp,
-                    )
                 }
 
                 Spacer(Modifier.height(8.dp))
 
-                // Переключатель «Запоминать группу»
-                SettingsCard {
-                    GroupRememberRow(
-                        rememberOn  = rememberOn,
-                        pinnedGroup = pinnedGroup,
-                        onToggle    = { AppPrefs.setRememberGroup(!rememberOn) },
-                    )
+                CascadeEntranceItem(index = 3, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
+                    // Переключатель «Запоминать группу»
+                    SettingsCard {
+                        GroupRememberRow(
+                            rememberOn  = rememberOn,
+                            pinnedGroup = pinnedGroup,
+                            onToggle    = { AppPrefs.setRememberGroup(!rememberOn) },
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(22.dp))
 
-                SettingsSectionLabel("Анимации")
-                SettingsCard {
-                    SimpleToggleRow(
-                        title    = "Анимация появления списка",
-                        subtitle = "Каскад с пружинным отскоком при переключении вкладок",
-                        checked  = entranceAnimOn,
-                        onToggle = { AppPrefs.setListEntranceAnim(!entranceAnimOn) },
-                    )
+                CascadeEntranceItem(index = 4, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
+                    Column {
+                        SettingsSectionLabel("Анимации")
+                        SettingsCard {
+                            SimpleToggleRow(
+                                title    = "Анимация появления списка",
+                                subtitle = "Каскад с пружинным отскоком при переключении вкладок",
+                                checked  = entranceAnimOn,
+                                onToggle = { AppPrefs.setListEntranceAnim(!entranceAnimOn) },
+                            )
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(22.dp))
 
-                SettingsSectionLabel("Тема оформления")
-                ThemeRow(
-                    selected = theme,
-                    onSelect = { AppPrefs.setTheme(it) },
-                )
+                CascadeEntranceItem(index = 5, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
+                    Column {
+                        SettingsSectionLabel("Тема оформления")
+                        ThemeRow(
+                            selected = theme,
+                            onSelect = { AppPrefs.setTheme(it) },
+                        )
+                    }
+                }
 
                 Spacer(Modifier.height(22.dp))
 
-                SaveButton(
-                    enabled = canSave,
-                    onClick = {
-                        AppPrefs.saveYandexUrl(urlField)
-                        showToast = true
-                        scope.launch { delay(900); onBack() }
-                    },
-                )
+                CascadeEntranceItem(index = 6, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
+                    SaveButton(
+                        enabled = canSave,
+                        onClick = {
+                            AppPrefs.saveYandexUrl(urlField)
+                            showToast = true
+                            scope.launch { delay(900); onBack() }
+                        },
+                    )
+                }
 
                 Spacer(Modifier.height(80.dp))
             }
