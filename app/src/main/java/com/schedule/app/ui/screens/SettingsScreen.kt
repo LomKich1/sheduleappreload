@@ -62,6 +62,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val theme         by AppPrefs.themePreset.collectAsState()
     val rememberOn    by AppPrefs.rememberGroup.collectAsState()
     val pinnedGroup   by AppPrefs.pinnedGroup.collectAsState()
+    val entranceAnimOn by AppPrefs.listEntranceAnim.collectAsState()
 
     var urlField      by remember(savedUrl) { mutableStateOf(savedUrl) }
     var showToast     by remember { mutableStateOf(false) }
@@ -158,6 +159,18 @@ fun SettingsScreen(onBack: () -> Unit) {
                         rememberOn  = rememberOn,
                         pinnedGroup = pinnedGroup,
                         onToggle    = { AppPrefs.setRememberGroup(!rememberOn) },
+                    )
+                }
+
+                Spacer(Modifier.height(22.dp))
+
+                SettingsSectionLabel("Анимации")
+                SettingsCard {
+                    SimpleToggleRow(
+                        title    = "Анимация появления списка",
+                        subtitle = "Каскад с пружинным отскоком при переключении вкладок",
+                        checked  = entranceAnimOn,
+                        onToggle = { AppPrefs.setListEntranceAnim(!entranceAnimOn) },
                     )
                 }
 
@@ -472,6 +485,40 @@ private fun SaveButton(enabled: Boolean, onClick: () -> Unit) {
             fontSize = 14.5.sp,
             fontWeight = FontWeight.Bold,
         )
+    }
+}
+
+// ─── Простой переключатель настройки (заголовок + подпись + TogglePill) ──────
+
+@Composable
+private fun SimpleToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onToggle: () -> Unit,
+) {
+    val c = LocalAppColors.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = c.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = subtitle,
+                color = c.textSub,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        TogglePill(checked = checked, onToggle = onToggle)
     }
 }
 

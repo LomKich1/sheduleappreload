@@ -11,6 +11,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -62,6 +63,17 @@ fun AppScaffold() {
     //  переключение это просто анимация translationX (см. BoxWithConstraints).
     var activeTab by rememberSaveable { mutableStateOf(Screen.Files.route) }
 
+    // ── Триггеры каскадной анимации появления ────────────────────────────────
+    //  Каждый увеличивается ровно в момент, когда соответствующая вкладка
+    //  становится активной (включая самый первый показ) — CascadeEntranceItem
+    //  внутри FilesScreen/BellsScreen смотрит на изменение этого числа и
+    //  заново проигрывает анимацию своих элементов.
+    var filesEntranceTrigger by rememberSaveable { mutableStateOf(0) }
+    var bellsEntranceTrigger by rememberSaveable { mutableStateOf(0) }
+    LaunchedEffect(activeTab) {
+        if (activeTab == Screen.Files.route) filesEntranceTrigger++ else bellsEntranceTrigger++
+    }
+
     val showPill = !deepScreenOpen
 
     // Системная кнопка «назад»: если открыта вкладка Bells и нет глубокого
@@ -110,6 +122,7 @@ fun AppScaffold() {
                         navController.navigate(Screen.Schedule.route)
                     },
                     onSettingsClick = { navController.navigate(Screen.Settings.route) },
+                    entranceTrigger = filesEntranceTrigger,
                 )
             }
 
@@ -118,7 +131,7 @@ fun AppScaffold() {
                     .fillMaxSize()
                     .graphicsLayer { translationX = offset + widthPx },
             ) {
-                BellsScreen()
+                BellsScreen(entranceTrigger = bellsEntranceTrigger)
             }
         }
 
