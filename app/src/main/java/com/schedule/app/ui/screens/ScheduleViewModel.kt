@@ -19,13 +19,15 @@ import java.util.Calendar
 
 // ─── UI-состояния ScheduleScreen ──────────────────────────────────────────────
 
+enum class LoadingStage { FILE, SCHEDULE }
+
 sealed interface ScheduleUiState {
-    data object Idle                                           : ScheduleUiState
-    data object Loading                                        : ScheduleUiState
-    data class  GroupPicker(val groups: List<String>)          : ScheduleUiState
-    data class  Success(val day: ScheduleDay)                  : ScheduleUiState
-    data class  OnPractice(val headerText: String)             : ScheduleUiState
-    data class  Error(val message: String)                     : ScheduleUiState
+    data object Idle                                                : ScheduleUiState
+    data class  Loading(val stage: LoadingStage)                    : ScheduleUiState
+    data class  GroupPicker(val groups: List<String>)               : ScheduleUiState
+    data class  Success(val day: ScheduleDay)                       : ScheduleUiState
+    data class  OnPractice(val headerText: String)                  : ScheduleUiState
+    data class  Error(val message: String)                          : ScheduleUiState
 }
 
 // ─── ViewModel ────────────────────────────────────────────────────────────────
@@ -59,7 +61,7 @@ class ScheduleViewModel : ViewModel() {
 
     fun load(file: ScheduleFile) {
         viewModelScope.launch {
-            _uiState.value  = ScheduleUiState.Loading
+            _uiState.value  = ScheduleUiState.Loading(LoadingStage.FILE)
             _progress.value = 0f
 
             val url = AppPrefs.yandexUrl.value
@@ -131,7 +133,7 @@ class ScheduleViewModel : ViewModel() {
         AppPrefs.saveGroupName(group)          // ← сохраняет + pinnedGroup если нужно
         val bytes = cachedBytes ?: return
         viewModelScope.launch {
-            _uiState.value = ScheduleUiState.Loading
+            _uiState.value = ScheduleUiState.Loading(LoadingStage.SCHEDULE)
             parseForGroup(bytes, group, fileName)
         }
     }
