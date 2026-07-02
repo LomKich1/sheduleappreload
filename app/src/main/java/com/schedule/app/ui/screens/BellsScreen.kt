@@ -104,6 +104,8 @@ private val BELLS_SAT = listOf(
     BellPeriod("VI",  "14:20", "15:20"),
 )
 
+// Зачем сюда лезть? норм код так-то)
+
 private fun bellsFor(type: BellDayType) = when (type) {
     BellDayType.MON     -> BELLS_MON
     BellDayType.TUE_FRI -> BELLS_TUE
