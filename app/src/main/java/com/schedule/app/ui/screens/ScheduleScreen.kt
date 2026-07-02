@@ -37,6 +37,78 @@ import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.theme.LocalAppColors
 
+// ─── Скелетон для пикера группы — визуально идентичен GroupPickerScreen ───────
+
+@Composable
+private fun GroupPickerLoading() {
+    val c = LocalAppColors.current
+    val alpha by rememberInfiniteTransition(label = "groupSkel")
+        .animateFloat(
+            initialValue  = 1f,
+            targetValue   = 0.4f,
+            animationSpec = infiniteRepeatable(
+                animation  = tween(900, easing = EaseInOutQuad),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "a",
+        )
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Тот же заголовок, что и в реальном пикере — просто без счётчика
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+        ) {
+            Text(
+                text = "Выберите вашу группу",
+                color = c.text,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Загружаем список групп…",
+                color = c.textSub,
+                fontSize = 11.5.sp,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            repeat(8) { i ->
+                val a = (alpha - i * 0.06f).coerceIn(0.3f, 1f)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(c.surface.copy(alpha = a))
+                        .padding(horizontal = 14.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(c.surface2.copy(alpha = a)),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Box(
+                        Modifier
+                            .size(width = 90.dp, height = 12.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(c.surface2.copy(alpha = a)),
+                    )
+                }
+            }
+        }
+    }
+}
+
 // ─── ScheduleScreen ───────────────────────────────────────────────────────────
 
 @Composable
@@ -85,8 +157,12 @@ fun ScheduleScreen(
         }
 
         when (val state = uiState) {
-            is ScheduleUiState.Idle,
-            is ScheduleUiState.Loading     -> SchedLoading()
+            is ScheduleUiState.Idle -> SchedLoading()
+
+            is ScheduleUiState.Loading -> when (state.stage) {
+                LoadingStage.FILE     -> GroupPickerLoading()
+                LoadingStage.SCHEDULE -> SchedLoading()
+            }
 
             is ScheduleUiState.GroupPicker -> GroupPickerScreen(
                 groups   = state.groups,

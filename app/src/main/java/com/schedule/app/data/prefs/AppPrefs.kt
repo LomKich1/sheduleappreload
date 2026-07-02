@@ -51,7 +51,7 @@ object AppPrefs {
     // rememberGroup — переключатель из настроек.
     // pinnedGroup   — последняя выбранная группа; НЕ сбрасывается при нажатии
     //                 карандаша, чтобы GroupPicker мог её подсветить вверху.
-    private val _rememberGroup = MutableStateFlow(false)
+    private val _rememberGroup = MutableStateFlow(true)
     val rememberGroup: StateFlow<Boolean> = _rememberGroup.asStateFlow()
 
     private val _pinnedGroup = MutableStateFlow("")
@@ -76,7 +76,7 @@ object AppPrefs {
         _themePreset.value  = sp.getString(KEY_THEME, null)
             ?.let { name -> runCatching { ThemePreset.valueOf(name) }.getOrNull() }
             ?: DEFAULT_THEME
-        _rememberGroup.value = sp.getBoolean(KEY_REMEMBER_GROUP, false)
+        _rememberGroup.value = sp.getBoolean(KEY_REMEMBER_GROUP, true)
         _pinnedGroup.value   = sp.getString(KEY_PINNED_GROUP, "") ?: ""
         _listEntranceAnim.value = sp.getBoolean(KEY_LIST_ENTRANCE_ANIM, true)
     }
