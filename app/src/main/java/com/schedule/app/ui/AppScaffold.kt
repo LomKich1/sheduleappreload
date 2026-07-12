@@ -34,6 +34,8 @@ import com.schedule.app.ui.screens.BellsScreen
 import com.schedule.app.ui.screens.FilesScreen
 import com.schedule.app.ui.screens.ScheduleScreen
 import com.schedule.app.ui.screens.SettingsScreen
+import com.schedule.app.ui.screens.TeacherScheduleScreen
+import com.schedule.app.ui.components.ScheduleMode
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
@@ -117,8 +119,9 @@ fun AppScaffold() {
                     .graphicsLayer { translationX = offset },
             ) {
                 FilesScreen(
-                    onFileClick     = { file ->
+                    onFileClick     = { file, mode ->
                         NavigationHolder.pendingFile = file
+                        NavigationHolder.pendingMode = mode
                         navController.navigate(Screen.Schedule.route)
                     },
                     onSettingsClick = { navController.navigate(Screen.Settings.route) },
@@ -178,10 +181,16 @@ fun AppScaffold() {
             composable(Screen.Schedule.route) {
                 val file = NavigationHolder.pendingFile
                 if (file != null) {
-                    ScheduleScreen(
-                        file   = file,
-                        onBack = { navController.popBackStack() },
-                    )
+                    when (NavigationHolder.pendingMode) {
+                        ScheduleMode.STUDENT -> ScheduleScreen(
+                            file   = file,
+                            onBack = { navController.popBackStack() },
+                        )
+                        ScheduleMode.TEACHER -> TeacherScheduleScreen(
+                            file   = file,
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
                 }
             }
 
