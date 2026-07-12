@@ -77,9 +77,15 @@ private fun GroupPickerLoading() {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = 14.dp)
+                .padding(top = 2.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // Та же секция "ВСЕ ГРУППЫ", что и в реальном списке (GroupPickerScreen).
+            // Раньше её тут не было — карточки скелетона стояли примерно на 18dp
+            // выше настоящих, и при появлении списка всё заметно "прыгало" вниз.
+            GroupSectionLabel("ВСЕ ГРУППЫ")
+
             repeat(8) { i ->
                 val a = (alpha - i * 0.06f).coerceIn(0.3f, 1f)
                 Row(
@@ -87,6 +93,7 @@ private fun GroupPickerLoading() {
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
                         .background(c.surface.copy(alpha = a))
+                        .border(1.dp, c.border, RoundedCornerShape(16.dp))
                         .padding(horizontal = 14.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -101,6 +108,13 @@ private fun GroupPickerLoading() {
                         Modifier
                             .size(width = 90.dp, height = 12.dp)
                             .clip(RoundedCornerShape(4.dp))
+                            .background(c.surface2.copy(alpha = a)),
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Box(
+                        Modifier
+                            .size(width = 8.dp, height = 12.dp)
+                            .clip(RoundedCornerShape(2.dp))
                             .background(c.surface2.copy(alpha = a)),
                     )
                 }
