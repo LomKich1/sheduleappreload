@@ -25,14 +25,15 @@
 
 ## Скриншоты
 
-| Расписание | Звонки |
-|------------|---------|
-| screenshot_1 | screenshot_2 |
+<p align="center">
+  <img src="assets/home.jpg" width="220"/>
+  <img src="assets/bells.jpg" width="220"/>
+</p>
 
-| Настройки | День |
-|------------|---------|
-| screenshot_3 | screenshot_4 |
-
+<p align="center">
+  <img src="assets/settings.jpg" width="220"/>
+  <img src="assets/schedule.jpg" width="220"/>
+</p>
 ---
 
 ## Установка
