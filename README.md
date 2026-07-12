@@ -26,13 +26,13 @@
 ## Скриншоты
 
 <p align="center">
-  <img src="assets/home.jpg" width="220"/>
-  <img src="assets/bells.jpg" width="220"/>
+  <img src=".github/assets/home.jpg" width="220"/>
+  <img src=".github/assets/bells.jpg" width="220"/>
 </p>
 
 <p align="center">
-  <img src="assets/settings.jpg" width="220"/>
-  <img src="assets/schedule.jpg" width="220"/>
+  <img src=".github/assets/settings.jpg" width="220"/>
+  <img src=".github/assets/schedule.jpg" width="220"/>
 </p>
 ---
 
