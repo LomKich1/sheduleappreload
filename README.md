@@ -1,108 +1,100 @@
-# ScheduleApp
+<div align="center">
 
-Нативное Android-приложение для просмотра расписания занятий колледжа.  
-Kotlin + Jetpack Compose + Material3. Без WebView, без Supabase.
+# Расписание
 
-## 📥 Установка готового APK
+Минималистичное Android-приложение для просмотра расписания занятий колледжа.
 
-Открой вкладку **Releases** → скачай `ScheduleApp-vX.X.X-debug.apk` → установи на телефон.  
-(Настройки → Безопасность → Разрешить установку из неизвестных источников)
+Быстро. Без рекламы. Без регистрации.
 
----
-
-## 🔨 Самостоятельная сборка
-
-### Вариант А — GitHub Actions (рекомендуется)
-
-1. Сделай форк или залей репозиторий на GitHub
-2. Сделай любой коммит в ветку `main`
-3. Перейди в **Actions** → `Build APK` → дождись завершения (~3–5 мин)
-4. APK появится во вкладке **Releases → latest**
-
-**Debug APK работает сразу** — ничего настраивать не нужно.
-
-### Вариант Б — локально (Android Studio)
-
-```
-File → Open → выбери папку проекта
-Build → Build Bundle(s) / APK(s) → Build APK(s)
-```
-
-Готовый APK: `app/build/outputs/apk/debug/app-debug.apk`
+</div>
 
 ---
 
-## 🔑 Подписанный Release APK (опционально)
+## Возможности
 
-Нужен если планируешь публиковать в Google Play или хочешь,  
-чтобы обновления устанавливались поверх старой версии.
-
-### 1. Создай keystore (один раз)
-
-```bash
-keytool -genkey -v -keystore keystore.jks -alias schedule \
-  -keyalg RSA -keysize 2048 -validity 10000
-```
-
-Запомни (или запиши в менеджер паролей):
-- Пароль keystore
-- Алиас: `schedule`
-- Пароль ключа
-
-### 2. Закодируй keystore в base64
-
-```bash
-# macOS
-base64 -i keystore.jks | pbcopy
-
-# Linux
-base64 keystore.jks | xclip -selection clipboard
-
-# Windows (PowerShell)
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("keystore.jks")) | clip
-```
-
-### 3. Добавь секреты в GitHub
-
-`Settings → Secrets and variables → Actions → New repository secret`
-
-| Имя секрета | Значение |
-|-------------|----------|
-| `KEYSTORE_BASE64` | содержимое keystore.jks в base64 |
-| `KEYSTORE_PASSWORD` | пароль keystore |
-| `KEY_ALIAS` | `schedule` |
-| `KEY_PASSWORD` | пароль ключа |
-
-После этого CI будет создавать **оба** APK: debug и подписанный release.
+- 📅 Просмотр расписания занятий
+- 🔄 Автоматическое обновление расписания
+- 🔔 Расписание звонков
+- 🔍 Быстрый поиск групп
+- 🌙 Тёмная тема оформления
+- ⚡ Высокая скорость работы
+- 🚫 Без рекламы
+- 🔒 Без регистрации и сбора данных
 
 ---
 
-## ⚙️ Изменить версию приложения
+## Скриншоты
 
-Отредактируй `gradle.properties`:
+| Расписание | Звонки |
+|------------|---------|
+| screenshot_1 | screenshot_2 |
 
-```properties
-APP_VERSION=1.1.0       # видимая версия
-APP_VERSION_CODE=2      # целое число, всегда увеличивать
-```
+| Настройки | День |
+|------------|---------|
+| screenshot_3 | screenshot_4 |
 
 ---
 
-## 📁 Структура проекта
+## Установка
 
-```
-app/src/main/java/com/schedule/app/
-├── MainActivity.kt
-├── data/
-│   ├── model/          — Schedule, ScheduleFile
-│   ├── parser/         — DocParser (OLE2 .doc → расписание)
-│   ├── prefs/          — AppPrefs (SharedPreferences)
-│   ├── remote/         — YandexDiskApi, GitHubApi
-│   └── repository/     — ScheduleRepository
-└── ui/
-    ├── AppScaffold.kt
-    ├── components/     — FileCard, FilesHeader
-    ├── navigation/     — Screen, NavigationHolder, FloatingPillNav
-    ├── screens/        — FilesScreen, BellsScreen, ScheduleScreen, SettingsScreen
-    └── theme/          — AppTheme, AppColors (Dark / Light / AMOLED)
-```
+1. Перейдите во вкладку **Releases**
+2. Скачайте последнюю версию приложения
+3. Установите APK на устройство
+4. Готово 🎉
+
+Минимальная версия Android — **8.0 (Oreo)**.
+
+---
+
+## Как это работает
+
+Приложение автоматически получает документы с расписанием из Яндекс Диска.
+
+Поддерживаются документы Microsoft Word формата **.doc**, которые автоматически обрабатываются встроенным парсером и отображаются в удобном виде.
+
+---
+
+## Основные возможности
+
+### Просмотр расписания
+
+Откройте нужный день и выберите свою группу.
+
+### Расписание звонков
+
+Отдельная вкладка с расписанием пар и перемен.
+
+Текущая пара подсвечивается автоматически.
+
+### Поиск групп
+
+Не нужно листать десятки страниц — просто найдите нужную группу.
+
+### Автоматическое обновление
+
+При публикации нового расписания приложение самостоятельно загрузит свежие данные.
+
+---
+
+## Конфиденциальность
+
+Приложение:
+
+- не требует регистрации;
+- не собирает персональные данные;
+- не показывает рекламу;
+- не использует платные подписки.
+
+---
+
+## Сообщить об ошибке
+
+Если вы нашли ошибку или хотите предложить новую функцию — создайте Issue.
+
+Любая обратная связь приветствуется ❤️
+
+---
+
+## Лицензия
+
+MIT License
