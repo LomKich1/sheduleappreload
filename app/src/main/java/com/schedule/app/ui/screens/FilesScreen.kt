@@ -23,6 +23,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
@@ -30,6 +31,9 @@ import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.components.FileCard
 import com.schedule.app.ui.components.FilesHeader
+import com.schedule.app.ui.components.ScheduleMode
+import com.schedule.app.ui.components.ScheduleModeToggle
+import com.schedule.app.ui.components.ScheduleTitlePlaque
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
@@ -46,19 +50,30 @@ fun FilesScreen(
     entranceTrigger: Int = 0,
 ) {
     val uiState by vm.uiState.collectAsState()
-    val groupName by AppPrefs.groupName.collectAsState()
+
+    // Режим "Ученики / Преподаватели" — пока чисто визуальный переключатель.
+    // Какой конкретно экран открывать по тапу на файл в зависимости от него —
+    // подключим отдельным шагом (см. комментарий в ScheduleModeToggle.kt).
+    var scheduleMode by rememberSaveable { mutableStateOf(ScheduleMode.STUDENT) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(LocalAppColors.current.bg),
     ) {
-        FilesHeader(
-            groupName = groupName,
-            onSettingsClick = onSettingsClick,
+        FilesHeader(onSettingsClick = onSettingsClick)
+
+        ScheduleTitlePlaque()
+
+        Spacer(Modifier.height(14.dp))
+
+        ScheduleModeToggle(
+            selected = scheduleMode,
+            onSelect = { scheduleMode = it },
+            modifier = Modifier.padding(horizontal = 18.dp),
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
 
         SectionLabel()
 
