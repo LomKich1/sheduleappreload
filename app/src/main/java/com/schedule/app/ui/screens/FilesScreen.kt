@@ -33,7 +33,6 @@ import com.schedule.app.ui.components.FileCard
 import com.schedule.app.ui.components.FilesHeader
 import com.schedule.app.ui.components.ScheduleMode
 import com.schedule.app.ui.components.ScheduleModeToggle
-import com.schedule.app.ui.components.ScheduleTitlePlaque
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
@@ -63,9 +62,7 @@ fun FilesScreen(
     ) {
         FilesHeader(onSettingsClick = onSettingsClick)
 
-        ScheduleTitlePlaque()
-
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(6.dp))
 
         ScheduleModeToggle(
             selected = scheduleMode,
