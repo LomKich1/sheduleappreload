@@ -45,15 +45,15 @@ import com.schedule.app.ui.theme.ThemePreset
 @Composable
 fun FilesScreen(
     vm: FilesViewModel = viewModel(),
-    onFileClick: (ScheduleFile) -> Unit = {},
+    onFileClick: (ScheduleFile, ScheduleMode) -> Unit = { _, _ -> },
     onSettingsClick: () -> Unit = {},
     entranceTrigger: Int = 0,
 ) {
     val uiState by vm.uiState.collectAsState()
 
-    // Режим "Ученики / Преподаватели" — пока чисто визуальный переключатель.
-    // Какой конкретно экран открывать по тапу на файл в зависимости от него —
-    // подключим отдельным шагом (см. комментарий в ScheduleModeToggle.kt).
+    // Режим "Ученики / Преподаватели". Раньше был чисто визуальным —
+    // теперь передаётся наверх при клике на файл (см. onFileClick выше),
+    // AppScaffold решает по нему, какой экран открыть.
     var scheduleMode by rememberSaveable { mutableStateOf(ScheduleMode.STUDENT) }
 
     Column(
@@ -81,7 +81,7 @@ fun FilesScreen(
             is FilesUiState.Loading -> FilesLoading()
             is FilesUiState.Success -> FilesList(
                 files     = state.files,
-                onClick   = onFileClick,
+                onClick   = { file -> onFileClick(file, scheduleMode) },
                 entranceTrigger = entranceTrigger,
             )
             is FilesUiState.Error   -> FilesError(
