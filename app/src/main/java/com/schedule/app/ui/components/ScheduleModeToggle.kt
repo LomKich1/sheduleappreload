@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -81,10 +82,14 @@ fun ScheduleModeToggle(
             label = "modeIndicator",
         )
 
-        // Скользящий индикатор — слой ПОД текстом, как синяя пилюля в FloatingPillNav
+        // Скользящий индикатор — слой ПОД текстом, как синяя пилюля в FloatingPillNav.
+        // offset(), а НЕ padding(): у пружины dampingRatio = MediumBouncy есть
+        // небольшой перелёт за целевую точку, из-за которого indicatorOffset может
+        // на мгновение уйти чуть ниже 0.dp. padding() на отрицательное значение
+        // падает с IllegalArgumentException, offset() — спокойно его допускает.
         Box(
             modifier = Modifier
-                .padding(start = indicatorOffset)
+                .offset(x = indicatorOffset)
                 .width(halfWidth)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(19.dp))
