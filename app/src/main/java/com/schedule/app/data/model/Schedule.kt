@@ -40,3 +40,39 @@ sealed interface ScheduleParseResult {
     data class OnPractice(val header: String) : ScheduleParseResult
     data object NotFound : ScheduleParseResult
 }
+
+// ─── Расписание ПРЕПОДАВАТЕЛЯ ────────────────────────────────────────────────
+// Зеркало LessonEntry/ScheduleDay, но вместо преподавателя в паре хранится
+// группа — именно она тут главная информация ("что вести и у кого").
+// У одного преподавателя за день может быть несколько пар с одинаковым `num`
+// (параллельные подгруппы одной группы или окно, ведущееся у двух групп
+// одновременно) — поэтому это плоский список, а не Map<num, ...>.
+
+data class TeacherLessonEntry(
+    val num: String,          // "I", "II" … "VI"
+    val timeStart: String,    // "08:30"
+    val timeEnd: String,      // "09:15"
+    val breakStart: String?,  // "09:20"  (null если нет перемены)
+    val breakEnd: String?,    // "10:05"
+    val startMin: Int,        // используется для live статуса, как в LessonEntry
+    val endMin: Int,
+    val group: String,        // "ЭМ-1-24"  — вместо teacher в обычном LessonEntry
+    val subject: String,      // "Математика (информатика)"
+    val room: String?,        // "к.118(1)"
+)
+
+data class TeacherDay(
+    val header: String,                 // "Вторник · 10.06.2025"
+    val lessons: List<TeacherLessonEntry>,
+    val isToday: Boolean,
+)
+
+// ─── Результат парсинга файла для преподавателя ──────────────────────────────
+// Практики тут нет: "на практике" — статус ГРУППЫ, а не преподавателя, у него
+// в этот день просто не будет пар с этой группой (что покрывается NotFound,
+// если пар вообще не нашлось).
+
+sealed interface TeacherParseResult {
+    data class Found(val day: TeacherDay) : TeacherParseResult
+    data object NotFound : TeacherParseResult
+}

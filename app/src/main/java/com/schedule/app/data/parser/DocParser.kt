@@ -3,6 +3,9 @@ package com.schedule.app.data.parser
 import com.schedule.app.data.model.LessonEntry
 import com.schedule.app.data.model.ScheduleDay
 import com.schedule.app.data.model.ScheduleParseResult
+import com.schedule.app.data.model.TeacherDay
+import com.schedule.app.data.model.TeacherLessonEntry
+import com.schedule.app.data.model.TeacherParseResult
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Calendar
@@ -595,5 +598,162 @@ object DocParser {
             }
         }
         return seen.sorted()
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Расписание ПРЕПОДАВАТЕЛЯ — та же сетка, но проходим ВСЕ колонки-группы
+    //  сразу, а не одну выбранную. detectGroups()/parseDoc() работали "дай мне
+    //  колонку такой-то группы"; тут наоборот — "пройди по всем колонкам и
+    //  запомни, в какой группе что стоит".
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /** (группа, номер пары "I".."VI", сырой текст ячейки) для одного блока сетки. */
+    private data class BlockEntries(
+        val headerLine: String,
+        val entries: List<Triple<String, String, String>>,
+    )
+
+    /**
+     * Разбирает один блок [blockStart, blockEnd) сетки расписания, собирая
+     * данные ПО ВСЕМ группам сразу (в отличие от parseDoc(), который ищет
+     * только одну колонку). Логика поиска строки групп и офсета колонки
+     * та же самая, просто применяется в цикле по каждой найденной группе.
+     */
+    private fun parseBlockAllGroups(cells: List<String>, blockStart: Int, blockEnd: Int): BlockEntries? {
+        var groupRowStart = blockStart + 1
+        while (groupRowStart < blockEnd && !looksLikeGroup(cells[groupRowStart])) groupRowStart++
+        if (groupRowStart >= blockEnd) return null
+
+        var groupRowEnd = groupRowStart
+        while (groupRowEnd < blockEnd && looksLikeGroup(cells[groupRowEnd])) groupRowEnd++
+
+        val headerLine = cells[blockStart]
+            .lines()
+            .firstOrNull { HDR_RE.containsMatchIn(it) }
+            ?.trim()
+            ?: cells[blockStart].lines().firstOrNull { it.isNotBlank() }?.trim()
+            ?: ""
+
+        val groupCols = (groupRowStart until groupRowEnd).toList()
+
+        val entries = mutableListOf<Triple<String, String, String>>()
+        val seenRoman = mutableSetOf<String>()
+        var ri = groupRowEnd
+        while (ri < blockEnd) {
+            val cell = cells[ri].trim()
+            if (cell in ROMAN && cell !in seenRoman) {
+                seenRoman += cell
+                for (colIdx in groupCols) {
+                    val groupName = cells[colIdx].trim()
+                    // Тот же офсет, что и в parseDoc(): между строкой "I/II/…" и
+                    // строкой групп есть техническая ячейка-разделитель.
+                    val offset = (colIdx - groupRowStart) + 1
+                    val lessonIdx = ri + offset
+                    val lessonText = if (lessonIdx < blockEnd) cells[lessonIdx].trim() else ""
+                    if (lessonText.isNotBlank()) {
+                        entries += Triple(groupName, cell, lessonText)
+                    }
+                }
+            }
+            ri++
+        }
+        return if (entries.isNotEmpty()) BlockEntries(headerLine, entries) else null
+    }
+
+    /** Находит первый блок "Расписание занятий" в файле и разбирает его по всем группам. */
+    private fun parseAllBlocks(data: ByteArray): BlockEntries? {
+        val cells = getCells(data)
+        if (cells.isEmpty()) return null
+
+        val hdrIndices = cells.indices.filter { HDR_RE.containsMatchIn(cells[it]) }
+        if (hdrIndices.isEmpty()) return null
+
+        val boundaries = hdrIndices + listOf(cells.size)
+        for (bi in 0 until boundaries.size - 1) {
+            parseBlockAllGroups(cells, boundaries[bi], boundaries[bi + 1])?.let { return it }
+        }
+        return null
+    }
+
+    /** Разбирает текст ячейки на (предмет, преподаватель, кабинет) — общий кусок для группы/учителя. */
+    private fun splitCell(cellText: String): Triple<String, String?, String?> {
+        val lines = cellText.lines().map { it.trim() }.filter { it.isNotBlank() }
+        if (lines.isEmpty()) return Triple("Окно", null, null)
+        val (subject, teacherRaw) = splitSubjectTeacher(lines)
+        val (teacher, room) = if (teacherRaw != null) parseTeacher(teacherRaw) else null to null
+        return Triple(subject, teacher, room)
+    }
+
+    /**
+     * Список преподавателей, найденных в файле (для пикера, аналог detectGroups()).
+     * Дедупликация по normalize(), а не по точному тексту: в отличие от кода
+     * группы (строгий GRP_RE), ФИО достаётся менее строгим регэкспом, и в
+     * разных ячейках у одного и того же человека пробелы/точки могут чуть
+     * отличаться — не хотим показывать его в списке дважды.
+     */
+    fun detectTeachers(data: ByteArray): List<String> {
+        val block = parseAllBlocks(data) ?: return emptyList()
+        val byNorm = linkedMapOf<String, String>() // normalize() → первый встреченный "красивый" вариант написания
+        for ((_, _, cellText) in block.entries) {
+            val (_, teacher, _) = splitCell(cellText)
+            if (teacher.isNullOrBlank()) continue
+            byNorm.putIfAbsent(normalize(teacher), teacher)
+        }
+        return byNorm.values.sorted()
+    }
+
+    /**
+     * Полный разбор файла для конкретного преподавателя: проходит по всем
+     * группам за день и собирает пары, где встречается этот преподаватель.
+     */
+    fun parseForTeacher(data: ByteArray, teacherName: String, fileName: String): TeacherParseResult {
+        val block = parseAllBlocks(data) ?: return TeacherParseResult.NotFound
+        val normTeacher = normalize(teacherName)
+
+        val bells   = bellsForFile(fileName)
+        val cal     = Calendar.getInstance()
+        val isToday = checkIsToday(block.headerLine, cal)
+
+        val lessons = mutableListOf<TeacherLessonEntry>()
+        for ((group, roman, cellText) in block.entries) {
+            val (subject, teacher, room) = splitCell(cellText)
+            if (teacher.isNullOrBlank() || normalize(teacher) != normTeacher) continue
+
+            val b      = bells[roman]
+            val tStart = b?.getOrNull(0) ?: ""
+            val tEnd   = b?.getOrNull(1) ?: ""
+            val bStart = b?.getOrNull(2)
+            val bEnd   = b?.getOrNull(3)
+            val startMin = if (tStart.isNotEmpty()) toMin(tStart) else -1
+            val endMin   = if (tStart.isNotEmpty()) toMin(bEnd ?: tEnd) else -1
+
+            lessons += TeacherLessonEntry(
+                num        = roman,
+                timeStart  = tStart,
+                timeEnd    = tEnd,
+                breakStart = bStart,
+                breakEnd   = bEnd,
+                startMin   = startMin,
+                endMin     = endMin,
+                group      = group,
+                subject    = subject,
+                room       = room,
+            )
+        }
+
+        if (lessons.isEmpty()) return TeacherParseResult.NotFound
+
+        // Сортируем по порядку пар I..VI (в сетке они и так по порядку, но
+        // группы добавлялись во внутреннем цикле — на всякий случай фиксируем).
+        val order = ROMAN.toList()
+        val sorted = lessons.sortedBy { order.indexOf(it.num).let { i -> if (i < 0) 999 else i } }
+
+        return TeacherParseResult.Found(
+            TeacherDay(
+                header  = formatHeader(block.headerLine),
+                lessons = sorted,
+                isToday = isToday,
+            )
+        )
     }
 }
