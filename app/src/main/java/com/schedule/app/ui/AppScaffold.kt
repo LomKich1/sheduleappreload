@@ -76,6 +76,20 @@ fun AppScaffold() {
         if (activeTab == Screen.Files.route) filesEntranceTrigger++ else bellsEntranceTrigger++
     }
 
+    // Тот же каскад должен проигрываться и когда мы ЗАКРЫВАЕМ глубокий экран
+    // (Schedule/Settings) и возвращаемся на вкладку — например, после того как
+    // вышли из расписания пар через пикер группы обратно на главный экран.
+    // activeTab при этом не меняется (мы всё это время оставались на вкладке
+    // Files), поэтому LaunchedEffect(activeTab) выше тут не сработает — нужен
+    // отдельный триггер именно на "deepScreenOpen: true → false".
+    var wasDeepScreenOpen by rememberSaveable { mutableStateOf(deepScreenOpen) }
+    LaunchedEffect(deepScreenOpen) {
+        if (wasDeepScreenOpen && !deepScreenOpen) {
+            if (activeTab == Screen.Files.route) filesEntranceTrigger++ else bellsEntranceTrigger++
+        }
+        wasDeepScreenOpen = deepScreenOpen
+    }
+
     val showPill = !deepScreenOpen
 
     // Системная кнопка «назад»: если открыта вкладка Bells и нет глубокого
