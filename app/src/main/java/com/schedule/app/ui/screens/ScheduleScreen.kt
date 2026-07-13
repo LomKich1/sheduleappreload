@@ -1,12 +1,19 @@
 package com.schedule.app.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -35,12 +42,21 @@ import com.schedule.app.data.model.LessonEntry
 import com.schedule.app.data.model.ScheduleDay
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
+import com.schedule.app.ui.components.CascadeEdge
+import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.theme.LocalAppColors
+
+// Длительность анимации переключения между "под-экранами" ScheduleScreen
+// (пикер группы ↔ расписание пар) — то же значение, что и NAV_ANIM_MS в
+// AppScaffold для переходов Files/Bells → Schedule/Settings. Не переиспользуем
+// константу напрямую (она private в другом файле) — просто дублируем число,
+// чтобы анимации визуально совпадали.
+private const val SUBSCREEN_ANIM_MS = 280
 
 // ─── Скелетон для пикера группы — визуально идентичен GroupPickerScreen ───────
 
 @Composable
-private fun GroupPickerLoading() {
+private fun GroupPickerLoading(entranceTrigger: Any) {
     val c = LocalAppColors.current
     val alpha by rememberInfiniteTransition(label = "groupSkel")
         .animateFloat(
@@ -52,6 +68,13 @@ private fun GroupPickerLoading() {
             ),
             label = "a",
         )
+
+    // Каскад "с правого края" — тот же приём, что и у карточек BellsScreen при
+    // переключении вкладок. entranceTrigger приходит снаружи, из ScheduleScreen
+    // (единый счётчик переходов между под-экранами) — так вся анимация внутри
+    // ScheduleScreen управляется из одного места и не зависит от того, решит
+    // ли AnimatedContent пересоздать композицию этого экрана заново или нет.
+    val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Тот же заголовок, что и в реальном пикере — просто без счётчика
@@ -87,36 +110,43 @@ private fun GroupPickerLoading() {
             GroupSectionLabel("ВСЕ ГРУППЫ")
 
             repeat(8) { i ->
-                val a = (alpha - i * 0.06f).coerceIn(0.3f, 1f)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(c.surface.copy(alpha = a))
-                        .border(1.dp, c.border, RoundedCornerShape(16.dp))
-                        .padding(horizontal = 14.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                CascadeEntranceItem(
+                    index      = i,
+                    triggerKey = entranceTrigger,
+                    enabled    = entranceEnabled,
+                    edge       = CascadeEdge.RIGHT,
                 ) {
-                    Box(
-                        Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(c.surface2.copy(alpha = a)),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Box(
-                        Modifier
-                            .size(width = 90.dp, height = 12.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(c.surface2.copy(alpha = a)),
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Box(
-                        Modifier
-                            .size(width = 8.dp, height = 12.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(c.surface2.copy(alpha = a)),
-                    )
+                    val a = (alpha - i * 0.06f).coerceIn(0.3f, 1f)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(c.surface.copy(alpha = a))
+                            .border(1.dp, c.border, RoundedCornerShape(16.dp))
+                            .padding(horizontal = 14.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(c.surface2.copy(alpha = a)),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Box(
+                            Modifier
+                                .size(width = 90.dp, height = 12.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(c.surface2.copy(alpha = a)),
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Box(
+                            Modifier
+                                .size(width = 8.dp, height = 12.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(c.surface2.copy(alpha = a)),
+                        )
+                    }
                 }
             }
         }
@@ -139,6 +169,41 @@ fun ScheduleScreen(
 
     LaunchedEffect(file.name) { vm.load(file) }
 
+    // ── Направление и "номер" перехода между под-экранами ──────────────────────
+    // Внутри ScheduleScreen на самом деле несколько логических экранов —
+    // загрузка / пикер группы / расписание пар / ошибка — и переключение между
+    // ними должно выглядеть так же, как переходы между Files/Bells/Schedule в
+    // AppScaffold: слайд + фейд, а не мгновенная подмена.
+    //
+    // goingBack — направление: true, когда мы ВОЗВРАЩАЕМСЯ к пикеру группы
+    // (кнопка назад/карандаш с экрана расписания), false — когда идём вперёд
+    // (первая загрузка, выбор группы, повтор после ошибки).
+    var goingBack by remember { mutableStateOf(false) }
+
+    // transitionSeq — уникальный номер каждого перехода. Передаём его вниз как
+    // triggerKey для каскадных анимаций карточек (групп/пар), а не полагаемся
+    // на то, что AnimatedContent сочтёт два одинаковых по содержимому состояния
+    // "разными" (два GroupPicker(sameGroups) подряд технически equals()).
+    var transitionSeq by remember { mutableStateOf(0) }
+    LaunchedEffect(uiState) { transitionSeq++ }
+
+    // "Экран пар" в терминах задачи — это то, что видно ПОСЛЕ выбора группы:
+    // само расписание или плашка "на практике".
+    val isPairsScreen = uiState is ScheduleUiState.Success || uiState is ScheduleUiState.OnPractice
+
+    // Общее действие для стрелки "назад" и карандаша "сменить группу" — оба
+    // должны вести к пикеру, а не сразу выкидывать пользователя на главный экран.
+    val backToPicker: () -> Unit = {
+        goingBack = true
+        vm.clearGroup()
+    }
+
+    // Системный жест "назад" перехватываем ТОЛЬКО пока показано расписание —
+    // NavHost в AppScaffold обрабатывает системный back сам, минуя параметр
+    // onBack (тот срабатывает лишь по тапу на стрелку в шапке), поэтому без
+    // этого BackHandler'а жест увёл бы сразу на главный экран, а не к пикеру.
+    BackHandler(enabled = isPairsScreen) { backToPicker() }
+
     // Пока показывается пикер (или идёт загрузка) — заголовок не должен
     // показывать старое сохранённое имя группы, это сбивает с толку.
     // Карандаш «сменить группу» тоже имеет смысл только когда группа
@@ -156,9 +221,12 @@ fun ScheduleScreen(
         SchedHeader(
             groupName     = headerGroupName,
             dateText      = file.dateLabel,
-            onBack        = onBack,
-            // Карандаш виден только когда группа уже выбрана и расписание показано
-            onChangeGroup = if (headerGroupName.isNotBlank()) { { vm.clearGroup() } } else null,
+            // Со экрана пар стрелка ведёт к пикеру группы; с любого другого
+            // под-экрана (пикер, загрузка, ошибка) — как раньше, наружу из ScheduleScreen.
+            onBack        = if (isPairsScreen) backToPicker else onBack,
+            // Карандаш виден только когда группа уже выбрана и расписание показано —
+            // делает буквально то же самое, что и стрелка "назад" в этом состоянии.
+            onChangeGroup = if (headerGroupName.isNotBlank()) backToPicker else null,
         )
 
         if (uiState is ScheduleUiState.Loading) {
@@ -170,27 +238,63 @@ fun ScheduleScreen(
             )
         }
 
-        when (val state = uiState) {
-            is ScheduleUiState.Idle -> SchedLoading()
+        AnimatedContent(
+            targetState = uiState,
+            modifier    = Modifier.weight(1f),
+            transitionSpec = {
+                // Те же слайды, что и в AppScaffold: вперёд — новый экран
+                // въезжает с ПРАВОГО края, старый чуть уезжает влево; назад —
+                // наоборот (см. NAV_ANIM_MS/enterTransition в AppScaffold.kt).
+                if (goingBack) {
+                    (slideInHorizontally(
+                        initialOffsetX = { -it / 4 },
+                        animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                    ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
+                        (slideOutHorizontally(
+                            targetOffsetX = { it },
+                            animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                        ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
+                } else {
+                    (slideInHorizontally(
+                        initialOffsetX = { it },
+                        animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                    ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
+                        (slideOutHorizontally(
+                            targetOffsetX = { -it / 4 },
+                            animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                        ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
+                }
+            },
+            label = "scheduleSubscreen",
+        ) { state ->
+            when (state) {
+                is ScheduleUiState.Idle -> SchedLoading()
 
-            is ScheduleUiState.Loading -> when (state.stage) {
-                LoadingStage.FILE     -> GroupPickerLoading()
-                LoadingStage.SCHEDULE -> SchedLoading()
+                is ScheduleUiState.Loading -> when (state.stage) {
+                    LoadingStage.FILE     -> GroupPickerLoading(entranceTrigger = transitionSeq)
+                    LoadingStage.SCHEDULE -> SchedLoading()
+                }
+
+                is ScheduleUiState.GroupPicker -> GroupPickerScreen(
+                    groups          = state.groups,
+                    onSelect        = { group -> goingBack = false; vm.selectGroup(group, file.name) },
+                    entranceTrigger = transitionSeq,
+                    entranceEdge    = if (goingBack) CascadeEdge.LEFT else CascadeEdge.RIGHT,
+                )
+
+                is ScheduleUiState.Success -> SchedContent(
+                    day             = state.day,
+                    clockMin        = clockMin,
+                    entranceTrigger = transitionSeq,
+                )
+
+                is ScheduleUiState.OnPractice -> SchedOnPractice(headerText = state.headerText)
+
+                is ScheduleUiState.Error -> SchedError(
+                    message = state.message,
+                    onRetry = { goingBack = false; vm.load(file) },
+                )
             }
-
-            is ScheduleUiState.GroupPicker -> GroupPickerScreen(
-                groups   = state.groups,
-                onSelect = { group -> vm.selectGroup(group, file.name) },
-            )
-
-            is ScheduleUiState.Success     -> SchedContent(day = state.day, clockMin = clockMin)
-
-            is ScheduleUiState.OnPractice  -> SchedOnPractice(headerText = state.headerText)
-
-            is ScheduleUiState.Error       -> SchedError(
-                message = state.message,
-                onRetry = { vm.load(file) },
-            )
         }
     }
 }
@@ -285,10 +389,13 @@ private fun SchedHeader(
 private fun GroupPickerScreen(
     groups: List<String>,
     onSelect: (String) -> Unit,
+    entranceTrigger: Any,
+    entranceEdge: CascadeEdge,
 ) {
-    val c           = LocalAppColors.current
-    val rememberOn  by AppPrefs.rememberGroup.collectAsState()
-    val pinnedGroup by AppPrefs.pinnedGroup.collectAsState()
+    val c              = LocalAppColors.current
+    val rememberOn     by AppPrefs.rememberGroup.collectAsState()
+    val pinnedGroup    by AppPrefs.pinnedGroup.collectAsState()
+    val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
     // Подсвечиваем только если rememberGroup ON + группа реально есть в этом файле
     val pinnedInFile = if (rememberOn && pinnedGroup.isNotBlank() && pinnedGroup in groups)
@@ -332,7 +439,14 @@ private fun GroupPickerScreen(
                     GroupSectionLabel("ЗАПОМНЕННАЯ")
                 }
                 item(key = "pinned_$pinnedInFile") {
-                    GroupCard(name = pinnedInFile, isPinned = true) { onSelect(pinnedInFile) }
+                    CascadeEntranceItem(
+                        index      = 0,
+                        triggerKey = entranceTrigger,
+                        enabled    = entranceEnabled,
+                        edge       = entranceEdge,
+                    ) {
+                        GroupCard(name = pinnedInFile, isPinned = true) { onSelect(pinnedInFile) }
+                    }
                 }
                 item(key = "spacer_sep") {
                     Spacer(Modifier.height(6.dp))
@@ -340,15 +454,29 @@ private fun GroupPickerScreen(
                 item(key = "lbl_all") {
                     GroupSectionLabel("ВСЕ ГРУППЫ")
                 }
-                items(otherGroups, key = { "g_$it" }) { group ->
-                    GroupCard(name = group, isPinned = false) { onSelect(group) }
+                itemsIndexed(otherGroups, key = { _, g -> "g_$g" }) { idx, group ->
+                    CascadeEntranceItem(
+                        index      = idx + 1, // +1: продолжаем счёт после запомненной карточки
+                        triggerKey = entranceTrigger,
+                        enabled    = entranceEnabled,
+                        edge       = entranceEdge,
+                    ) {
+                        GroupCard(name = group, isPinned = false) { onSelect(group) }
+                    }
                 }
             } else {
                 item(key = "lbl_all") {
                     GroupSectionLabel("ВСЕ ГРУППЫ")
                 }
-                items(groups, key = { "g_$it" }) { group ->
-                    GroupCard(name = group, isPinned = false) { onSelect(group) }
+                itemsIndexed(groups, key = { _, g -> "g_$g" }) { idx, group ->
+                    CascadeEntranceItem(
+                        index      = idx,
+                        triggerKey = entranceTrigger,
+                        enabled    = entranceEnabled,
+                        edge       = entranceEdge,
+                    ) {
+                        GroupCard(name = group, isPinned = false) { onSelect(group) }
+                    }
                 }
             }
         }
@@ -449,8 +577,9 @@ private fun GroupCard(
 // ─── Расписание дня ───────────────────────────────────────────────────────────
 
 @Composable
-private fun SchedContent(day: ScheduleDay, clockMin: Int) {
+private fun SchedContent(day: ScheduleDay, clockMin: Int, entranceTrigger: Any) {
     val c = LocalAppColors.current
+    val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
     val liveStatuses = remember(day, clockMin) {
         day.lessons.map { lesson ->
@@ -493,10 +622,18 @@ private fun SchedContent(day: ScheduleDay, clockMin: Int) {
             )
         }
 
-        items(day.lessons, key = { it.num }) { lesson ->
-            val idx    = day.lessons.indexOf(lesson)
+        // На "экран пар" попадают только двигаясь вперёд (выбрали группу) — назад
+        // сюда не возвращаются, поэтому направление каскада всегда с правого края.
+        itemsIndexed(day.lessons, key = { _, lesson -> lesson.num }) { idx, lesson ->
             val status = liveStatuses.getOrNull(idx) ?: LessonStatus()
-            PairCard(lesson = lesson, status = status)
+            CascadeEntranceItem(
+                index      = idx,
+                triggerKey = entranceTrigger,
+                enabled    = entranceEnabled,
+                edge       = CascadeEdge.RIGHT,
+            ) {
+                PairCard(lesson = lesson, status = status)
+            }
         }
     }
 }

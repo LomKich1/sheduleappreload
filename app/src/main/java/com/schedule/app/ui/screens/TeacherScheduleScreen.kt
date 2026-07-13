@@ -32,6 +32,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.model.TeacherDay
 import com.schedule.app.data.model.TeacherLessonEntry
+import com.schedule.app.data.prefs.AppPrefs
+import com.schedule.app.ui.components.CascadeEdge
+import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.theme.LocalAppColors
 
 // ─── Скелетон для пикера преподавателя — визуально идентичен TeacherPickerScreen ─
@@ -49,6 +52,11 @@ private fun TeacherPickerLoading() {
             ),
             label = "a",
         )
+
+    // Тот же каскад "с правого края", что и в GroupPickerLoading/BellsScreen —
+    // подробности см. в комментарии там.
+    val entranceKey     = remember { Any() }
+    val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -77,28 +85,35 @@ private fun TeacherPickerLoading() {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             repeat(8) { i ->
-                val a = (alpha - i * 0.06f).coerceIn(0.3f, 1f)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(c.surface.copy(alpha = a))
-                        .padding(horizontal = 14.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                CascadeEntranceItem(
+                    index      = i,
+                    triggerKey = entranceKey,
+                    enabled    = entranceEnabled,
+                    edge       = CascadeEdge.RIGHT,
                 ) {
-                    Box(
-                        Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(c.surface2.copy(alpha = a)),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Box(
-                        Modifier
-                            .size(width = 140.dp, height = 12.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(c.surface2.copy(alpha = a)),
-                    )
+                    val a = (alpha - i * 0.06f).coerceIn(0.3f, 1f)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(c.surface.copy(alpha = a))
+                            .padding(horizontal = 14.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(c.surface2.copy(alpha = a)),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Box(
+                            Modifier
+                                .size(width = 140.dp, height = 12.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(c.surface2.copy(alpha = a)),
+                        )
+                    }
                 }
             }
         }
