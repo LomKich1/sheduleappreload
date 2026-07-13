@@ -27,10 +27,16 @@ import kotlinx.coroutines.launch
 //  смена этого числа заново запускает анимацию у всех видимых элементов.
 // ══════════════════════════════════════════════════════════════════════════════
 
-enum class CascadeEdge { LEFT, RIGHT }
+enum class CascadeEdge { LEFT, RIGHT, BOTTOM }
 
-private const val START_OFFSET_PX  = 72f
-private const val STAGGER_MS       = 35L
+private const val START_OFFSET_PX   = 72f  // горизонтальный старт (LEFT/RIGHT) — язык навигации
+private const val START_OFFSET_Y_PX = 46f  // вертикальный старт (BOTTOM) — язык "контент только что загрузился".
+                                            // Меньше горизонтального: если элементов много, лететь издалека
+                                            // будет слишком долго и медленно смотреться.
+private const val STAGGER_MS        = 60L  // 50-100мс — практика реальных приложений для
+                                            // "вау-момента" загрузки контента (официальный Material
+                                            // Design рекомендует ≤20мс, но это правило про рутинные
+                                            // обновления списков, а не про момент "контент загрузился")
 private const val MAX_STAGGER_ITEMS = 10 // дальше 10-го элемента задержка не растёт — иначе долго ждать
 
 @Composable
@@ -46,11 +52,17 @@ fun CascadeEntranceItem(
         return
     }
 
-    val startX = if (edge == CascadeEdge.LEFT) -START_OFFSET_PX else START_OFFSET_PX
+    val startX = when (edge) {
+        CascadeEdge.LEFT   -> -START_OFFSET_PX
+        CascadeEdge.RIGHT  -> START_OFFSET_PX
+        CascadeEdge.BOTTOM -> 0f
+    }
+    val startY = if (edge == CascadeEdge.BOTTOM) START_OFFSET_Y_PX else 0f
 
-    // remember(triggerKey) — при смене triggerKey создаётся новый Animatable,
-    // то есть элемент откатывается за край и проигрывает анимацию заново.
+    // remember(triggerKey) — при смене triggerKey создаются новые Animatable,
+    // то есть элемент откатывается за край/вниз и проигрывает анимацию заново.
     val offsetX = remember(triggerKey) { Animatable(startX) }
+    val offsetY = remember(triggerKey) { Animatable(startY) }
     val alpha   = remember(triggerKey) { Animatable(0f) }
 
     LaunchedEffect(triggerKey) {
@@ -66,6 +78,15 @@ fun CascadeEntranceItem(
             )
         }
         launch {
+            offsetY.animateTo(
+                targetValue   = 0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness    = Spring.StiffnessLow,
+                ),
+            )
+        }
+        launch {
             alpha.animateTo(1f, animationSpec = tween(220))
         }
     }
@@ -73,6 +94,7 @@ fun CascadeEntranceItem(
     Box(
         modifier = Modifier.graphicsLayer {
             translationX = offsetX.value
+            translationY = offsetY.value
             this.alpha   = alpha.value
         },
     ) {

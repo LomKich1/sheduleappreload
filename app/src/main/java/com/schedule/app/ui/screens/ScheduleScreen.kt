@@ -296,8 +296,11 @@ fun ScheduleScreen(
                     groups          = state.groups,
                     onSelect        = { group -> goingBack = false; vm.selectGroup(group, file.name) },
                     entranceTrigger = transitionSeq,
-                    entranceEdge    = CascadeEdge.LEFT, // используется только когда playEntrance = true (возврат назад)
-                    playEntrance    = goingBack,         // вперёд (сразу после загрузки) — без каскада, см. GroupPickerScreen
+                    // Вперёд (сразу после загрузки) — карточки поднимаются снизу с
+                    // fade (BOTTOM), это язык "контент только что загрузился".
+                    // Назад (вернулись с расписания пар) — едут слева (LEFT),
+                    // это уже язык навигации, совпадает со слайдом самого экрана.
+                    entranceEdge    = if (goingBack) CascadeEdge.LEFT else CascadeEdge.BOTTOM,
                 )
 
                 is ScheduleUiState.Success -> SchedContent(
@@ -409,16 +412,11 @@ private fun GroupPickerScreen(
     onSelect: (String) -> Unit,
     entranceTrigger: Any,
     entranceEdge: CascadeEdge,
-    playEntrance: Boolean,
 ) {
     val c              = LocalAppColors.current
     val rememberOn     by AppPrefs.rememberGroup.collectAsState()
     val pinnedGroup    by AppPrefs.pinnedGroup.collectAsState()
-    // Каскад карточек группы включаем, только когда реально нужно (playEntrance,
-    // т.е. вернулись назад к пикеру) — сразу после загрузки (вперёд) список
-    // появляется мгновенно вместе со скелетоном, без своей отдельной анимации.
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
-    val entranceOn       = entranceEnabled && playEntrance
 
     // Подсвечиваем только если rememberGroup ON + группа реально есть в этом файле
     val pinnedInFile = if (rememberOn && pinnedGroup.isNotBlank() && pinnedGroup in groups)
@@ -465,7 +463,7 @@ private fun GroupPickerScreen(
                     CascadeEntranceItem(
                         index      = 0,
                         triggerKey = entranceTrigger,
-                        enabled    = entranceOn,
+                        enabled    = entranceEnabled,
                         edge       = entranceEdge,
                     ) {
                         GroupCard(name = pinnedInFile, isPinned = true) { onSelect(pinnedInFile) }
@@ -481,7 +479,7 @@ private fun GroupPickerScreen(
                     CascadeEntranceItem(
                         index      = idx + 1, // +1: продолжаем счёт после запомненной карточки
                         triggerKey = entranceTrigger,
-                        enabled    = entranceOn,
+                        enabled    = entranceEnabled,
                         edge       = entranceEdge,
                     ) {
                         GroupCard(name = group, isPinned = false) { onSelect(group) }
@@ -495,7 +493,7 @@ private fun GroupPickerScreen(
                     CascadeEntranceItem(
                         index      = idx,
                         triggerKey = entranceTrigger,
-                        enabled    = entranceOn,
+                        enabled    = entranceEnabled,
                         edge       = entranceEdge,
                     ) {
                         GroupCard(name = group, isPinned = false) { onSelect(group) }
