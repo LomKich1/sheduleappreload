@@ -2,6 +2,8 @@ package com.schedule.app.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -242,10 +244,23 @@ fun ScheduleScreen(
             targetState = uiState,
             modifier    = Modifier.weight(1f),
             transitionSpec = {
-                // Те же слайды, что и в AppScaffold: вперёд — новый экран
-                // въезжает с ПРАВОГО края, старый чуть уезжает влево; назад —
-                // наоборот (см. NAV_ANIM_MS/enterTransition в AppScaffold.kt).
-                if (goingBack) {
+                val from = initialState
+                val to   = targetState
+
+                // Скелетон загрузки и реальный список групп теперь идентичны по
+                // расположению (см. правки GroupPickerLoading выше) — слайд/фейд
+                // между ними смотрится как лишний "дёрг" ради самого себя, поэтому
+                // здесь просто мгновенная подмена контента без анимации.
+                val isSkeletonToPicker =
+                    from is ScheduleUiState.Loading && from.stage == LoadingStage.FILE &&
+                    to is ScheduleUiState.GroupPicker
+
+                if (isSkeletonToPicker) {
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else if (goingBack) {
+                    // Те же слайды, что и в AppScaffold: назад — новый экран
+                    // въезжает с ЛЕВОГО края, старый уезжает вправо (см.
+                    // NAV_ANIM_MS/popEnterTransition в AppScaffold.kt).
                     (slideInHorizontally(
                         initialOffsetX = { -it / 4 },
                         animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
@@ -255,6 +270,8 @@ fun ScheduleScreen(
                             animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
                         ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
                 } else {
+                    // Вперёд — новый экран въезжает с ПРАВОГО края, старый чуть
+                    // уезжает влево (см. enterTransition в AppScaffold.kt).
                     (slideInHorizontally(
                         initialOffsetX = { it },
                         animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
