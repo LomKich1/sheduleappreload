@@ -400,92 +400,76 @@ private fun RefreshFilesRow(justRefreshed: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun ThemeRow(selected: ThemePreset, onSelect: (ThemePreset) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        ThemePreset.values().forEach { preset ->
-            ThemeChip(
-                preset     = preset,
-                isSelected = preset == selected,
-                onClick    = { onSelect(preset) },
-                modifier   = Modifier.weight(1f),
-            )
+    val c = LocalAppColors.current
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            ThemePreset.values().forEach { preset ->
+                ThemeSwatch(
+                    preset     = preset,
+                    isSelected = preset == selected,
+                    onClick    = { onSelect(preset) },
+                )
+            }
         }
+        Spacer(Modifier.height(8.dp))
+        // Раньше подпись темы дублировалась под каждой из трёх больших карточек —
+        // теперь одна строка с названием ВЫБРАННОЙ темы под рядом свотчей: и место
+        // экономит, и не нужно гадать, что означает круг без подписи.
+        Text(
+            text = selected.label,
+            color = c.textSub,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
 @Composable
-private fun ThemeChip(
+private fun ThemeSwatch(
     preset: ThemePreset,
     isSelected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val c: AppColors = LocalAppColors.current
     val swatch = colorsFor(preset)
 
-    val borderColor by animateColorAsState(
-        targetValue = if (isSelected) c.accent else c.border,
-        label = "chipBorder",
-    )
-    val bgColor by animateColorAsState(
-        targetValue = if (isSelected) c.accent.copy(alpha = 0.12f) else c.surface,
-        label = "chipBg",
+    val ringColor by animateColorAsState(
+        targetValue = if (isSelected) c.accent else Color.Transparent,
+        label = "swatchRing",
     )
 
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(bgColor)
-            .border(1.5.dp, borderColor, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 11.dp, horizontal = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(swatch.bg)
+            .border(2.dp, ringColor, CircleShape)
+            .clickable(onClick = onClick),
     ) {
+        // Бейдж снизу-справа: цвет акцента темы обычно, галочка — когда выбрана.
+        // Обводка цветом фона экрана даёт "вырез", отделяющий бейдж от круга.
         Box(
             modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(9.dp))
-                .background(swatch.bg)
-                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(9.dp)),
+                .align(Alignment.BottomEnd)
+                .offset(x = 2.dp, y = 2.dp)
+                .size(16.dp)
+                .clip(CircleShape)
+                .background(if (isSelected) c.accent else swatch.accent)
+                .border(1.5.dp, c.surface, CircleShape),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(4.dp)
-                    .size(11.dp)
-                    .clip(CircleShape)
-                    .background(swatch.accent),
-            )
             if (isSelected) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 5.dp, y = (-5).dp)
-                        .size(15.dp)
-                        .clip(CircleShape)
-                        .background(c.accent),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Check,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(9.dp),
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Outlined.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(10.dp),
+                )
             }
         }
-
-        Spacer(Modifier.height(7.dp))
-
-        Text(
-            text = preset.label,
-            color = if (isSelected) c.text else c.textSub,
-            fontSize = 11.5.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
     }
 }
 
