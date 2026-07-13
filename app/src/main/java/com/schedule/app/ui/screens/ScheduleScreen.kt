@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.WifiOff
@@ -79,23 +78,17 @@ private fun GroupPickerLoading(entranceTrigger: Any) {
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Тот же заголовок, что и в реальном пикере — просто без счётчика
+        // Тот же вид подсказки, что и в реальном пикере (см. GroupPickerScreen) —
+        // без дублирующего жирного заголовка, только одна строка-подсказка.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp, vertical = 14.dp),
         ) {
             Text(
-                text = "Выберите вашу группу",
-                color = c.text,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
                 text = "Загружаем список групп…",
                 color = c.textSub,
                 fontSize = 11.5.sp,
-                modifier = Modifier.padding(top = 3.dp),
             )
         }
 
@@ -106,11 +99,6 @@ private fun GroupPickerLoading(entranceTrigger: Any) {
                 .padding(top = 2.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Та же секция "ВСЕ ГРУППЫ", что и в реальном списке (GroupPickerScreen).
-            // Раньше её тут не было — карточки скелетона стояли примерно на 18dp
-            // выше настоящих, и при появлении списка всё заметно "прыгало" вниз.
-            GroupSectionLabel("ВСЕ ГРУППЫ")
-
             repeat(8) { i ->
                 CascadeEntranceItem(
                     index      = i,
@@ -221,14 +209,11 @@ fun ScheduleScreen(
             .background(c.bg),
     ) {
         SchedHeader(
-            groupName     = headerGroupName,
-            dateText      = file.dateLabel,
+            groupName = headerGroupName,
+            dateText  = file.dateLabel,
             // Со экрана пар стрелка ведёт к пикеру группы; с любого другого
             // под-экрана (пикер, загрузка, ошибка) — как раньше, наружу из ScheduleScreen.
-            onBack        = if (isPairsScreen) backToPicker else onBack,
-            // Карандаш виден только когда группа уже выбрана и расписание показано —
-            // делает буквально то же самое, что и стрелка "назад" в этом состоянии.
-            onChangeGroup = if (headerGroupName.isNotBlank()) backToPicker else null,
+            onBack    = if (isPairsScreen) backToPicker else onBack,
         )
 
         if (uiState is ScheduleUiState.Loading) {
@@ -327,7 +312,6 @@ private fun SchedHeader(
     groupName: String,
     dateText: String,
     onBack: () -> Unit,
-    onChangeGroup: (() -> Unit)? = null,
 ) {
     val c = LocalAppColors.current
     Column(
@@ -342,7 +326,11 @@ private fun SchedHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Кнопка назад
+            // Кнопка назад — она же "сменить группу": пока показано расписание,
+            // ведёт к пикеру группы (см. backToPicker в ScheduleScreen), с пикера —
+            // выходит из экрана целиком. Раньше рядом была ещё отдельная кнопка
+            // "карандаш" с тем же действием на экране расписания — убрали как
+            // дублирующую, назад и так делает то же самое.
             Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -375,25 +363,6 @@ private fun SchedHeader(
                     modifier = Modifier.padding(top = 2.dp),
                 )
             }
-
-            // Кнопка «Сменить группу» — карандаш, только если группа задана
-            if (onChangeGroup != null) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(c.surface2)
-                        .clickable(onClick = onChangeGroup),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Edit,
-                        contentDescription = "Сменить группу",
-                        tint = c.textSub,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-            }
         }
         Box(
             modifier = Modifier
@@ -421,21 +390,24 @@ private fun GroupPickerScreen(
     // Подсвечиваем только если rememberGroup ON + группа реально есть в этом файле
     val pinnedInFile = if (rememberOn && pinnedGroup.isNotBlank() && pinnedGroup in groups)
         pinnedGroup else null
-    val otherGroups = if (pinnedInFile != null) groups.filter { it != pinnedInFile } else groups
+
+    // Единый список без разрывов по высоте: запомненная группа просто идёт первой,
+    // отличаясь только цветом/обводкой (см. GroupCard) — раньше тут были ещё
+    // секционные подписи "ЗАПОМНЕННАЯ"/"ВСЕ ГРУППЫ" со своими отступами, которые
+    // визуально рвали список на куски без особой пользы.
+    val orderedGroups = if (pinnedInFile != null)
+        listOf(pinnedInFile) + groups.filter { it != pinnedInFile }
+    else groups
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Подсказка
+        // Подсказка — без дублирующего заголовка "Выберите вашу группу": он и так
+        // виден в шапке экрана прямо над этим блоком. Оставили только то, что
+        // реально несёт новую информацию — сколько групп и что выбор сохранится.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp, vertical = 14.dp),
         ) {
-            Text(
-                text = "Выберите вашу группу",
-                color = c.text,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-            )
             Text(
                 text = if (pinnedInFile != null)
                     "Найдено ${groups.size} групп · запомненная — вверху"
@@ -443,7 +415,6 @@ private fun GroupPickerScreen(
                     "Найдено ${groups.size} групп · выбор сохранится автоматически",
                 color = c.textSub,
                 fontSize = 11.5.sp,
-                modifier = Modifier.padding(top = 3.dp),
             )
         }
 
@@ -455,68 +426,18 @@ private fun GroupPickerScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (pinnedInFile != null) {
-                item(key = "lbl_pinned") {
-                    GroupSectionLabel("ЗАПОМНЕННАЯ")
-                }
-                item(key = "pinned_$pinnedInFile") {
-                    CascadeEntranceItem(
-                        index      = 0,
-                        triggerKey = entranceTrigger,
-                        enabled    = entranceEnabled,
-                        edge       = entranceEdge,
-                    ) {
-                        GroupCard(name = pinnedInFile, isPinned = true) { onSelect(pinnedInFile) }
-                    }
-                }
-                item(key = "spacer_sep") {
-                    Spacer(Modifier.height(6.dp))
-                }
-                item(key = "lbl_all") {
-                    GroupSectionLabel("ВСЕ ГРУППЫ")
-                }
-                itemsIndexed(otherGroups, key = { _, g -> "g_$g" }) { idx, group ->
-                    CascadeEntranceItem(
-                        index      = idx + 1, // +1: продолжаем счёт после запомненной карточки
-                        triggerKey = entranceTrigger,
-                        enabled    = entranceEnabled,
-                        edge       = entranceEdge,
-                    ) {
-                        GroupCard(name = group, isPinned = false) { onSelect(group) }
-                    }
-                }
-            } else {
-                item(key = "lbl_all") {
-                    GroupSectionLabel("ВСЕ ГРУППЫ")
-                }
-                itemsIndexed(groups, key = { _, g -> "g_$g" }) { idx, group ->
-                    CascadeEntranceItem(
-                        index      = idx,
-                        triggerKey = entranceTrigger,
-                        enabled    = entranceEnabled,
-                        edge       = entranceEdge,
-                    ) {
-                        GroupCard(name = group, isPinned = false) { onSelect(group) }
-                    }
+            itemsIndexed(orderedGroups, key = { _, g -> "g_$g" }) { idx, group ->
+                CascadeEntranceItem(
+                    index      = idx,
+                    triggerKey = entranceTrigger,
+                    enabled    = entranceEnabled,
+                    edge       = entranceEdge,
+                ) {
+                    GroupCard(name = group, isPinned = group == pinnedInFile) { onSelect(group) }
                 }
             }
         }
     }
-}
-
-// ─── Секционный заголовок в пикере ────────────────────────────────────────────
-
-@Composable
-private fun GroupSectionLabel(text: String) {
-    val c = LocalAppColors.current
-    Text(
-        text           = text,
-        color          = c.textSub,
-        fontSize       = 10.sp,
-        fontWeight     = FontWeight.Bold,
-        letterSpacing  = 0.08.sp,
-        modifier       = Modifier.padding(start = 4.dp, bottom = 2.dp),
-    )
 }
 
 // ─── Карточка группы (стиль FileCard: иконка + название + бейдж/шеврон) ──────
@@ -530,6 +451,7 @@ private fun GroupCard(
     val c           = LocalAppColors.current
     val bg          = if (isPinned) c.todayAccent.copy(alpha = 0.09f) else c.surface
     val borderColor = if (isPinned) c.todayAccent.copy(alpha = 0.32f) else c.border
+    val borderWidth = if (isPinned) 2.dp else 1.dp
     val iconBg      = if (isPinned) c.todayAccent.copy(alpha = 0.18f) else c.surface2
     val iconTint    = if (isPinned) c.todayAccent else c.textSub
     val nameColor   = if (isPinned) c.todayAccent else c.text
@@ -539,7 +461,7 @@ private fun GroupCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(bg)
-            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+            .border(borderWidth, borderColor, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -570,28 +492,16 @@ private fun GroupCard(
             modifier   = Modifier.weight(1f),
         )
 
-        if (isPinned) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(c.todayAccent)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                Text(
-                    text       = "ЗАПОМНЕНА",
-                    color      = c.bg,
-                    fontSize   = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        } else {
-            Icon(
-                imageVector        = Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                tint               = c.textSub,
-                modifier           = Modifier.size(18.dp),
-            )
-        }
+        // Раньше тут был текстовый бейдж "ЗАПОМНЕНА" для запомненной группы —
+        // убрали: карточка и так узнаётся по цвету фона/иконки/текста и более
+        // толстой обводке (borderWidth выше), бейдж поверх этого был избыточен.
+        // Шеврон теперь одинаковый у всех карточек — все они одинаково кликабельны.
+        Icon(
+            imageVector        = Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint               = if (isPinned) c.todayAccent else c.textSub,
+            modifier           = Modifier.size(18.dp),
+        )
     }
 }
 
