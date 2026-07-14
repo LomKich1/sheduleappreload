@@ -418,13 +418,20 @@ private fun GroupPickerScreen(
             )
         }
 
+        // Как и в FilesList: короткий список групп (1-3) центрируем по вертикали
+        // вместо прилипания к верху с пустым "хвостом".
+        val isShort = orderedGroups.size <= 3
+
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 14.dp, end = 14.dp,
                 bottom = 80.dp, top = 2.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = if (isShort)
+                Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
+            else
+                Arrangement.spacedBy(8.dp),
         ) {
             itemsIndexed(orderedGroups, key = { _, g -> "g_$g" }) { idx, group ->
                 CascadeEntranceItem(
@@ -659,6 +666,44 @@ private fun PairCard(lesson: LessonEntry, status: LessonStatus) {
                     .fillMaxHeight()
                     .background(leftColor),
             )
+
+            if (lesson.isWindow) {
+                // Компактная карточка «Окно» — по правке дизайнера: раньше она
+                // рисовалась как настоящая пара (тот же layout, просто alpha+курсив)
+                // и занимала ту же высоту, хотя показывать там, по сути, нечего.
+                // Теперь — один ряд: номер пары, «Окно», и время, если оно известно.
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = lesson.num,
+                        color = c.textSub,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.05.sp,
+                        modifier = Modifier.width(24.dp),
+                    )
+                    Text(
+                        text = "Окно",
+                        color = c.textSub,
+                        fontSize = 13.sp,
+                        fontStyle = FontStyle.Italic,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (lesson.timeStart.isNotEmpty()) {
+                        Text(
+                            text = "${lesson.timeStart}–${lesson.timeEnd}",
+                            color = c.textSub,
+                            fontSize = 11.sp,
+                        )
+                    }
+                }
+                return@Row
+            }
 
             Column(modifier = Modifier.weight(1f)) {
                 Row(
