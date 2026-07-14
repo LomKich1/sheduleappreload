@@ -1,12 +1,21 @@
 package com.schedule.app.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,10 +46,15 @@ import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.theme.LocalAppColors
 
+// Та же длительность, что и SUBSCREEN_ANIM_MS в ScheduleScreen.kt — переходы
+// пикер преподавателя ↔ расписание пар должны визуально совпадать с
+// переходами пикер группы ↔ расписание пар у студенческой ветки.
+private const val TEACHER_SUBSCREEN_ANIM_MS = 280
+
 // ─── Скелетон для пикера преподавателя — визуально идентичен TeacherPickerScreen ─
 
 @Composable
-private fun TeacherPickerLoading() {
+private fun TeacherPickerLoading(entranceTrigger: Any) {
     val c = LocalAppColors.current
     val alpha by rememberInfiniteTransition(label = "teacherSkel")
         .animateFloat(
@@ -54,8 +68,9 @@ private fun TeacherPickerLoading() {
         )
 
     // Тот же каскад "с правого края", что и в GroupPickerLoading/BellsScreen —
-    // подробности см. в комментарии там.
-    val entranceKey     = remember { Any() }
+    // подробности см. в комментарии там. entranceTrigger приходит снаружи (единый
+    // счётчик переходов из TeacherScheduleScreen), а не создаётся локально —
+    // иначе каждая перекомпозиция скелетона считалась бы новым запуском каскада.
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -87,7 +102,7 @@ private fun TeacherPickerLoading() {
             repeat(8) { i ->
                 CascadeEntranceItem(
                     index      = i,
-                    triggerKey = entranceKey,
+                    triggerKey = entranceTrigger,
                     enabled    = entranceEnabled,
                     edge       = CascadeEdge.RIGHT,
                 ) {
@@ -136,6 +151,29 @@ fun TeacherScheduleScreen(
 
     LaunchedEffect(file.name) { vm.load(file) }
 
+    // ── Направление и "номер" перехода между под-экранами — зеркало ScheduleScreen ──
+    // goingBack — true, когда возвращаемся к пикеру преподавателя (стрелка назад
+    // или карандаш с экрана расписания), false — когда идём вперёд.
+    var goingBack by remember { mutableStateOf(false) }
+
+    // transitionSeq — уникальный номер каждого перехода, передаётся вниз как
+    // triggerKey для каскадных анимаций карточек.
+    var transitionSeq by remember { mutableStateOf(0) }
+    LaunchedEffect(uiState) { transitionSeq++ }
+
+    val isPairsScreen = uiState is TeacherUiState.Success
+
+    // Общее действие для стрелки "назад" и карандаша "сменить преподавателя" —
+    // оба ведут к пикеру, а не сразу выкидывают на главный экран.
+    val backToPicker: () -> Unit = {
+        goingBack = true
+        vm.clearTeacher()
+    }
+
+    // Системный жест "назад" перехватываем только пока показано расписание —
+    // см. подробный комментарий у аналогичного BackHandler в ScheduleScreen.kt.
+    BackHandler(enabled = isPairsScreen) { backToPicker() }
+
     // Как и в ScheduleScreen: пока показывается пикер/загрузка — в шапке
     // не должно мелькать прошлое имя преподавателя из предыдущего файла.
     val headerTeacherName = when (uiState) {
@@ -151,8 +189,10 @@ fun TeacherScheduleScreen(
         TeacherHeader(
             teacherName     = headerTeacherName,
             dateText        = file.dateLabel,
-            onBack          = onBack,
-            onChangeTeacher = if (headerTeacherName.isNotBlank()) { { vm.clearTeacher() } } else null,
+            // Со экрана пар стрелка ведёт к пикеру преподавателя; с любого
+            // другого под-экрана — как раньше, наружу из TeacherScheduleScreen.
+            onBack          = if (isPairsScreen) backToPicker else onBack,
+            onChangeTeacher = if (headerTeacherName.isNotBlank()) backToPicker else null,
         )
 
         if (uiState is TeacherUiState.Loading) {
@@ -164,25 +204,72 @@ fun TeacherScheduleScreen(
             )
         }
 
-        when (val state = uiState) {
-            is TeacherUiState.Idle -> TeacherSchedLoading()
+        AnimatedContent(
+            targetState = uiState,
+            modifier    = Modifier.weight(1f),
+            transitionSpec = {
+                val from = initialState
+                val to   = targetState
 
-            is TeacherUiState.Loading -> when (state.stage) {
-                LoadingStage.FILE     -> TeacherPickerLoading()
-                LoadingStage.SCHEDULE -> TeacherSchedLoading()
+                // Скелетон загрузки и реальный пикер преподавателя визуально
+                // идентичны по расположению — мгновенная подмена без анимации,
+                // как и у GroupPickerLoading → GroupPicker в ScheduleScreen.
+                val isSkeletonToPicker =
+                    from is TeacherUiState.Loading && from.stage == LoadingStage.FILE &&
+                    to is TeacherUiState.TeacherPicker
+
+                if (isSkeletonToPicker) {
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else if (goingBack) {
+                    (slideInHorizontally(
+                        initialOffsetX = { -it / 4 },
+                        animationSpec  = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                    ) + fadeIn(tween(TEACHER_SUBSCREEN_ANIM_MS - 60))) togetherWith
+                        (slideOutHorizontally(
+                            targetOffsetX = { it },
+                            animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                        ) + fadeOut(tween(TEACHER_SUBSCREEN_ANIM_MS - 60)))
+                } else {
+                    (slideInHorizontally(
+                        initialOffsetX = { it },
+                        animationSpec  = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                    ) + fadeIn(tween(TEACHER_SUBSCREEN_ANIM_MS - 60))) togetherWith
+                        (slideOutHorizontally(
+                            targetOffsetX = { -it / 4 },
+                            animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                        ) + fadeOut(tween(TEACHER_SUBSCREEN_ANIM_MS - 60)))
+                }
+            },
+            label = "teacherSubscreen",
+        ) { state ->
+            when (state) {
+                is TeacherUiState.Idle -> TeacherSchedLoading()
+
+                is TeacherUiState.Loading -> when (state.stage) {
+                    LoadingStage.FILE     -> TeacherPickerLoading(entranceTrigger = transitionSeq)
+                    LoadingStage.SCHEDULE -> TeacherSchedLoading()
+                }
+
+                is TeacherUiState.TeacherPicker -> TeacherPickerScreen(
+                    teachers        = state.teachers,
+                    onSelect        = { teacher -> goingBack = false; vm.selectTeacher(teacher, file.name) },
+                    entranceTrigger = transitionSeq,
+                    // Вперёд — карточки поднимаются снизу с fade (BOTTOM), назад —
+                    // едут слева (LEFT), см. аналогичную логику в GroupPickerScreen.
+                    entranceEdge    = if (goingBack) CascadeEdge.LEFT else CascadeEdge.BOTTOM,
+                )
+
+                is TeacherUiState.Success -> TeacherSchedContent(
+                    day             = state.day,
+                    clockMin        = clockMin,
+                    entranceTrigger = transitionSeq,
+                )
+
+                is TeacherUiState.Error -> TeacherSchedError(
+                    message = state.message,
+                    onRetry = { goingBack = false; vm.load(file) },
+                )
             }
-
-            is TeacherUiState.TeacherPicker -> TeacherPickerScreen(
-                teachers = state.teachers,
-                onSelect = { teacher -> vm.selectTeacher(teacher, file.name) },
-            )
-
-            is TeacherUiState.Success -> TeacherSchedContent(day = state.day, clockMin = clockMin)
-
-            is TeacherUiState.Error -> TeacherSchedError(
-                message = state.message,
-                onRetry = { vm.load(file) },
-            )
         }
     }
 }
@@ -274,8 +361,11 @@ private fun TeacherHeader(
 private fun TeacherPickerScreen(
     teachers: List<String>,
     onSelect: (String) -> Unit,
+    entranceTrigger: Any,
+    entranceEdge: CascadeEdge,
 ) {
     val c = LocalAppColors.current
+    val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
     if (teachers.isEmpty()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -307,8 +397,15 @@ private fun TeacherPickerScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(teachers, key = { "t_$it" }) { teacher ->
-                TeacherCard(name = teacher) { onSelect(teacher) }
+            itemsIndexed(teachers, key = { _, t -> "t_$t" }) { idx, teacher ->
+                CascadeEntranceItem(
+                    index      = idx,
+                    triggerKey = entranceTrigger,
+                    enabled    = entranceEnabled,
+                    edge       = entranceEdge,
+                ) {
+                    TeacherCard(name = teacher) { onSelect(teacher) }
+                }
             }
         }
     }
@@ -393,8 +490,9 @@ private fun TeacherCard(
 // ─── Расписание дня преподавателя ──────────────────────────────────────────────
 
 @Composable
-private fun TeacherSchedContent(day: TeacherDay, clockMin: Int) {
+private fun TeacherSchedContent(day: TeacherDay, clockMin: Int, entranceTrigger: Any) {
     val c = LocalAppColors.current
+    val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
     // У пар преподавателя может повторяться `num` (несколько групп в одну и
     // ту же пару, например при разбивке на подгруппы) — поэтому список
@@ -432,11 +530,20 @@ private fun TeacherSchedContent(day: TeacherDay, clockMin: Int) {
             )
         }
 
-        items(day.lessons.size) { idx ->
-            TeacherPairCard(
-                lesson = day.lessons[idx],
-                status = liveStatuses.getOrNull(idx) ?: TeacherLessonStatus(),
-            )
+        // На "экран пар" попадают только двигаясь вперёд (выбрали преподавателя) —
+        // назад сюда не возвращаются, поэтому направление каскада всегда с правого края.
+        itemsIndexed(day.lessons, key = { idx, _ -> idx }) { idx, lesson ->
+            CascadeEntranceItem(
+                index      = idx,
+                triggerKey = entranceTrigger,
+                enabled    = entranceEnabled,
+                edge       = CascadeEdge.RIGHT,
+            ) {
+                TeacherPairCard(
+                    lesson = lesson,
+                    status = liveStatuses.getOrNull(idx) ?: TeacherLessonStatus(),
+                )
+            }
         }
     }
 }

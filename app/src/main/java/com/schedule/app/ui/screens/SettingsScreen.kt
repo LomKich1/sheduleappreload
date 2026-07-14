@@ -15,25 +15,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Group
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,9 +61,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     var urlField      by remember(savedUrl) { mutableStateOf(savedUrl) }
     var showToast     by remember { mutableStateOf(false) }
-    var justRefreshed by remember { mutableStateOf(false) }
 
-    val urlLooksValid = "disk.yandex.ru" in urlField
     val canSave       = urlField.isNotBlank()
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -89,46 +80,14 @@ fun SettingsScreen(onBack: () -> Unit) {
             ) {
                 Spacer(Modifier.height(18.dp))
 
+                // Поле ссылки на Я.Диск и кнопка «Обновить список файлов» спрятаны
+                // из UI по правкам дизайнера — но AppPrefs.yandexUrl/saveYandexUrl и
+                // AppPrefs.requestFilesRefresh() остаются рабочими: список теперь
+                // обновляется через pull-to-refresh на главном экране (см. FilesScreen),
+                // а урл при необходимости всё ещё можно поменять программно/через
+                // saveDataSource(), просто без видимого поля ввода.
+
                 CascadeEntranceItem(index = 0, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
-                    Column {
-                        SettingsSectionLabel("Источник данных")
-                        SettingsCard {
-                            FieldLabel("Папка на Яндекс.Диске")
-                            SettingsInputRow(
-                                value = urlField,
-                                onValueChange = { urlField = it },
-                                leadingIcon = Icons.Outlined.Cloud,
-                            )
-                            Spacer(Modifier.height(7.dp))
-                            Text(
-                                text = if (urlLooksValid)
-                                    "Публичная ссылка на папку с файлами .doc"
-                                else
-                                    "Похоже, это не ссылка на Я.Диск — проверь адрес",
-                                color = if (urlLooksValid) c.textSub else c.accent,
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp,
-                            )
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(10.dp))
-
-                CascadeEntranceItem(index = 1, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
-                    RefreshFilesRow(
-                        justRefreshed = justRefreshed,
-                        onClick = {
-                            AppPrefs.requestFilesRefresh()
-                            justRefreshed = true
-                            scope.launch { delay(1400); justRefreshed = false }
-                        },
-                    )
-                }
-
-                Spacer(Modifier.height(22.dp))
-
-                CascadeEntranceItem(index = 2, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
                     Column {
                         // ── Группа: текущая + переключатель запоминания ────────────
                         SettingsSectionLabel("Группа")
@@ -165,7 +124,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
                 Spacer(Modifier.height(8.dp))
 
-                CascadeEntranceItem(index = 3, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
+                CascadeEntranceItem(index = 1, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
                     // Переключатель «Запоминать группу»
                     SettingsCard {
                         GroupRememberRow(
@@ -178,23 +137,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
                 Spacer(Modifier.height(22.dp))
 
-                CascadeEntranceItem(index = 4, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
-                    Column {
-                        SettingsSectionLabel("Анимации")
-                        SettingsCard {
-                            SimpleToggleRow(
-                                title    = "Анимация появления списка",
-                                subtitle = "Каскад с пружинным отскоком при переключении вкладок",
-                                checked  = entranceAnimOn,
-                                onToggle = { AppPrefs.setListEntranceAnim(!entranceAnimOn) },
-                            )
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(22.dp))
-
-                CascadeEntranceItem(index = 5, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
+                CascadeEntranceItem(index = 2, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
                     Column {
                         SettingsSectionLabel("Тема оформления")
                         ThemeRow(
@@ -206,7 +149,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
                 Spacer(Modifier.height(22.dp))
 
-                CascadeEntranceItem(index = 6, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
+                CascadeEntranceItem(index = 3, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
                     SaveButton(
                         enabled = canSave,
                         onClick = {
@@ -312,180 +255,80 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     )
 }
 
-@Composable
-private fun FieldLabel(text: String) {
-    val c = LocalAppColors.current
-    Text(
-        text = text,
-        color = c.textSub,
-        fontSize = 11.5.sp,
-        modifier = Modifier.padding(bottom = 7.dp),
-    )
-}
-
-@Composable
-private fun SettingsInputRow(
-    value: String,
-    onValueChange: (String) -> Unit,
-    leadingIcon: ImageVector,
-) {
-    val c = LocalAppColors.current
-    var focused by remember { mutableStateOf(false) }
-    val borderColor by animateColorAsState(
-        targetValue = if (focused) c.accent else c.border,
-        label = "inputBorder",
-    )
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(11.dp))
-            .background(c.surface2)
-            .border(1.dp, borderColor, RoundedCornerShape(11.dp))
-            .padding(horizontal = 11.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        Icon(
-            imageVector = leadingIcon,
-            contentDescription = null,
-            tint = c.textSub,
-            modifier = Modifier.size(16.dp),
-        )
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier
-                .weight(1f)
-                .onFocusChanged { focused = it.isFocused },
-            textStyle = TextStyle(color = c.text, fontSize = 13.5.sp),
-            singleLine = true,
-            cursorBrush = SolidColor(c.accent),
-        )
-    }
-}
-
-// «Обновить файлы» — пригодилось из старой версии: список может поменяться
-// внутри той же папки на Я.Диске без смены самого URL.
-@Composable
-private fun RefreshFilesRow(justRefreshed: Boolean, onClick: () -> Unit) {
-    val c = LocalAppColors.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(c.surface2)
-            .border(1.dp, c.border, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.Refresh,
-            contentDescription = null,
-            tint = c.accent,
-            modifier = Modifier.size(16.dp),
-        )
-        Text(
-            text = if (justRefreshed) "Список будет обновлён" else "Обновить список файлов",
-            color = c.accent,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
 // ─── Выбор темы ───────────────────────────────────────────────────────────────
 
 @Composable
 private fun ThemeRow(selected: ThemePreset, onSelect: (ThemePreset) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        ThemePreset.values().forEach { preset ->
-            ThemeChip(
-                preset     = preset,
-                isSelected = preset == selected,
-                onClick    = { onSelect(preset) },
-                modifier   = Modifier.weight(1f),
-            )
+    val c = LocalAppColors.current
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            ThemePreset.values().forEach { preset ->
+                ThemeSwatch(
+                    preset     = preset,
+                    isSelected = preset == selected,
+                    onClick    = { onSelect(preset) },
+                )
+            }
         }
+        Spacer(Modifier.height(8.dp))
+        // Раньше подпись темы дублировалась под каждой из трёх больших карточек —
+        // теперь одна строка с названием ВЫБРАННОЙ темы под рядом свотчей: и место
+        // экономит, и не нужно гадать, что означает круг без подписи.
+        Text(
+            text = selected.label,
+            color = c.textSub,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
 @Composable
-private fun ThemeChip(
+private fun ThemeSwatch(
     preset: ThemePreset,
     isSelected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val c: AppColors = LocalAppColors.current
     val swatch = colorsFor(preset)
 
-    val borderColor by animateColorAsState(
-        targetValue = if (isSelected) c.accent else c.border,
-        label = "chipBorder",
-    )
-    val bgColor by animateColorAsState(
-        targetValue = if (isSelected) c.accent.copy(alpha = 0.12f) else c.surface,
-        label = "chipBg",
+    val ringColor by animateColorAsState(
+        targetValue = if (isSelected) c.accent else Color.Transparent,
+        label = "swatchRing",
     )
 
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(bgColor)
-            .border(1.5.dp, borderColor, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 11.dp, horizontal = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(swatch.bg)
+            .border(2.dp, ringColor, CircleShape)
+            .clickable(onClick = onClick),
     ) {
+        // Бейдж снизу-справа: цвет акцента темы обычно, галочка — когда выбрана.
+        // Обводка цветом фона экрана даёт "вырез", отделяющий бейдж от круга.
         Box(
             modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(9.dp))
-                .background(swatch.bg)
-                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(9.dp)),
+                .align(Alignment.BottomEnd)
+                .offset(x = 2.dp, y = 2.dp)
+                .size(16.dp)
+                .clip(CircleShape)
+                .background(if (isSelected) c.accent else swatch.accent)
+                .border(1.5.dp, c.surface, CircleShape),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(4.dp)
-                    .size(11.dp)
-                    .clip(CircleShape)
-                    .background(swatch.accent),
-            )
             if (isSelected) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 5.dp, y = (-5).dp)
-                        .size(15.dp)
-                        .clip(CircleShape)
-                        .background(c.accent),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Check,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(9.dp),
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Outlined.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(10.dp),
+                )
             }
         }
-
-        Spacer(Modifier.height(7.dp))
-
-        Text(
-            text = preset.label,
-            color = if (isSelected) c.text else c.textSub,
-            fontSize = 11.5.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
     }
 }
 
@@ -509,40 +352,6 @@ private fun SaveButton(enabled: Boolean, onClick: () -> Unit) {
             fontSize = 14.5.sp,
             fontWeight = FontWeight.Bold,
         )
-    }
-}
-
-// ─── Простой переключатель настройки (заголовок + подпись + TogglePill) ──────
-
-@Composable
-private fun SimpleToggleRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onToggle: () -> Unit,
-) {
-    val c = LocalAppColors.current
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = c.text,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = subtitle,
-                color = c.textSub,
-                fontSize = 11.sp,
-                lineHeight = 15.sp,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-        TogglePill(checked = checked, onToggle = onToggle)
     }
 }
 

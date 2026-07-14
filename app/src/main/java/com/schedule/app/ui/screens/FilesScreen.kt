@@ -12,8 +12,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.WifiOff
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.PullToRefreshDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,12 +40,14 @@ import com.schedule.app.ui.components.ScheduleModeToggle
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
+import java.util.Calendar
 
 // ─── FilesScreen ──────────────────────────────────────────────────────────────
 // Шаг 2.2: реальная загрузка через FilesViewModel (Я.Диск → GitHub).
 // Три состояния: Loading (скелетоны), Success (список), Error (с кнопкой retry).
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun FilesScreen(
     vm: FilesViewModel = viewModel(),
     onFileClick: (ScheduleFile, ScheduleMode) -> Unit = { _, _ -> },
@@ -54,6 +60,17 @@ fun FilesScreen(
     // теперь передаётся наверх при клике на файл (см. onFileClick выше),
     // AppScaffold решает по нему, какой экран открыть.
     var scheduleMode by rememberSaveable { mutableStateOf(ScheduleMode.STUDENT) }
+
+    // Раньше обновление списка запускалось только кнопкой в настройках
+    // («Обновить список файлов») — убрали её оттуда в пользу жеста
+    // pull-to-refresh прямо тут, на главном экране (см. правки дизайнера).
+    // pullRefreshing — локальный флаг именно ДЛЯ ЖЕСТА: гаснет, как только
+    // vm.uiState перестаёт быть Loading, независимо от того, что вызвало
+    // загрузку (жест, смена URL в настройках, холодный старт).
+    var pullRefreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(uiState) {
+        if (uiState !is FilesUiState.Loading) pullRefreshing = false
+    }
 
     Column(
         modifier = Modifier
@@ -70,23 +87,81 @@ fun FilesScreen(
             modifier = Modifier.padding(horizontal = 18.dp),
         )
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
+
+        TodayDateLine()
+
+        Spacer(Modifier.height(14.dp))
 
         SectionLabel()
 
-        when (val state = uiState) {
-            is FilesUiState.Loading -> FilesLoading()
-            is FilesUiState.Success -> FilesList(
-                files     = state.files,
-                onClick   = { file -> onFileClick(file, scheduleMode) },
-                entranceTrigger = entranceTrigger,
-            )
-            is FilesUiState.Error   -> FilesError(
-                message  = state.message,
-                onRetry  = vm::refresh,
-            )
+        val pullState = rememberPullToRefreshState()
+
+        PullToRefreshBox(
+            isRefreshing = pullRefreshing,
+            onRefresh    = { pullRefreshing = true; vm.refresh() },
+            state        = pullState,
+            modifier     = Modifier.weight(1f),
+            indicator    = {
+                PullToRefreshDefaults.Indicator(
+                    modifier      = Modifier.align(Alignment.TopCenter),
+                    isRefreshing  = pullRefreshing,
+                    state         = pullState,
+                    containerColor = LocalAppColors.current.surface,
+                    color         = LocalAppColors.current.accent,
+                )
+            },
+        ) {
+            when (val state = uiState) {
+                is FilesUiState.Loading -> FilesLoading()
+                is FilesUiState.Success -> FilesList(
+                    files     = state.files,
+                    onClick   = { file -> onFileClick(file, scheduleMode) },
+                    entranceTrigger = entranceTrigger,
+                )
+                is FilesUiState.Error   -> FilesError(
+                    message  = state.message,
+                    onRetry  = vm::refresh,
+                )
+            }
         }
     }
+}
+
+// ─── Строка "сегодня" ─────────────────────────────────────────────────────────
+// Раньше тут была большая декоративная плашка "РАСПИСАНИЕ" — убрали (см. историю
+// правок), но пустое место осталось. Вместо чистой декорации — что-то реально
+// полезное: текущая дата, которая и заполняет место, и несёт смысл.
+
+@Composable
+private fun TodayDateLine() {
+    val c     = LocalAppColors.current
+    val today = remember { formatTodayRu() }
+    Text(
+        text = today,
+        color = c.textSub,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.padding(horizontal = 18.dp),
+    )
+}
+
+private val WEEKDAYS_RU = listOf(
+    "воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота",
+) // Calendar.DAY_OF_WEEK: 1 = воскресенье ... 7 = суббота
+
+private val MONTHS_RU_GENITIVE = listOf(
+    "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+)
+
+private fun formatTodayRu(): String {
+    val cal      = Calendar.getInstance()
+    val dayName  = WEEKDAYS_RU[cal.get(Calendar.DAY_OF_WEEK) - 1]
+        .replaceFirstChar { it.uppercaseChar() }
+    val day      = cal.get(Calendar.DAY_OF_MONTH)
+    val month    = MONTHS_RU_GENITIVE[cal.get(Calendar.MONTH)]
+    return "Сегодня — $dayName, $day $month"
 }
 
 // ─── Метка секции ─────────────────────────────────────────────────────────────
