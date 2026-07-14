@@ -112,6 +112,7 @@ private fun TeacherPickerLoading(entranceTrigger: Any) {
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
                             .background(c.surface.copy(alpha = a))
+                            .border(1.dp, c.border, RoundedCornerShape(16.dp))
                             .padding(horizontal = 14.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
