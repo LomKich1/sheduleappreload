@@ -1,7 +1,7 @@
 package com.schedule.app.ui.theme
 
 import androidx.compose.foundation.LocalIndication
-import androidx.compose.material3.ripple.ripple
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
