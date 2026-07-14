@@ -672,6 +672,12 @@ private fun PairCard(lesson: LessonEntry, status: LessonStatus) {
                 // рисовалась как настоящая пара (тот же layout, просто alpha+курсив)
                 // и занимала ту же высоту, хотя показывать там, по сути, нечего.
                 // Теперь — один ряд: номер пары, «Окно», и время, если оно известно.
+                //
+                // Важно: именно if/else, а не if{...; return@Row} — ранний выход
+                // из composable-лямбды внутри LazyColumn+AnimatedContent ловил
+                // ArrayIndexOutOfBoundsException в ComposerImpl.endGroup (рассинхрон
+                // slot table). Симметричные ветки одного if/else компилятор Compose
+                // обрабатывает штатно.
                 Row(
                     modifier = Modifier
                         .weight(1f)
@@ -702,87 +708,86 @@ private fun PairCard(lesson: LessonEntry, status: LessonStatus) {
                         )
                     }
                 }
-                return@Row
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Text(
-                        text = lesson.num,
-                        color = c.textSub,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 0.05.sp,
-                        modifier = Modifier.width(24.dp).padding(top = 2.dp),
-                    )
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        if (status.isNow || status.isNext) {
-                            val badgeColor = if (status.isNow) c.todayAccent else Color(0xFF50C878)
-                            val badgeText  = if (status.isNow) "▶ СЕЙЧАС" else "СЛЕДУЮЩАЯ"
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(badgeColor)
-                                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                            ) {
-                                Text(badgeText, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Spacer(Modifier.height(5.dp))
-                        }
-
-                        Text(
-                            text = lesson.subject,
-                            color = if (lesson.isWindow) c.textSub else c.text,
-                            fontSize = 14.sp,
-                            fontWeight = if (lesson.isWindow) FontWeight.Normal else FontWeight.Bold,
-                            fontStyle = if (lesson.isWindow) FontStyle.Italic else FontStyle.Normal,
-                            lineHeight = 19.sp,
-                        )
-                    }
-
-                    if (status.remainText != null) {
-                        Text(
-                            text = status.remainText,
-                            color = c.textSub,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 3.dp),
-                        )
-                    }
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 48.dp, end = 14.dp, bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    if (lesson.timeStart.isNotEmpty()) {
-                        TimeRow(time = "${lesson.timeStart}–${lesson.timeEnd}", tag = "ПАРА", muted = false)
-                    }
-                    if (lesson.breakStart != null && lesson.breakEnd != null) {
-                        TimeRow(time = "${lesson.breakStart}–${lesson.breakEnd}", tag = "ПЕРЕМ", muted = true)
-                    }
-                }
-
-                val detailParts = listOfNotNull(lesson.teacher, lesson.room)
-                if (detailParts.isNotEmpty()) {
-                    Text(
-                        text = detailParts.joinToString(" · "),
-                        color = c.textSub,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp,
+            } else {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 48.dp, end = 14.dp, bottom = 12.dp),
-                    )
-                } else {
-                    Spacer(Modifier.height(4.dp))
+                            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            text = lesson.num,
+                            color = c.textSub,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.05.sp,
+                            modifier = Modifier.width(24.dp).padding(top = 2.dp),
+                        )
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            if (status.isNow || status.isNext) {
+                                val badgeColor = if (status.isNow) c.todayAccent else Color(0xFF50C878)
+                                val badgeText  = if (status.isNow) "▶ СЕЙЧАС" else "СЛЕДУЮЩАЯ"
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(badgeColor)
+                                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                                ) {
+                                    Text(badgeText, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(Modifier.height(5.dp))
+                            }
+
+                            Text(
+                                text = lesson.subject,
+                                color = c.text,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontStyle = FontStyle.Normal,
+                                lineHeight = 19.sp,
+                            )
+                        }
+
+                        if (status.remainText != null) {
+                            Text(
+                                text = status.remainText,
+                                color = c.textSub,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(top = 3.dp),
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 48.dp, end = 14.dp, bottom = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        if (lesson.timeStart.isNotEmpty()) {
+                            TimeRow(time = "${lesson.timeStart}–${lesson.timeEnd}", tag = "ПАРА", muted = false)
+                        }
+                        if (lesson.breakStart != null && lesson.breakEnd != null) {
+                            TimeRow(time = "${lesson.breakStart}–${lesson.breakEnd}", tag = "ПЕРЕМ", muted = true)
+                        }
+                    }
+
+                    val detailParts = listOfNotNull(lesson.teacher, lesson.room)
+                    if (detailParts.isNotEmpty()) {
+                        Text(
+                            text = detailParts.joinToString(" · "),
+                            color = c.textSub,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 48.dp, end = 14.dp, bottom = 12.dp),
+                        )
+                    } else {
+                        Spacer(Modifier.height(4.dp))
+                    }
                 }
             }
         }
