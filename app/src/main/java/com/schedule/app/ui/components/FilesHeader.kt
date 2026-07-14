@@ -39,7 +39,10 @@ fun FilesHeader(
         IconButton(
             onClick = onSettingsClick,
             modifier = Modifier
-                .size(40.dp)
+                // 36dp — единый размер круглых кнопок по всему приложению
+                // (см. кнопки "назад"/"карандаш" в ScheduleScreen, TeacherScheduleScreen,
+                // SettingsScreen); тут раньше было 40dp — выбивалось из общего ряда.
+                .size(36.dp)
                 .clip(CircleShape)
                 .background(c.surface2),
         ) {
@@ -47,7 +50,7 @@ fun FilesHeader(
                 imageVector = Icons.Outlined.Settings,
                 contentDescription = "Настройки",
                 tint = c.accent,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(18.dp),
             )
         }
     }
