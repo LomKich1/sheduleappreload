@@ -189,10 +189,18 @@ private fun FilesList(
 ) {
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
+    // Правка дизайнера: короткий список (1-3 файла) не должен прилипать к верху
+    // с пустым "хвостом" внизу — центрируем группу карточек по вертикали,
+    // сохраняя интервал между ними. Длинный список работает как раньше.
+    val isShort = files.size <= 3
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
+        verticalArrangement = if (isShort)
+            Arrangement.spacedBy(9.dp, Alignment.CenterVertically)
+        else
+            Arrangement.spacedBy(9.dp),
     ) {
         itemsIndexed(files, key = { _, file -> file.name }) { index, file ->
             CascadeEntranceItem(
@@ -245,7 +253,7 @@ private fun SkeletonCard(alpha: Float, delay: Float) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(c.surface.copy(alpha = a))
-            .padding(13.dp),
+            .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

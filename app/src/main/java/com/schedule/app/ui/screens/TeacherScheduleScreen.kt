@@ -389,13 +389,20 @@ private fun TeacherPickerScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         TeacherPickerHint(count = teachers.size)
 
+        // Как и в GroupPickerScreen/FilesList: короткий список (1-3 преподавателя)
+        // центрируем по вертикали вместо прилипания к верху.
+        val isShort = teachers.size <= 3
+
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 14.dp, end = 14.dp,
                 bottom = 80.dp, top = 2.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = if (isShort)
+                Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
+            else
+                Arrangement.spacedBy(8.dp),
         ) {
             itemsIndexed(teachers, key = { _, t -> "t_$t" }) { idx, teacher ->
                 CascadeEntranceItem(
