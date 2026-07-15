@@ -432,6 +432,7 @@ private fun GroupPickerScreen(
         // вместо прилипания к верху с пустым "хвостом".
         val isShort = orderedGroups.size <= 3
 
+<<<<<<< HEAD
         val listState = rememberLazyListState()
         // Раньше при прокрутке элементы, ушедшие за пределы экрана и
         // вернувшиеся обратно, "случайно" заново проигрывали анимацию входа
@@ -440,6 +441,8 @@ private fun GroupPickerScreen(
         // см. комментарий у ScrollCascadeState.
         val scrollCascade = rememberScrollCascadeState(listState, entranceTrigger)
 
+=======
+>>>>>>> 2d7b6915e195b044718816355d53e5f816707802
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
