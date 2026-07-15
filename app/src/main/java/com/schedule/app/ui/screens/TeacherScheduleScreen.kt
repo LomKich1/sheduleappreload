@@ -402,9 +402,12 @@ private fun TeacherPickerScreen(
         // центрируем по вертикали вместо прилипания к верху.
         val isShort = teachers.size <= 3
 
+<<<<<<< HEAD
         val listState = rememberLazyListState()
         val scrollCascade = rememberScrollCascadeState(listState, entranceTrigger)
 
+=======
+>>>>>>> 2d7b6915e195b044718816355d53e5f816707802
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),

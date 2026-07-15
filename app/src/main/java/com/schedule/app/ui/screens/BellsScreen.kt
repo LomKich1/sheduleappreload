@@ -421,7 +421,7 @@ private fun BellCard(
         Row(
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = 14.dp, vertical = 13.dp),
+                .padding(horizontal = 14.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(11.dp),
         ) {
