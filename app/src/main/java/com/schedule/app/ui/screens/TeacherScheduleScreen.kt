@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,6 +45,7 @@ import com.schedule.app.data.model.TeacherLessonEntry
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
+import com.schedule.app.ui.components.rememberScrollCascadeState
 import com.schedule.app.ui.theme.LocalAppColors
 
 // Та же длительность, что и SUBSCREEN_ANIM_MS в ScheduleScreen.kt — переходы
@@ -112,6 +114,7 @@ private fun TeacherPickerLoading(entranceTrigger: Any) {
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
                             .background(c.surface.copy(alpha = a))
+                            .border(1.dp, c.border, RoundedCornerShape(16.dp))
                             .padding(horizontal = 14.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -218,7 +221,13 @@ fun TeacherScheduleScreen(
                     from is TeacherUiState.Loading && from.stage == LoadingStage.FILE &&
                     to is TeacherUiState.TeacherPicker
 
-                if (isSkeletonToPicker) {
+                // Idle → Loading — самый первый внутренний переход сразу после
+                // того, как NavHost уже задвинул весь экран слайдом (см. тот же
+                // комментарий в ScheduleScreen.kt) — без этого байпаса анимация
+                // "двоится" в первые ~280мс после открытия файла.
+                val isInitialLoad = from is TeacherUiState.Idle
+
+                if (isSkeletonToPicker || isInitialLoad) {
                     EnterTransition.None togetherWith ExitTransition.None
                 } else if (goingBack) {
                     (slideInHorizontally(
@@ -389,20 +398,32 @@ private fun TeacherPickerScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         TeacherPickerHint(count = teachers.size)
 
+        // Как и в GroupPickerScreen/FilesList: короткий список (1-3 преподавателя)
+        // центрируем по вертикали вместо прилипания к верху.
+        val isShort = teachers.size <= 3
+
+        val listState = rememberLazyListState()
+        val scrollCascade = rememberScrollCascadeState(listState, entranceTrigger)
+
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 14.dp, end = 14.dp,
                 bottom = 80.dp, top = 2.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = if (isShort)
+                Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
+            else
+                Arrangement.spacedBy(8.dp),
         ) {
             itemsIndexed(teachers, key = { _, t -> "t_$t" }) { idx, teacher ->
+                val mount = scrollCascade.resolve("t_$teacher", idx, entranceEdge)
                 CascadeEntranceItem(
-                    index      = idx,
+                    index      = mount.index,
                     triggerKey = entranceTrigger,
                     enabled    = entranceEnabled,
-                    edge       = entranceEdge,
+                    edge       = mount.edge,
                 ) {
                     TeacherCard(name = teacher) { onSelect(teacher) }
                 }

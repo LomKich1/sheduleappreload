@@ -61,6 +61,21 @@ fun FilesScreen(
     // AppScaffold решает по нему, какой экран открыть.
     var scheduleMode by rememberSaveable { mutableStateOf(ScheduleMode.STUDENT) }
 
+    // Анимация списка файлов при переключении тумблера — отдельный от
+    // entranceTrigger триггер (тот управляется активацией вкладки в
+    // AppScaffold, этот — только тумблером), с направлением, завязанным
+    // на то, куда едет пилюля: "Ученики → Преподаватели" (вправо) — карточки
+    // въезжают СПРАВА, и наоборот. Тот же CascadeEdge.LEFT/RIGHT, что и у
+    // самих вкладок Files/Bells — тут это не "контент загрузился" (BOTTOM),
+    // а именно "переключились на другой вид", раз данные не перезапрашиваются.
+    var modeToggleTrigger by remember { mutableStateOf(0) }
+    var modeToggleEdge by remember { mutableStateOf(CascadeEdge.LEFT) }
+
+    // При реактивации самой вкладки Files (не тумблера) каскад должен
+    // остаться прежним — LEFT, как и был — а не "утекать" в направление,
+    // оставшееся от последнего переключения тумблера.
+    LaunchedEffect(entranceTrigger) { modeToggleEdge = CascadeEdge.LEFT }
+
     // Раньше обновление списка запускалось только кнопкой в настройках
     // («Обновить список файлов») — убрали её оттуда в пользу жеста
     // pull-to-refresh прямо тут, на главном экране (см. правки дизайнера).
@@ -83,7 +98,13 @@ fun FilesScreen(
 
         ScheduleModeToggle(
             selected = scheduleMode,
-            onSelect = { scheduleMode = it },
+            onSelect = { newMode ->
+                if (newMode != scheduleMode) {
+                    modeToggleEdge = if (newMode == ScheduleMode.TEACHER) CascadeEdge.RIGHT else CascadeEdge.LEFT
+                    modeToggleTrigger++
+                }
+                scheduleMode = newMode
+            },
             modifier = Modifier.padding(horizontal = 18.dp),
         )
 
@@ -117,7 +138,8 @@ fun FilesScreen(
                 is FilesUiState.Success -> FilesList(
                     files     = state.files,
                     onClick   = { file -> onFileClick(file, scheduleMode) },
-                    entranceTrigger = entranceTrigger,
+                    entranceTrigger = entranceTrigger to modeToggleTrigger,
+                    entranceEdge = modeToggleEdge,
                 )
                 is FilesUiState.Error   -> FilesError(
                     message  = state.message,
@@ -185,21 +207,30 @@ private fun SectionLabel() {
 private fun FilesList(
     files: List<ScheduleFile>,
     onClick: (ScheduleFile) -> Unit,
-    entranceTrigger: Int,
+    entranceTrigger: Any,
+    entranceEdge: CascadeEdge,
 ) {
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
+
+    // Правка дизайнера: короткий список (1-3 файла) не должен прилипать к верху
+    // с пустым "хвостом" внизу — центрируем группу карточек по вертикали,
+    // сохраняя интервал между ними. Длинный список работает как раньше.
+    val isShort = files.size <= 3
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
+        verticalArrangement = if (isShort)
+            Arrangement.spacedBy(9.dp, Alignment.CenterVertically)
+        else
+            Arrangement.spacedBy(9.dp),
     ) {
         itemsIndexed(files, key = { _, file -> file.name }) { index, file ->
             CascadeEntranceItem(
                 index      = index,
                 triggerKey = entranceTrigger,
                 enabled    = entranceEnabled,
-                edge       = CascadeEdge.LEFT,
+                edge       = entranceEdge,
             ) {
                 FileCard(file = file, onClick = { onClick(file) })
             }
@@ -245,7 +276,7 @@ private fun SkeletonCard(alpha: Float, delay: Float) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(c.surface.copy(alpha = a))
-            .padding(13.dp),
+            .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
