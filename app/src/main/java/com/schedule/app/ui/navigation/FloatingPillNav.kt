@@ -1,9 +1,14 @@
 package com.schedule.app.ui.navigation
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,9 +24,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -57,20 +61,21 @@ fun FloatingPillNav(
 
     val selectedIndex = items.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
 
-    // Конечные (статические) позиции и размеры элементов
+    // Измеренные СТАТИЧЕСКИЕ позиции (не меняются во время анимации)
     val itemXsPx = remember { mutableStateListOf(0f, 0f) }
     val itemWsPx = remember { mutableStateListOf(0f, 0f) }
 
     val extraPaddingDp = 12.dp 
     val extraPaddingPx = with(density) { extraPaddingDp.toPx() }
 
-    // Пружина для ПЕРЕМЕЩЕНИЯ (X) индикатора — оставляем прыгучей
+    // Анимация скольжения индикатора (X) — с приятным отскоком
     val positionSpringSpec = spring<Float>(
         stiffness    = Spring.StiffnessMediumLow,
         dampingRatio = Spring.DampingRatioMediumBouncy,
     )
 
-    // Пружина для ШИРИНЫ (W) индикатора — делаем мягкой, без лишнего отскока
+    // Анимация изменения ширины (W) — мягкая, без пружинного "перелета", 
+    // чтобы пилюля плавно догоняла границы расширяющегося текста
     val widthSpringSpec = spring<Float>(
         stiffness    = Spring.StiffnessMediumLow,
         dampingRatio = Spring.DampingRatioNoBouncy,
@@ -94,14 +99,14 @@ fun FloatingPillNav(
 
     Box(
         modifier = modifier
-            .height(IntrinsicSize.Min)
+            .height(IntrinsicSize.Min) // Высота навбара определяется его контентом
             .clip(CircleShape)
             .background(c.pillBg)
             .border(1.dp, c.border, CircleShape)
             .padding(5.dp),
     ) {
 
-        // Скользящий индикатор под элементами
+        // ── Скользящий индикатор (слой ПОД элементами) ───────────────────────
         if (hasPositions) {
             Box(
                 modifier = Modifier
@@ -113,6 +118,7 @@ fun FloatingPillNav(
             )
         }
 
+        // ── Навигационные элементы ───────────────────────────────────────────
         Row(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment     = Alignment.CenterVertically,
@@ -126,68 +132,80 @@ fun FloatingPillNav(
                     label         = "pillContent$idx",
                 )
 
-                // Анимируем ширину (вес/коэффициент раскрытия) текста от 0f до 1f
-                val textExpansion by animateFloatAsState(
-                    targetValue = if (isActive) 1f else 0f,
-                    animationSpec = spring(
-                        stiffness = Spring.StiffnessMediumLow,
-                        dampingRatio = Spring.DampingRatioNoBouncy
-                    ),
-                    label = "textExpansion$idx"
-                )
-
-                Row(
+                Box(
+                    contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .clip(RoundedCornerShape(24.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication        = null,
                         ) { onNavigate(item.route) }
-                        .padding(horizontal = 12.dp, vertical = 9.dp)
-                        .onGloballyPositioned { coords ->
-                            // Записываем координаты ТОЛЬКО когда анимация завершена (textExpansion равен 1f или 0f),
-                            // либо при самом первом кадре инициализации. Это полностью убирает "виляние" во время анимации!
-                            if (textExpansion == 1f || textExpansion == 0f || itemWsPx[idx] == 0f) {
+                ) {
+                    // ТРЮК: Статическая "невидимая" подложка для измерения размеров.
+                    // Она всегда имеет РЕАЛЬНЫЙ конечный размер кнопки (вкладка с текстом, если активна,
+                    // или просто иконка, если неактивна) БЕЗ динамической анимации во время переключения.
+                    // Измеряя ЕЁ, мы получаем чистые финальные точки для пилюли без шума анимации!
+                    Row(
+                        modifier = Modifier
+                            .alpha(0f) // Скрываем от глаз пользователя
+                            .padding(horizontal = 12.dp, vertical = 9.dp)
+                            .onGloballyPositioned { coords ->
                                 itemXsPx[idx] = coords.positionInParent().x
                                 itemWsPx[idx] = coords.size.width.toFloat()
-                            }
-                        },
-                    verticalAlignment     = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(
-                        imageVector        = item.icon,
-                        contentDescription = item.label,
-                        tint               = contentColor,
-                        modifier           = Modifier.size(18.dp),
-                    )
-
-                    // Вместо AnimatedVisibility используем кастомный контейнер с плавной шириной
-                    // Он не дергается в конце анимации и идеально рассчитывает размеры
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            // Плавно меняем ширину от 0 до максимальной ширины текста
-                            .width(IntrinsicSize.Min)
-                            .graphicsLayer {
-                                // Плавный скейл и прозрачность для красоты
-                                alpha = textExpansion
-                                scaleX = textExpansion
-                            }
-                            .drawWithContent {
-                                // Рисуем текст только в пределах его текущего раскрытия, чтобы он не "вылезал" наружу
-                                if (textExpansion > 0f) {
-                                    drawContent()
-                                }
-                            }
+                            },
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Text(
-                            text       = item.label,
-                            color      = contentColor,
-                            fontSize   = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            maxLines   = 1,
+                        Icon(
+                            imageVector = item.icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
                         )
+                        if (isActive) {
+                            Text(
+                                text       = item.label,
+                                fontSize   = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+
+                    // Реальный ВИДИМЫЙ контент с плавной анимацией текста
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector        = item.icon,
+                            contentDescription = item.label,
+                            tint               = contentColor,
+                            modifier           = Modifier.size(18.dp),
+                        )
+                        AnimatedVisibility(
+                            visible = isActive,
+                            enter = expandHorizontally(
+                                animationSpec = spring(
+                                    stiffness = Spring.StiffnessMediumLow, 
+                                    dampingRatio = Spring.DampingRatioNoBouncy
+                                ),
+                                expandFrom = Alignment.Start,
+                            ) + fadeIn(),
+                            exit = shrinkHorizontally(
+                                animationSpec = spring(
+                                    stiffness = Spring.StiffnessMediumLow, 
+                                    dampingRatio = Spring.DampingRatioNoBouncy
+                                ),
+                                shrinkTowards = Alignment.Start,
+                            ) + fadeOut(),
+                        ) {
+                            Text(
+                                text       = item.label,
+                                color      = contentColor,
+                                fontSize   = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
                     }
                 }
             }
