@@ -26,10 +26,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,19 +43,9 @@ import kotlin.math.roundToInt
 //  через animateFloatAsState + spring.  Сами элементы не имеют своего фона —
 //  только иконка и текст поверх общего индикатора.
 //
-//  ВАЖНО про источник размеров индикатора:
-//  Раньше ширина/позиция активного пункта бралась из onGloballyPositioned
-//  живого Row — а этот Row сам анимируется (подпись плавно
-//  сжимается/расширяется через AnimatedVisibility). В результате пружина
-//  пилюли каждый кадр гналась за постоянно меняющейся целью, и в момент,
-//  когда анимация текста наконец останавливалась, пилюля ещё не успевала
-//  «догнать» — отсюда рывок в конце.
-//
-//  Исправление: ширины пунктов больше не измеряются из живого layout'а,
-//  а считаются один раз заранее — через TextMeasurer (размер текста) +
-//  известные размеры иконки/паддингов/отступов. Это и есть «конечное»
-//  значение, к которому пилюля должна стремиться с самого начала анимации,
-//  а не то, что дёргается по ходу дела.
+//  Позиции измеряются через onGloballyPositioned (срабатывает после layout),
+//  поэтому индикатор показывается начиная со второго кадра — мерцания нет,
+//  т.к. первый кадр элементы рисуют с правильными цветами (animateColorAsState).
 
 private data class PillNavItem(
     val route: String,
@@ -81,45 +71,10 @@ fun FloatingPillNav(
 
     val selectedIndex = items.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
 
-    // ── Стабильные (конечные) ширины пунктов ──────────────────────────────────
-    // Считаем один раз через измерение текста, а не через onGloballyPositioned
-    // живого Row — см. комментарий вверху файла про причину рывка.
-    val textMeasurer = rememberTextMeasurer()
-
-    val iconSizePx           = with(density) { 18.dp.toPx() }
-    val iconTextSpacingPx    = with(density) { 6.dp.toPx() }   // Arrangement.spacedBy(6.dp) внутри пункта
-    val itemHorizontalPadPx  = with(density) { 12.dp.toPx() * 2 } // horizontal-паддинг пункта, с двух сторон
-    val rowSpacingPx         = with(density) { 4.dp.toPx() }   // Arrangement.spacedBy(4.dp) между пунктами
-
-    // Ширина пункта в РАЗВЁРНУТОМ состоянии (иконка + отступ + текст + паддинги).
-    // Пересчитывается только если поменялся список пунктов (шрифт/тексты фиксированы).
-    val itemExpandedWidthsPx = remember(items) {
-        items.map { item ->
-            val textWidthPx = textMeasurer.measure(
-                text  = item.label,
-                style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium),
-            ).size.width.toFloat()
-            iconSizePx + iconTextSpacingPx + textWidthPx + itemHorizontalPadPx
-        }
-    }
-    // Ширина пункта в СВЁРНУТОМ состоянии (только иконка + паддинги, текста нет вообще —
-    // AnimatedVisibility после exit полностью убирает Text из композиции).
-    val itemCollapsedWidthPx = iconSizePx + itemHorizontalPadPx
-
-    fun stableWidthOf(idx: Int) =
-        if (idx == selectedIndex) itemExpandedWidthsPx[idx] else itemCollapsedWidthPx
-
-    // Позиции считаем суммированием стабильных ширин — тоже без обращения
-    // к живому layout'у, поэтому не зависят от текущего кадра анимации.
-    val itemXsPx = remember(selectedIndex, itemExpandedWidthsPx) {
-        val xs = FloatArray(items.size)
-        var acc = 0f
-        for (i in items.indices) {
-            xs[i] = acc
-            acc += stableWidthOf(i) + rowSpacingPx
-        }
-        xs.toList()
-    }
+    // ── Измеренные позиции элементов (обновляются после каждого layout) ───────
+    // Хранятся в пикселях — тот же масштаб, что у offset { IntOffset(...) }.
+    val itemXsPx = remember { mutableStateListOf(0f, 0f) }
+    val itemWsPx = remember { mutableStateListOf(0f, 0f) }
 
     // ─── Настройка внутреннего отступа для выделения ────────────────────────
     // Сколько «воздуха» добавить слева и справа от контента внутри синей пилюли
@@ -145,16 +100,15 @@ fun FloatingPillNav(
     )
     
     // Увеличиваем ширину на x2 отступа (чтобы компенсировать левый и правый «воздух»)
-    val targetWPx = stableWidthOf(selectedIndex) + (extraPaddingPx * 2)
+    val targetWPx = itemWsPx.getOrElse(selectedIndex) { 0f } + (extraPaddingPx * 2)
     val indicatorWPx by animateFloatAsState(
         targetValue   = targetWPx,
         animationSpec = springSpec,
         label         = "pillW",
     )
 
-    // Размеры теперь известны сразу (посчитаны, а не измерены после layout'а),
-    // поэтому индикатор можно показывать с первого кадра — задержка не нужна.
-    val hasPositions = true
+    // Показываем индикатор только когда уже есть реальные размеры (≥ 2-й кадр)
+    val hasPositions = itemWsPx.any { it > 0f }
 
     Box(
         modifier = modifier
@@ -201,7 +155,13 @@ fun FloatingPillNav(
                         .padding(
                             horizontal = 12.dp,
                             vertical   = 9.dp,
-                        ),
+                        )
+                        .onGloballyPositioned { coords ->
+                            // positionInParent() — координаты в родительском Row.
+                            // Row напрямую в Box без смещений → == координаты в Box.
+                            itemXsPx[idx] = coords.positionInParent().x
+                            itemWsPx[idx] = coords.size.width.toFloat()
+                        },
                     verticalAlignment     = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
