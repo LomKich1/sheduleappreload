@@ -1,14 +1,9 @@
 package com.schedule.app.ui.navigation
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +20,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -35,17 +32,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.schedule.app.ui.theme.LocalAppColors
 import kotlin.math.roundToInt
-
-// ─── Плавающий пузырёк навигации ─────────────────────────────────────────────
-//
-//  Выделение СКОЛЬЗИТ между вкладками (iOS-стиль):
-//  один Box-индикатор под элементами плавно перемещается к активному пункту
-//  через animateFloatAsState + spring.  Сами элементы не имеют своего фона —
-//  только иконка и текст поверх общего индикатора.
-//
-//  Позиции измеряются через onGloballyPositioned (срабатывает после layout),
-//  поэтому индикатор показывается начиная со второго кадра — мерцания нет,
-//  т.к. первый кадр элементы рисуют с правильными цветами (animateColorAsState).
 
 private data class PillNavItem(
     val route: String,
@@ -71,55 +57,51 @@ fun FloatingPillNav(
 
     val selectedIndex = items.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
 
-    // ── Измеренные позиции элементов (обновляются после каждого layout) ───────
-    // Хранятся в пикселях — тот же масштаб, что у offset { IntOffset(...) }.
+    // Конечные (статические) позиции и размеры элементов
     val itemXsPx = remember { mutableStateListOf(0f, 0f) }
     val itemWsPx = remember { mutableStateListOf(0f, 0f) }
 
-    // ─── Настройка внутреннего отступа для выделения ────────────────────────
-    // Сколько «воздуха» добавить слева и справа от контента внутри синей пилюли
     val extraPaddingDp = 12.dp 
     val extraPaddingPx = with(density) { extraPaddingDp.toPx() }
 
-    // ── Анимация индикатора — spring с лёгким overshoot для «живости» ─────────
-    // Это тот самый отскок при переключении вкладок — его специально просили
-    // оставить как было. Без отскока сделана только анимация подписи ниже
-    // (AnimatedVisibility) — раньше она резко исчезала/появлялась через
-    // обычный if, теперь плавно сжимается, но уже без пружинного "перелёта".
-    val springSpec = spring<Float>(
+    // Пружина для ПЕРЕМЕЩЕНИЯ (X) индикатора — оставляем прыгучей
+    val positionSpringSpec = spring<Float>(
         stiffness    = Spring.StiffnessMediumLow,
         dampingRatio = Spring.DampingRatioMediumBouncy,
     )
+
+    // Пружина для ШИРИНЫ (W) индикатора — делаем мягкой, без лишнего отскока
+    val widthSpringSpec = spring<Float>(
+        stiffness    = Spring.StiffnessMediumLow,
+        dampingRatio = Spring.DampingRatioNoBouncy,
+    )
     
-    // Сдвигаем позицию влево на величину отступа, чтобы синий фон начинался раньше контента
     val targetXPx = (itemXsPx.getOrElse(selectedIndex) { 0f } - extraPaddingPx).coerceAtLeast(0f)
     val indicatorXPx by animateFloatAsState(
         targetValue   = targetXPx,
-        animationSpec = springSpec,
+        animationSpec = positionSpringSpec,
         label         = "pillX",
     )
     
-    // Увеличиваем ширину на x2 отступа (чтобы компенсировать левый и правый «воздух»)
     val targetWPx = itemWsPx.getOrElse(selectedIndex) { 0f } + (extraPaddingPx * 2)
     val indicatorWPx by animateFloatAsState(
         targetValue   = targetWPx,
-        animationSpec = springSpec,
+        animationSpec = widthSpringSpec,
         label         = "pillW",
     )
 
-    // Показываем индикатор только когда уже есть реальные размеры (≥ 2-й кадр)
     val hasPositions = itemWsPx.any { it > 0f }
 
     Box(
         modifier = modifier
-            .height(IntrinsicSize.Min)          // высота = высота Row-контента
+            .height(IntrinsicSize.Min)
             .clip(CircleShape)
             .background(c.pillBg)
             .border(1.dp, c.border, CircleShape)
             .padding(5.dp),
     ) {
 
-        // ── Скользящий индикатор (слой ПОД элементами) ───────────────────────
+        // Скользящий индикатор под элементами
         if (hasPositions) {
             Box(
                 modifier = Modifier
@@ -131,7 +113,6 @@ fun FloatingPillNav(
             )
         }
 
-        // ── Навигационные элементы (без своего фона) ─────────────────────────
         Row(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment     = Alignment.CenterVertically,
@@ -145,22 +126,31 @@ fun FloatingPillNav(
                     label         = "pillContent$idx",
                 )
 
+                // Анимируем ширину (вес/коэффициент раскрытия) текста от 0f до 1f
+                val textExpansion by animateFloatAsState(
+                    targetValue = if (isActive) 1f else 0f,
+                    animationSpec = spring(
+                        stiffness = Spring.StiffnessMediumLow,
+                        dampingRatio = Spring.DampingRatioNoBouncy
+                    ),
+                    label = "textExpansion$idx"
+                )
+
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(24.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
-                            indication        = null, // у индикатора своя анимация — серая вспышка тут лишняя
+                            indication        = null,
                         ) { onNavigate(item.route) }
-                        .padding(
-                            horizontal = 12.dp,
-                            vertical   = 9.dp,
-                        )
+                        .padding(horizontal = 12.dp, vertical = 9.dp)
                         .onGloballyPositioned { coords ->
-                            // positionInParent() — координаты в родительском Row.
-                            // Row напрямую в Box без смещений → == координаты в Box.
-                            itemXsPx[idx] = coords.positionInParent().x
-                            itemWsPx[idx] = coords.size.width.toFloat()
+                            // Записываем координаты ТОЛЬКО когда анимация завершена (textExpansion равен 1f или 0f),
+                            // либо при самом первом кадре инициализации. Это полностью убирает "виляние" во время анимации!
+                            if (textExpansion == 1f || textExpansion == 0f || itemWsPx[idx] == 0f) {
+                                itemXsPx[idx] = coords.positionInParent().x
+                                itemWsPx[idx] = coords.size.width.toFloat()
+                            }
                         },
                     verticalAlignment     = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -171,22 +161,32 @@ fun FloatingPillNav(
                         tint               = contentColor,
                         modifier           = Modifier.size(18.dp),
                     )
-                    AnimatedVisibility(
-                        visible = isActive,
-                        enter = expandHorizontally(
-                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy),
-                            expandFrom = Alignment.Start,
-                        ) + fadeIn(),
-                        exit = shrinkHorizontally(
-                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy),
-                            shrinkTowards = Alignment.Start,
-                        ) + fadeOut(),
+
+                    // Вместо AnimatedVisibility используем кастомный контейнер с плавной шириной
+                    // Он не дергается в конце анимации и идеально рассчитывает размеры
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            // Плавно меняем ширину от 0 до максимальной ширины текста
+                            .width(IntrinsicSize.Min)
+                            .graphicsLayer {
+                                // Плавный скейл и прозрачность для красоты
+                                alpha = textExpansion
+                                scaleX = textExpansion
+                            }
+                            .drawWithContent {
+                                // Рисуем текст только в пределах его текущего раскрытия, чтобы он не "вылезал" наружу
+                                if (textExpansion > 0f) {
+                                    drawContent()
+                                }
+                            }
                     ) {
                         Text(
                             text       = item.label,
                             color      = contentColor,
                             fontSize   = 12.sp,
                             fontWeight = FontWeight.Medium,
+                            maxLines   = 1,
                         )
                     }
                 }
