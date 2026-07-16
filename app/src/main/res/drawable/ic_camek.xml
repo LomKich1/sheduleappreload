@@ -1,34 +1,160 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="1080"
-    android:viewportHeight="1080">
-  <path
-      android:pathData="M 430,296 L 661,297 L 692,305 L 720,320 L 758,360 L 772,391 L 778,428 L 776,658 L 756,708 L 735,733 L 712,750 L 685,762 L 652,768 L 413,767 L 365,749 L 347,736 L 320,705 L 307,678 L 300,641 L 299,439 L 305,392 L 325,352 L 350,326 L 381,307 L 430,296 Z"
-      android:strokeLineCap="round"
-      android:strokeLineJoin="round"
-      android:strokeWidth="34"
-      android:fillColor="#00000000"
-      android:strokeColor="#FFFFFF"/>
-  <path
-      android:pathData="M 513,374 L 451,375 L 433,378 L 413,387 L 398,400 L 385,420 L 378,463 L 378,601 L 383,638 L 390,654 L 408,674 L 431,686 L 468,691 L 512,691"
-      android:strokeLineCap="round"
-      android:strokeLineJoin="round"
-      android:strokeWidth="34"
-      android:fillColor="#00000000"
-      android:strokeColor="#FFFFFF"/>
-  <path
-      android:pathData="M 717,402 L 678,415 L 668,422 L 601,502 L 590,532"
-      android:strokeLineCap="round"
-      android:strokeLineJoin="round"
-      android:strokeWidth="34"
-      android:fillColor="#00000000"
-      android:strokeColor="#FFFFFF"/>
-  <path
-      android:pathData="M 590,532 L 601,563 L 662,636 L 674,648 L 720,665"
-      android:strokeLineCap="round"
-      android:strokeLineJoin="round"
-      android:strokeWidth="34"
-      android:fillColor="#00000000"
-      android:strokeColor="#FFFFFF"/>
-</vector>
+﻿<?xml version="1.0" encoding="utf-8"?>
+<document version="1.7">
+  <objects>
+    <object id="1" gen="0">
+      <dict>
+        <entry key="Type">
+          <name>Catalog</name>
+        </entry>
+        <entry key="Version">
+          <name>1.7</name>
+        </entry>
+        <entry key="Pages">
+          <ref id="3" gen="0" />
+        </entry>
+        <entry key="Outlines">
+          <ref id="2" gen="0" />
+        </entry>
+      </dict>
+    </object>
+    <object id="2" gen="0">
+      <dict>
+        <entry key="Type">
+          <name>Outlines</name>
+        </entry>
+      </dict>
+    </object>
+    <object id="3" gen="0">
+      <dict>
+        <entry key="Type">
+          <name>Pages</name>
+        </entry>
+        <entry key="Kids">
+          <arr>
+            <entry index="0">
+              <ref id="7" gen="0" />
+            </entry>
+          </arr>
+        </entry>
+        <entry key="Count">
+          <num>1</num>
+        </entry>
+      </dict>
+    </object>
+    <object id="4" gen="0">
+      <dict>
+        <entry key="CreationDate">
+          <string>D:20260716001230-07'00'</string>
+        </entry>
+        <entry key="ModDate">
+          <string>D:20260716001229-07'00'</string>
+        </entry>
+        <entry key="Author">
+          <string>Aspose.Pdf.SvgToPdfConverter</string>
+        </entry>
+        <entry key="Producer">
+          <string>Aspose Pty Ltd.</string>
+        </entry>
+        <entry key="Subject">
+          <string>Aspose</string>
+        </entry>
+        <entry key="Title">
+          <string>Aspose</string>
+        </entry>
+        <entry key="Creator">
+          <string>Aspose.Pdf.SvgToPdfConverter</string>
+        </entry>
+      </dict>
+    </object>
+    <object id="6" gen="0">
+      <stream>
+        <entry key="Filter">
+          <name>FlateDecode</name>
+        </entry>
+        <entry key="Length">
+          <num>0</num>
+        </entry>
+      </stream>
+    </object>
+    <object id="7" gen="0">
+      <dict>
+        <entry key="Type">
+          <name>Page</name>
+        </entry>
+        <entry key="Parent">
+          <ref id="3" gen="0" />
+        </entry>
+        <entry key="MediaBox">
+          <arr>
+            <entry index="0">
+              <num>0</num>
+            </entry>
+            <entry index="1">
+              <num>0</num>
+            </entry>
+            <entry index="2">
+              <num>512</num>
+            </entry>
+            <entry index="3">
+              <num>512</num>
+            </entry>
+          </arr>
+        </entry>
+        <entry key="Contents">
+          <ref id="8" gen="0" />
+        </entry>
+        <entry key="Resources">
+          <dict />
+        </entry>
+        <entry key="CropBox">
+          <arr>
+            <entry index="0">
+              <num>0</num>
+            </entry>
+            <entry index="1">
+              <num>0</num>
+            </entry>
+            <entry index="2">
+              <num>512</num>
+            </entry>
+            <entry index="3">
+              <num>512</num>
+            </entry>
+          </arr>
+        </entry>
+      </dict>
+    </object>
+    <object id="8" gen="0">
+      <stream>
+        <entry key="Filter">
+          <name>FlateDecode</name>
+        </entry>
+        <entry key="Length">
+          <num>46</num>
+        </entry>eJzjKuQyVDAAQl0QZWpopJCcywUU0zOGAHNjAzNLczOwEqyCQOWBXIEA4zINzA==</stream>
+    </object>
+  </objects>
+  <trailer>
+    <dict>
+      <entry key="Root">
+        <ref id="1" gen="0" />
+      </entry>
+      <entry key="Info">
+        <ref id="4" gen="0" />
+      </entry>
+      <entry key="ID">
+        <arr>
+          <entry index="0">
+            <string>2C-01-CD-7F-DE-F</string>
+          </entry>
+          <entry index="1">
+            <string>2C-01-CD-7F-DE-F</string>
+          </entry>
+        </arr>
+      </entry>
+      <entry key="Size">
+        <num>7</num>
+      </entry>
+    </dict>
+  </trailer>
+</document>
