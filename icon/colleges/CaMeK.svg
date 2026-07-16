@@ -1,6 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" fill="none" stroke="currentColor" stroke-width="34" stroke-linecap="round" stroke-linejoin="round">
-<path d="M 430,296 L 661,297 L 692,305 L 720,320 L 758,360 L 772,391 L 778,428 L 776,658 L 756,708 L 735,733 L 712,750 L 685,762 L 652,768 L 413,767 L 365,749 L 347,736 L 320,705 L 307,678 L 300,641 L 299,439 L 305,392 L 325,352 L 350,326 L 381,307 L 430,296 Z"/>
-<path d="M 513,374 L 451,375 L 433,378 L 413,387 L 398,400 L 385,420 L 378,463 L 378,601 L 383,638 L 390,654 L 408,674 L 431,686 L 468,691 L 512,691"/>
-<path d="M 717,402 L 678,415 L 668,422 L 601,502 L 590,532"/>
-<path d="M 590,532 L 601,563 L 662,636 L 674,648 L 720,665"/>
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 20010904//EN"
+ "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">
+<svg version="1.0" xmlns="http://www.w3.org/2000/svg"
+ width="512.000000pt" height="512.000000pt" viewBox="0 0 512.000000 512.000000"
+ preserveAspectRatio="xMidYMid meet">
+
+<g transform="translate(0.000000,512.000000) scale(0.100000,-0.100000)"
+fill="#000000" stroke="none">
+</g>
 </svg>
