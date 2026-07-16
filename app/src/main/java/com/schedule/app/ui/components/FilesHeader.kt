@@ -51,7 +51,7 @@ fun FilesHeader(
                 painter = painterResource(R.drawable.ic_camek),
                 contentDescription = null,
                 tint = c.text,
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(26.dp),
             )
             Text(
                 text = "Расписание",

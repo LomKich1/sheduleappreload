@@ -1,9 +1,14 @@
 package com.schedule.app.ui.navigation
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -77,6 +82,10 @@ fun FloatingPillNav(
     val extraPaddingPx = with(density) { extraPaddingDp.toPx() }
 
     // ── Анимация индикатора — spring с лёгким overshoot для «живости» ─────────
+    // Это тот самый отскок при переключении вкладок — его специально просили
+    // оставить как было. Без отскока сделана только анимация подписи ниже
+    // (AnimatedVisibility) — раньше она резко исчезала/появлялась через
+    // обычный if, теперь плавно сжимается, но уже без пружинного "перелёта".
     val springSpec = spring<Float>(
         stiffness    = Spring.StiffnessMediumLow,
         dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -162,7 +171,17 @@ fun FloatingPillNav(
                         tint               = contentColor,
                         modifier           = Modifier.size(18.dp),
                     )
-                    if (isActive) {
+                    AnimatedVisibility(
+                        visible = isActive,
+                        enter = expandHorizontally(
+                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy),
+                            expandFrom = Alignment.Start,
+                        ) + fadeIn(),
+                        exit = shrinkHorizontally(
+                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy),
+                            shrinkTowards = Alignment.Start,
+                        ) + fadeOut(),
+                    ) {
                         Text(
                             text       = item.label,
                             color      = contentColor,

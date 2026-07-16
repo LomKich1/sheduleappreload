@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.WifiOff
@@ -194,8 +193,8 @@ fun TeacherScheduleScreen(
             dateText        = file.dateLabel,
             // Со экрана пар стрелка ведёт к пикеру преподавателя; с любого
             // другого под-экрана — как раньше, наружу из TeacherScheduleScreen.
+            // Карандаш "сменить преподавателя" убран — дублировал эту же стрелку.
             onBack          = if (isPairsScreen) backToPicker else onBack,
-            onChangeTeacher = if (headerTeacherName.isNotBlank()) backToPicker else null,
         )
 
         if (uiState is TeacherUiState.Loading) {
@@ -290,7 +289,6 @@ private fun TeacherHeader(
     teacherName: String,
     dateText: String,
     onBack: () -> Unit,
-    onChangeTeacher: (() -> Unit)? = null,
 ) {
     val c = LocalAppColors.current
     Column(
@@ -335,24 +333,6 @@ private fun TeacherHeader(
                     fontSize = 11.sp,
                     modifier = Modifier.padding(top = 2.dp),
                 )
-            }
-
-            if (onChangeTeacher != null) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(c.surface2)
-                        .clickable(onClick = onChangeTeacher),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Edit,
-                        contentDescription = "Сменить преподавателя",
-                        tint = c.textSub,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
             }
         }
         Box(
@@ -440,17 +420,13 @@ private fun TeacherPickerHint(count: Int) {
             .fillMaxWidth()
             .padding(horizontal = 18.dp, vertical = 14.dp),
     ) {
-        Text(
-            text = "Выберите преподавателя",
-            color = c.text,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
-        )
+        // Заголовок "Выберите преподавателя" уже есть в шапке экрана
+        // (TeacherHeader) — дублировать его тут не нужно, как и в
+        // GroupPickerScreen (там тоже только строка с количеством).
         Text(
             text = "Найдено $count преподавателей за этот день",
             color = c.textSub,
             fontSize = 11.5.sp,
-            modifier = Modifier.padding(top = 3.dp),
         )
     }
 }
