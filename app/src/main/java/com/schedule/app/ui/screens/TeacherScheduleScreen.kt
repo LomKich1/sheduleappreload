@@ -144,6 +144,12 @@ fun TeacherScheduleScreen(
     file: ScheduleFile,
     onBack: () -> Unit,
     vm: TeacherScheduleViewModel = viewModel(),
+    // См. аналогичные параметры и комментарий в ScheduleScreen.kt — тут то же
+    // самое, зеркально, для преподавательской ветки.
+    active: Boolean = true,
+    modeToggle: @Composable () -> Unit = {},
+    revealTrigger: Int = 0,
+    revealEdge: CascadeEdge = CascadeEdge.BOTTOM,
 ) {
     val c            = LocalAppColors.current
     val uiState      by vm.uiState.collectAsState()
@@ -174,7 +180,22 @@ fun TeacherScheduleScreen(
 
     // Системный жест "назад" перехватываем только пока показано расписание —
     // см. подробный комментарий у аналогичного BackHandler в ScheduleScreen.kt.
-    BackHandler(enabled = isPairsScreen) { backToPicker() }
+    // "&& active" — та же причина, что и там: невидимая половина
+    // ScheduleHostScreen не должна перехватывать системный back.
+    BackHandler(enabled = isPairsScreen && active) { backToPicker() }
+
+    // Одноразовая подмена направления каскада пикера преподавателя — см.
+    // подробный комментарий у pickerRevealEdgeOverride в ScheduleScreen.kt.
+    var pickerRevealEdgeOverride by remember { mutableStateOf<CascadeEdge?>(null) }
+    var lastRevealApplied by remember { mutableStateOf(revealTrigger) }
+    LaunchedEffect(revealTrigger) {
+        if (revealTrigger != lastRevealApplied) {
+            pickerRevealEdgeOverride = revealEdge
+            transitionSeq++
+            lastRevealApplied = revealTrigger
+        }
+    }
+    LaunchedEffect(transitionSeq) { pickerRevealEdgeOverride = null }
 
     // Как и в ScheduleScreen: пока показывается пикер/загрузка — в шапке
     // не должно мелькать прошлое имя преподавателя из предыдущего файла.
@@ -196,6 +217,14 @@ fun TeacherScheduleScreen(
             // Карандаш "сменить преподавателя" убран — дублировал эту же стрелку.
             onBack          = if (isPairsScreen) backToPicker else onBack,
         )
+
+        // Тумблер "Ученики/Преподаватели" — только пока не показано само
+        // расписание пар (см. modeToggle в сигнатуре TeacherScheduleScreen выше).
+        if (!isPairsScreen) {
+            Spacer(Modifier.height(10.dp))
+            modeToggle()
+            Spacer(Modifier.height(4.dp))
+        }
 
         if (uiState is TeacherUiState.Loading) {
             LinearProgressIndicator(
@@ -263,8 +292,10 @@ fun TeacherScheduleScreen(
                     onSelect        = { teacher -> goingBack = false; vm.selectTeacher(teacher, file.name) },
                     entranceTrigger = transitionSeq,
                     // Вперёд — карточки поднимаются снизу с fade (BOTTOM), назад —
-                    // едут слева (LEFT), см. аналогичную логику в GroupPickerScreen.
-                    entranceEdge    = if (goingBack) CascadeEdge.LEFT else CascadeEdge.BOTTOM,
+                    // едут слева (LEFT), revealEdge — раскрыт тумблером без
+                    // перезагрузки. См. аналогичную логику в GroupPickerScreen.
+                    entranceEdge    = pickerRevealEdgeOverride
+                        ?: if (goingBack) CascadeEdge.LEFT else CascadeEdge.BOTTOM,
                 )
 
                 is TeacherUiState.Success -> TeacherSchedContent(

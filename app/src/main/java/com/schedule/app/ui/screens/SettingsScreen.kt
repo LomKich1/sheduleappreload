@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.sp
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
+import com.schedule.app.ui.components.ScheduleMode
+import com.schedule.app.ui.components.ScheduleModeToggle
 import com.schedule.app.ui.theme.AppColors
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
@@ -58,6 +60,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val rememberOn    by AppPrefs.rememberGroup.collectAsState()
     val pinnedGroup   by AppPrefs.pinnedGroup.collectAsState()
     val entranceAnimOn by AppPrefs.listEntranceAnim.collectAsState()
+    val defaultMode    by AppPrefs.defaultScheduleMode.collectAsState()
 
     var urlField      by remember(savedUrl) { mutableStateOf(savedUrl) }
     var showToast     by remember { mutableStateOf(false) }
@@ -150,6 +153,26 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(22.dp))
 
                 CascadeEntranceItem(index = 3, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
+                    Column {
+                        SettingsSectionLabel("Экран по умолчанию")
+                        SettingsCard {
+                            Text(
+                                text = "Что открывать первым на экране файла",
+                                color = c.textSub,
+                                fontSize = 11.5.sp,
+                                modifier = Modifier.padding(bottom = 10.dp),
+                            )
+                            ScheduleModeToggle(
+                                selected = defaultMode,
+                                onSelect = { AppPrefs.setDefaultScheduleMode(it) },
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(22.dp))
+
+                CascadeEntranceItem(index = 4, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
                     SaveButton(
                         enabled = canSave,
                         onClick = {

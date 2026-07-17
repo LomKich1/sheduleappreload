@@ -27,7 +27,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
@@ -35,8 +34,6 @@ import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.components.FileCard
 import com.schedule.app.ui.components.FilesHeader
-import com.schedule.app.ui.components.ScheduleMode
-import com.schedule.app.ui.components.ScheduleModeToggle
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
@@ -50,31 +47,16 @@ import java.util.Calendar
 @OptIn(ExperimentalMaterial3Api::class)
 fun FilesScreen(
     vm: FilesViewModel = viewModel(),
-    onFileClick: (ScheduleFile, ScheduleMode) -> Unit = { _, _ -> },
+    onFileClick: (ScheduleFile) -> Unit = {},
     onSettingsClick: () -> Unit = {},
     entranceTrigger: Int = 0,
 ) {
     val uiState by vm.uiState.collectAsState()
 
-    // Режим "Ученики / Преподаватели". Раньше был чисто визуальным —
-    // теперь передаётся наверх при клике на файл (см. onFileClick выше),
-    // AppScaffold решает по нему, какой экран открыть.
-    var scheduleMode by rememberSaveable { mutableStateOf(ScheduleMode.STUDENT) }
-
-    // Анимация списка файлов при переключении тумблера — отдельный от
-    // entranceTrigger триггер (тот управляется активацией вкладки в
-    // AppScaffold, этот — только тумблером), с направлением, завязанным
-    // на то, куда едет пилюля: "Ученики → Преподаватели" (вправо) — карточки
-    // въезжают СПРАВА, и наоборот. Тот же CascadeEdge.LEFT/RIGHT, что и у
-    // самих вкладок Files/Bells — тут это не "контент загрузился" (BOTTOM),
-    // а именно "переключились на другой вид", раз данные не перезапрашиваются.
-    var modeToggleTrigger by remember { mutableStateOf(0) }
-    var modeToggleEdge by remember { mutableStateOf(CascadeEdge.LEFT) }
-
-    // При реактивации самой вкладки Files (не тумблера) каскад должен
-    // остаться прежним — LEFT, как и был — а не "утекать" в направление,
-    // оставшееся от последнего переключения тумблера.
-    LaunchedEffect(entranceTrigger) { modeToggleEdge = CascadeEdge.LEFT }
+    // Переключатель "Ученики / Преподаватели" переехал на экран файла (см.
+    // ScheduleHostScreen) — тут он больше не нужен, клик по файлу просто
+    // открывает этот экран, а какой вид (студенческий/преподавательский)
+    // показать первым, решает настройка AppPrefs.defaultScheduleMode.
 
     // Раньше обновление списка запускалось только кнопкой в настройках
     // («Обновить список файлов») — убрали её оттуда в пользу жеста
@@ -93,20 +75,6 @@ fun FilesScreen(
             .background(LocalAppColors.current.bg),
     ) {
         FilesHeader(onSettingsClick = onSettingsClick)
-
-        Spacer(Modifier.height(6.dp))
-
-        ScheduleModeToggle(
-            selected = scheduleMode,
-            onSelect = { newMode ->
-                if (newMode != scheduleMode) {
-                    modeToggleEdge = if (newMode == ScheduleMode.TEACHER) CascadeEdge.RIGHT else CascadeEdge.LEFT
-                    modeToggleTrigger++
-                }
-                scheduleMode = newMode
-            },
-            modifier = Modifier.padding(horizontal = 18.dp),
-        )
 
         Spacer(Modifier.height(14.dp))
 
@@ -137,9 +105,9 @@ fun FilesScreen(
                 is FilesUiState.Loading -> FilesLoading()
                 is FilesUiState.Success -> FilesList(
                     files     = state.files,
-                    onClick   = { file -> onFileClick(file, scheduleMode) },
-                    entranceTrigger = entranceTrigger to modeToggleTrigger,
-                    entranceEdge = modeToggleEdge,
+                    onClick   = onFileClick,
+                    entranceTrigger = entranceTrigger,
+                    entranceEdge = CascadeEdge.LEFT,
                 )
                 is FilesUiState.Error   -> FilesError(
                     message  = state.message,
