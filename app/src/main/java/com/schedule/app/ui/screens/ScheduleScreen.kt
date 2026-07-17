@@ -152,6 +152,18 @@ fun ScheduleScreen(
     file: ScheduleFile,
     onBack: () -> Unit,
     vm: ScheduleViewModel = viewModel(),
+    // ── Параметры для хостинга внутри ScheduleHostScreen ────────────────────
+    // active     — виден ли СЕЙЧАС этот экран пользователю (см. ScheduleHostScreen,
+    //              где студенческий и преподавательский вид смонтированы ОБА
+    //              одновременно и просто сдвигаются по X). Нужен, чтобы системный
+    //              back-жест не перехватывался невидимой половиной.
+    // modeToggle — слот тумблера "Ученики/Преподаватели", вставляется под шапкой,
+    //              но только пока показан пикер группы (не на расписании пар).
+    // revealTrigger/revealEdge — см. комментарий у lastRevealApplied ниже.
+    active: Boolean = true,
+    modeToggle: @Composable () -> Unit = {},
+    revealTrigger: Int = 0,
+    revealEdge: CascadeEdge = CascadeEdge.BOTTOM,
 ) {
     val c         = LocalAppColors.current
     val uiState   by vm.uiState.collectAsState()
@@ -190,11 +202,37 @@ fun ScheduleScreen(
         vm.clearGroup()
     }
 
+    // Одноразовая "подмена" направления каскада пикера — используется только
+    // когда пикер раскрыт тумблером без перезагрузки (см. lastRevealApplied
+    // ниже); во всех остальных случаях действует обычная goingBack-логика
+    // (LEFT назад / BOTTOM вперёд, см. GroupPickerScreen(...) ниже).
+    var pickerRevealEdgeOverride by remember { mutableStateOf<CascadeEdge?>(null) }
+
     // Системный жест "назад" перехватываем ТОЛЬКО пока показано расписание —
     // NavHost в AppScaffold обрабатывает системный back сам, минуя параметр
     // onBack (тот срабатывает лишь по тапу на стрелку в шапке), поэтому без
     // этого BackHandler'а жест увёл бы сразу на главный экран, а не к пикеру.
-    BackHandler(enabled = isPairsScreen) { backToPicker() }
+    // "&& active" — пока этот экран сдвинут за край в ScheduleHostScreen
+    // (виден другой режим), он не должен перехватывать системный back.
+    BackHandler(enabled = isPairsScreen && active) { backToPicker() }
+
+    // ── Каскад при "раскрытии" этого режима тумблером ───────────────────────
+    // uiState тут не меняется (данные уже загружены и никуда не делись —
+    // в этом и была идея держать оба экрана смонтированными), поэтому обычный
+    // LaunchedEffect(uiState) выше не сработает — реагируем на revealTrigger
+    // отдельно и вручную "проигрываем" карточки пикера ещё раз.
+    var lastRevealApplied by remember { mutableStateOf(revealTrigger) }
+    LaunchedEffect(revealTrigger) {
+        if (revealTrigger != lastRevealApplied) {
+            pickerRevealEdgeOverride = revealEdge
+            transitionSeq++
+            lastRevealApplied = revealTrigger
+        }
+    }
+    // Override — ровно на один "проигрыш": как только transitionSeq применился
+    // (в т.ч. и по этому самому revealTrigger), сбрасываем его, чтобы следующий
+    // обычный переход снова считался по goingBack, а не залипал на revealEdge.
+    LaunchedEffect(transitionSeq) { pickerRevealEdgeOverride = null }
 
     // Пока показывается пикер (или идёт загрузка) — заголовок не должен
     // показывать старое сохранённое имя группы, это сбивает с толку.
@@ -217,6 +255,14 @@ fun ScheduleScreen(
             // под-экрана (пикер, загрузка, ошибка) — как раньше, наружу из ScheduleScreen.
             onBack    = if (isPairsScreen) backToPicker else onBack,
         )
+
+        // Тумблер "Ученики/Преподаватели" — только пока не показано само
+        // расписание пар (см. modeToggle в сигнатуре ScheduleScreen выше).
+        if (!isPairsScreen) {
+            Spacer(Modifier.height(10.dp))
+            modeToggle()
+            Spacer(Modifier.height(4.dp))
+        }
 
         if (uiState is ScheduleUiState.Loading) {
             LinearProgressIndicator(
@@ -291,11 +337,11 @@ fun ScheduleScreen(
                     groups          = state.groups,
                     onSelect        = { group -> goingBack = false; vm.selectGroup(group, file.name) },
                     entranceTrigger = transitionSeq,
-                    // Вперёд (сразу после загрузки) — карточки поднимаются снизу с
-                    // fade (BOTTOM), это язык "контент только что загрузился".
-                    // Назад (вернулись с расписания пар) — едут слева (LEFT),
-                    // это уже язык навигации, совпадает со слайдом самого экрана.
-                    entranceEdge    = if (goingBack) CascadeEdge.LEFT else CascadeEdge.BOTTOM,
+                    // BOTTOM — контент только что загрузился, LEFT — вернулись
+                    // с расписания пар, revealEdge — пикер "раскрыт" тумблером
+                    // в ScheduleHostScreen без перезагрузки (см. pickerRevealEdgeOverride).
+                    entranceEdge    = pickerRevealEdgeOverride
+                        ?: if (goingBack) CascadeEdge.LEFT else CascadeEdge.BOTTOM,
                 )
 
                 is ScheduleUiState.Success -> SchedContent(

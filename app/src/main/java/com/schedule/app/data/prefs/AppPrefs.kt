@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.schedule.app.data.repository.ScheduleRepository
+import com.schedule.app.ui.components.ScheduleMode
 import com.schedule.app.ui.theme.ThemePreset
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,10 +32,12 @@ object AppPrefs {
     private const val KEY_REMEMBER_GROUP = "remember_group"
     private const val KEY_PINNED_GROUP   = "pinned_group"
     private const val KEY_LIST_ENTRANCE_ANIM = "list_entrance_anim"
+    private const val KEY_DEFAULT_SCHEDULE_MODE = "default_schedule_mode"
 
     const val DEFAULT_YANDEX_URL = "https://disk.yandex.ru/d/mjhoc7kysmQEuQ"
     const val DEFAULT_GROUP_NAME = ""   // пусто → новый пользователь сразу видит пикер
     private val DEFAULT_THEME    = ThemePreset.DARK
+    private val DEFAULT_SCHEDULE_MODE = ScheduleMode.STUDENT
 
     private var prefs: SharedPreferences? = null
 
@@ -61,6 +64,12 @@ object AppPrefs {
     private val _listEntranceAnim = MutableStateFlow(true)
     val listEntranceAnim: StateFlow<Boolean> = _listEntranceAnim.asStateFlow()
 
+    // ── Какой вид открывается первым на экране файла: Ученики или Преподаватели ──
+    // (см. ScheduleHostScreen — сам экран файла теперь всегда монтирует оба вида
+    // сразу, это лишь стартовая позиция тумблера).
+    private val _defaultScheduleMode = MutableStateFlow(DEFAULT_SCHEDULE_MODE)
+    val defaultScheduleMode: StateFlow<ScheduleMode> = _defaultScheduleMode.asStateFlow()
+
     // Дёргается вручную («Обновить список файлов» в настройках), даже если URL
     // не менялся — например, в той же папке на Я.Диске появились новые файлы.
     private val _refreshTick = MutableStateFlow(0)
@@ -79,6 +88,9 @@ object AppPrefs {
         _rememberGroup.value = sp.getBoolean(KEY_REMEMBER_GROUP, true)
         _pinnedGroup.value   = sp.getString(KEY_PINNED_GROUP, "") ?: ""
         _listEntranceAnim.value = sp.getBoolean(KEY_LIST_ENTRANCE_ANIM, true)
+        _defaultScheduleMode.value = sp.getString(KEY_DEFAULT_SCHEDULE_MODE, null)
+            ?.let { name -> runCatching { ScheduleMode.valueOf(name) }.getOrNull() }
+            ?: DEFAULT_SCHEDULE_MODE
     }
 
     /** Мгновенно применяет и сохраняет тему — без ожидания «Сохранить». */
@@ -148,5 +160,11 @@ object AppPrefs {
     fun setListEntranceAnim(enabled: Boolean) {
         _listEntranceAnim.value = enabled
         prefs?.edit { putBoolean(KEY_LIST_ENTRANCE_ANIM, enabled) }
+    }
+
+    /** Какой вид (Ученики/Преподаватели) открывается первым на экране файла. */
+    fun setDefaultScheduleMode(mode: ScheduleMode) {
+        _defaultScheduleMode.value = mode
+        prefs?.edit { putString(KEY_DEFAULT_SCHEDULE_MODE, mode.name) }
     }
 }
