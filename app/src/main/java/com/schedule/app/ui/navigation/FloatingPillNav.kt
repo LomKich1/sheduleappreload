@@ -93,19 +93,22 @@ fun FloatingPillNav(
     
     // Сдвигаем позицию влево на величину отступа, чтобы синий фон начинался раньше контента
     val targetXPx = (itemXsPx.getOrElse(selectedIndex) { 0f } - extraPaddingPx).coerceAtLeast(0f)
-    val indicatorXPx by animateFloatAsState(
-        targetValue   = targetXPx,
-        animationSpec = springSpec,
-        label         = "pillX",
-    )
+    // ВРЕМЕННО без пружины — проверяем, откуда рывок (из спринга или из источника значений)
+    val indicatorXPx = targetXPx
+//    val indicatorXPx by animateFloatAsState(
+//        targetValue   = targetXPx,
+//        animationSpec = springSpec,
+//        label         = "pillX",
+//    )
     
     // Увеличиваем ширину на x2 отступа (чтобы компенсировать левый и правый «воздух»)
     val targetWPx = itemWsPx.getOrElse(selectedIndex) { 0f } + (extraPaddingPx * 2)
-    val indicatorWPx by animateFloatAsState(
-        targetValue   = targetWPx,
-        animationSpec = springSpec,
-        label         = "pillW",
-    )
+    val indicatorWPx = targetWPx
+//    val indicatorWPx by animateFloatAsState(
+//        targetValue   = targetWPx,
+//        animationSpec = springSpec,
+//        label         = "pillW",
+//    )
 
     // Показываем индикатор только когда уже есть реальные размеры (≥ 2-й кадр)
     val hasPositions = itemWsPx.any { it > 0f }
