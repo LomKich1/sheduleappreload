@@ -1,7 +1,6 @@
 package com.schedule.app.ui.navigation
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -113,23 +112,6 @@ fun FloatingPillNav(
 
     Box(
         modifier = modifier
-            // Ширина капсулы нигде явно не анимируется — она просто "интринсик"
-            // (естественный размер = сумма ширин обоих пунктов Row). Когда
-            // тумблер нажат, один пункт СЖИМАЕТСЯ (теряет подпись), а другой
-            // ОДНОВременно РАСШИРЯЕТСЯ (получает подпись) — их AnimatedVisibility
-            // enter/exit анимации ниже чуть рассинхронизированы по времени,
-            // из-за чего на пару кадров оба пункта оказываются почти полностью
-            // "широкими" одновременно → капсула на мгновение раздувается ШИРЕ
-            // обоих устойчивых состояний, а потом резко досаживается до цели —
-            // это и есть тот самый дёрг под конец. animateContentSize даёт самой
-            // капсуле собственную плавную анимацию размера, которая сглаживает
-            // такие скачки контента, а не мгновенно их повторяет.
-            .animateContentSize(
-                animationSpec = spring(
-                    stiffness    = Spring.StiffnessMediumLow,
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                ),
-            )
             .height(IntrinsicSize.Min)          // высота = высота Row-контента
             .clip(CircleShape)
             .background(c.pillBg)
