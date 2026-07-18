@@ -25,6 +25,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
@@ -179,12 +180,19 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
 
         // ── Содержимое: оба вида смонтированы всегда, неактивный просто
         // невидим и не ловит тапы — БЕЗ анимации переключения между ними.
+        //
+        // zIndex ОБЯЗАТЕЛЕН: без него порядок хит-тестинга тапов определяется
+        // порядком в коде (кто добавлен позже — тот и "сверху", даже если у
+        // него alpha = 0). Из-за этого раньше преподавательский экран, всегда
+        // идущий вторым, перехватывал все тапы и скроллы, даже когда был
+        // невидим и неактивен — из-за чего казалось, что "группы сломались".
         Box(modifier = Modifier.fillMaxSize().weight(1f)) {
             val studentActive = mode == ScheduleMode.STUDENT
 
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .zIndex(if (studentActive) 1f else 0f)
                     .graphicsLayer { alpha = if (studentActive) 1f else 0f }
                     .blockTouchesIfInactive(!studentActive),
             ) {
@@ -201,6 +209,7 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .zIndex(if (!studentActive) 1f else 0f)
                     .graphicsLayer { alpha = if (!studentActive) 1f else 0f }
                     .blockTouchesIfInactive(studentActive),
             ) {

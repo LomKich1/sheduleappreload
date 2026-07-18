@@ -29,10 +29,12 @@ import kotlinx.coroutines.delay
 // crossfade.
 //
 // Строки разной длины: недостающие "слоты" справа заполняются пробелом.
-// Количество слотов растёт СРАЗУ, как только новый текст длиннее (иначе
-// новым буквам некуда влезать), а сжимается только ПОСЛЕ того, как переворот
-// гарантированно закончился у всех символов — иначе "хвост" пропадал бы
-// прямо посреди анимации.
+// Количество слотов растёт СИНХРОННО, прямо во время композиции (а не в
+// LaunchedEffect) — иначе рост слотов под новые буквы отставал бы на кадр от
+// момента нажатия тумблера, и было заметно, что анимация стартует с
+// небольшой задержкой. Сжимается количество слотов, наоборот, только ПОСЛЕ
+// того, как переворот гарантированно закончился у всех символов — иначе
+// "хвост" пропадал бы прямо посреди анимации.
 
 private const val FLIP_STAGGER_MS = 16
 private const val FLIP_OUT_MS = 140
@@ -48,17 +50,25 @@ fun FlipTransitionText(
 ) {
     var slotCount by remember { mutableStateOf(text.length) }
 
-    LaunchedEffect(text) {
-        if (text.length > slotCount) {
-            // Текст стал длиннее — сразу освобождаем место под новые буквы.
-            slotCount = text.length
-        } else if (text.length < slotCount) {
-            // Текст стал короче — ждём, пока даже самая последняя (самая
-            // задержанная) буква точно закончит переворот, и только потом
-            // убираем лишние слоты.
+    // Сколько слотов было в САМЫЙ первый раз, когда этот заголовок вообще
+    // появился на экране (открыли файл) — символы в их пределах не должны
+    // "переворачиваться из пустоты" при самом первом появлении экрана, это
+    // выглядело бы как лишняя анимация на ровном месте. А вот всё, что
+    // добавится ПОЗЖЕ (текст стал длиннее при переключении тумблера) —
+    // должно появляться именно переворотом, а не просто выскакивать.
+    val initialSlotCount = remember { text.length }
+
+    // Рост — сразу, без ожидания кадра.
+    if (text.length > slotCount) {
+        slotCount = text.length
+    }
+
+    // Сжатие — с задержкой, чтобы не обрубить переворот последних букв.
+    LaunchedEffect(text, slotCount) {
+        if (text.length < slotCount) {
             val totalMs = FLIP_OUT_MS + FLIP_IN_MS + slotCount * FLIP_STAGGER_MS
             delay(totalMs.toLong())
-            slotCount = text.length
+            if (text.length < slotCount) slotCount = text.length
         }
     }
 
@@ -68,11 +78,12 @@ fun FlipTransitionText(
         padded.forEachIndexed { index, ch ->
             key(index) {
                 FlipChar(
-                    targetChar = ch,
-                    delayMs    = index * FLIP_STAGGER_MS,
-                    color      = color,
-                    fontSize   = fontSize,
-                    fontWeight = fontWeight,
+                    targetChar     = ch,
+                    delayMs        = index * FLIP_STAGGER_MS,
+                    color          = color,
+                    fontSize       = fontSize,
+                    fontWeight     = fontWeight,
+                    animateOnMount = index >= initialSlotCount,
                 )
             }
         }
@@ -86,8 +97,14 @@ private fun FlipChar(
     color: Color,
     fontSize: TextUnit,
     fontWeight: FontWeight,
+    animateOnMount: Boolean,
 ) {
-    var shown by remember { mutableStateOf(targetChar) }
+    // Слот, появившийся ПОСЛЕ самого первого рендера заголовка (см.
+    // initialSlotCount выше), стартует с пробела — так его самое первое
+    // появление тоже переворачивается, а не просто выскакивает целиком.
+    // Слоты, бывшие в тексте с самого начала, стартуют сразу с нужной буквы —
+    // на первом появлении экрана анимировать нечего, старой буквы не было.
+    var shown by remember { mutableStateOf(if (animateOnMount) ' ' else targetChar) }
     val rotation = remember { Animatable(0f) }
 
     LaunchedEffect(targetChar) {
