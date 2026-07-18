@@ -26,10 +26,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,15 +71,35 @@ fun FloatingPillNav(
 
     val selectedIndex = items.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
 
-    // ── Измеренные позиции элементов (обновляются после каждого layout) ───────
-    // Хранятся в пикселях — тот же масштаб, что у offset { IntOffset(...) }.
-    val itemXsPx = remember { mutableStateListOf(0f, 0f) }
-    val itemWsPx = remember { mutableStateListOf(0f, 0f) }
+    // ── Стабильные ширины пунктов, измеренные ЗАРАНЕЕ и НЕВИДИМО ──────────────
+    // Раньше indicatorWPx/indicatorXPx гнались пружиной за itemWsPx/itemXsPx,
+    // которые обновлялись через onGloballyPositioned КАЖДЫЙ кадр — то есть
+    // прямо во время того, как подпись (AnimatedVisibility ниже) сама
+    // расширялась/сужалась. Индикатор в итоге догонял постоянно ДВИГАЮЩУЮСЯ
+    // цель, а когда подпись останавливалась, у пружины индикатора ещё
+    // оставалась "недокрученная" скорость — отсюда и рывок под конец.
+    //
+    // Вместо этого меряем ОБА состояния каждого пункта (с подписью и без) —
+    // ОДИН раз, невидимо (см. MeasureOnly ниже) — и дальше у индикатора всегда
+    // фиксированная, не меняющаяся на лету цель, к которой можно спокойно
+    // подъехать пружиной без "недолёта".
+    val collapsedWPx = remember { mutableStateListOf(0f, 0f) }
+    val expandedWPx  = remember { mutableStateListOf(0f, 0f) }
+
+    items.forEachIndexed { idx, item ->
+        MeasureOnly(onMeasured = { w -> collapsedWPx[idx] = w }) {
+            PillItemMeasureContent(item = item, showLabel = false)
+        }
+        MeasureOnly(onMeasured = { w -> expandedWPx[idx] = w }) {
+            PillItemMeasureContent(item = item, showLabel = true)
+        }
+    }
 
     // ─── Настройка внутреннего отступа для выделения ────────────────────────
     // Сколько «воздуха» добавить слева и справа от контента внутри синей пилюли
     val extraPaddingDp = 12.dp 
     val extraPaddingPx = with(density) { extraPaddingDp.toPx() }
+    val spacingPx = with(density) { 4.dp.toPx() } // Arrangement.spacedBy(4.dp) у Row ниже
 
     // ── Анимация индикатора — spring с лёгким overshoot для «живости» ─────────
     // Это тот самый отскок при переключении вкладок — его специально просили
@@ -90,9 +110,21 @@ fun FloatingPillNav(
         stiffness    = Spring.StiffnessMediumLow,
         dampingRatio = Spring.DampingRatioMediumBouncy,
     )
-    
+
+    // Ширина пункта idx В ЦЕЛЕВОМ состоянии: развёрнутая — только у выбранного
+    // пункта, у остальных — свёрнутая. Именно эта комбинация будет актуальна,
+    // когда анимация подписи полностью доиграет.
+    fun settledWidthPx(idx: Int): Float =
+        if (idx == selectedIndex) expandedWPx[idx] else collapsedWPx[idx]
+
+    // X-позиция пункта idx в его целевом состоянии — сумма ширин всех пунктов
+    // ДО него (в их целевом состоянии) плюс отступы между ними. Пунктов всего
+    // два, но формула работает для любого их числа.
+    val targetItemXPx = (0 until selectedIndex).sumOf { settledWidthPx(it).toDouble() }.toFloat() +
+        selectedIndex * spacingPx
+
     // Сдвигаем позицию влево на величину отступа, чтобы синий фон начинался раньше контента
-    val targetXPx = (itemXsPx.getOrElse(selectedIndex) { 0f } - extraPaddingPx).coerceAtLeast(0f)
+    val targetXPx = (targetItemXPx - extraPaddingPx).coerceAtLeast(0f)
     val indicatorXPx by animateFloatAsState(
         targetValue   = targetXPx,
         animationSpec = springSpec,
@@ -100,7 +132,7 @@ fun FloatingPillNav(
     )
     
     // Увеличиваем ширину на x2 отступа (чтобы компенсировать левый и правый «воздух»)
-    val targetWPx = itemWsPx.getOrElse(selectedIndex) { 0f } + (extraPaddingPx * 2)
+    val targetWPx = settledWidthPx(selectedIndex) + (extraPaddingPx * 2)
     val indicatorWPx by animateFloatAsState(
         targetValue   = targetWPx,
         animationSpec = springSpec,
@@ -108,7 +140,7 @@ fun FloatingPillNav(
     )
 
     // Показываем индикатор только когда уже есть реальные размеры (≥ 2-й кадр)
-    val hasPositions = itemWsPx.any { it > 0f }
+    val hasPositions = collapsedWPx.all { it > 0f } && expandedWPx.all { it > 0f }
 
     Box(
         modifier = modifier
@@ -155,13 +187,7 @@ fun FloatingPillNav(
                         .padding(
                             horizontal = 12.dp,
                             vertical   = 9.dp,
-                        )
-                        .onGloballyPositioned { coords ->
-                            // positionInParent() — координаты в родительском Row.
-                            // Row напрямую в Box без смещений → == координаты в Box.
-                            itemXsPx[idx] = coords.positionInParent().x
-                            itemWsPx[idx] = coords.size.width.toFloat()
-                        },
+                        ),
                     verticalAlignment     = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
@@ -191,6 +217,52 @@ fun FloatingPillNav(
                     }
                 }
             }
+        }
+    }
+}
+
+// ─── MeasureOnly ─────────────────────────────────────────────────────────────
+//
+// Меряет естественную ширину content — но не рисует его и не занимает места
+// в родителе (place() для ребёнка ни разу не вызывается, поэтому фаза
+// отрисовки для него просто не запускается). Нужен, чтобы заранее и
+// стабильно узнать ширину пункта нижней навигации в обоих состояниях
+// (с подписью и без), не завязываясь на живую, меняющуюся во время анимации
+// подписи разметку (см. collapsedWPx/expandedWPx выше).
+@Composable
+private fun MeasureOnly(
+    onMeasured: (widthPx: Float) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Layout(content = content) { measurables, _ ->
+        val placeable = measurables.first().measure(Constraints())
+        onMeasured(placeable.width.toFloat())
+        layout(0, 0) {}
+    }
+}
+
+// Точная копия визуальной структуры пункта (иконка + опциональная подпись,
+// те же паддинги/отступы) — используется ТОЛЬКО для невидимого измерения
+// внутри MeasureOnly, поэтому цвет не важен: этот Composable никогда
+// реально не отрисовывается на экране.
+@Composable
+private fun PillItemMeasureContent(item: PillNavItem, showLabel: Boolean) {
+    Row(
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            imageVector = item.icon,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+        )
+        if (showLabel) {
+            Text(
+                text = item.label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+            )
         }
     }
 }
