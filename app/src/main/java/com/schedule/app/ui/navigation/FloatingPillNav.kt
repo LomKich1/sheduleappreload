@@ -1,13 +1,9 @@
 package com.schedule.app.ui.navigation
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,94 +19,97 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.schedule.app.ui.theme.LocalAppColors
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
-// ─── Плавающий пузырёк навигации ─────────────────────────────────────────────
+// ─── Плавающий пузырёк навигации (переписан с нуля) ──────────────────────────
 //
-//  Выделение СКОЛЬЗИТ между вкладками (iOS-стиль): один Box-индикатор под
-//  элементами перемещается к активному пункту. Сами элементы не имеют своего
-//  фона — только иконка и текст поверх общего индикатора.
+//  СТАРЫЙ БАГ: подпись показывалась/скрывалась через AnimatedVisibility
+//  (expandHorizontally/shrinkHorizontally) — это отдельная, встроенная в
+//  Compose система анимации размера. А ширина/позиция индикатора считались
+//  отдельно (через onGloballyPositioned или через разовый Layout-замер).
+//  Эти две системы не были синхронизированы кадр-в-кадр, и в конце анимации
+//  переключения вкладок происходил рассинхрон — контейнер на миг становился
+//  шире, чем нужно, а потом за один кадр резко "схлопывался" до правильного
+//  размера.
 //
-//  ВАЖНО (переделано): раньше ширина/позиция вкладок мерялись "живьём" через
-//  onGloballyPositioned прямо на анимирующемся Row — из-за этого позиция
-//  соседнего элемента зависела от ТЕКУЩЕЙ (ещё анимирующейся) ширины другого
-//  элемента, и после того как всё визуально уже "осело", могла прилететь ещё
-//  одна отложенная правка на несколько px → рывок.
+//  НОВЫЙ ПОДХОД: никакого AnimatedVisibility. Есть ОДНО анимируемое число `t`
+//  (плавно едет к индексу выбранной вкладки, без отскока). Из этого t
+//  одновременно вычисляются: ширина каждой вкладки, прозрачность её подписи и
+//  X-позиции вкладок. Раз всё выведено из одного и того же числа — контейнер
+//  физически не может "разъехаться" сам с собой, следовательно и лишней ширины
+//  взяться неоткуда.
 //
-//  Теперь ширины вкладок в двух состояниях — "компакт" (только иконка) и
-//  "полная" (иконка + подпись) — меряются ОДИН РАЗ заранее, невидимым Layout
-//  ниже, и никогда не зависят от того, что в данный момент анимирует соседняя
-//  вкладка. Позиция/ширина индикатора считаются из этих готовых чисел.
-//
-//  Пружина индикатора пока НЕ включена обратно (снап мгновенный) — это
-//  временно, для изоляции причины рывка. Возвращать её будем отдельным шагом.
+//  Синий скользящий индикатор — это отдельный декоративный слой ПОД
+//  элементами. У него своя, более "живая" пружина с отскоком (specifically
+//  попросили оставить), но её цель считается по ФИНАЛЬНЫМ (уже устоявшимся)
+//  размерам вкладок, а не по текущим анимирующимся — поэтому отскок индикатора
+//  никак не влияет на размер самого контейнера.
 
 private data class PillNavItem(
     val route: String,
-    val icon:  ImageVector,
+    val icon: ImageVector,
     val label: String,
 )
 
 @Composable
 fun FloatingPillNav(
     currentRoute: String,
-    onNavigate:   (String) -> Unit,
-    modifier:     Modifier = Modifier,
+    onNavigate: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val c       = LocalAppColors.current
+    val c = LocalAppColors.current
     val density = LocalDensity.current
 
     val items = remember {
         listOf(
-            PillNavItem(Screen.Files.route, Icons.Outlined.CalendarMonth,   "Расписание"),
+            PillNavItem(Screen.Files.route, Icons.Outlined.CalendarMonth, "Расписание"),
             PillNavItem(Screen.Bells.route, Icons.Outlined.NotificationsNone, "Звонки"),
         )
     }
 
     val selectedIndex = items.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
 
-    // ─── Настройка внутреннего отступа для выделения ────────────────────────
+    val spacingDp = 4.dp
+    val spacingPx = with(density) { spacingDp.toPx() }
     val extraPaddingDp = 12.dp
     val extraPaddingPx = with(density) { extraPaddingDp.toPx() }
-    val spacingDp       = 4.dp
-    val spacingPx        = with(density) { spacingDp.toPx() }
+    val itemPaddingH = 12.dp
+    val itemPaddingV = 9.dp
+    val iconLabelGap = 6.dp
 
-    // ── Стабильные ширины вкладок (px), измеренные один раз ниже ─────────────
-    // compactWidths — ширина "иконка без подписи", fullWidths — "иконка + подпись".
-    // Эти числа НЕ меняются во время анимации — только когда меняется набор items.
+    // ── 1. Разовый замер ширин "компакт" (только иконка) и "полная" (иконка + подпись) ──
+    // Меряем невидимым Layout один раз (числа стабильны, пока не поменялся текст/шрифт).
     var compactWidths by remember { mutableStateOf(List(items.size) { 0f }) }
-    var fullWidths    by remember { mutableStateOf(List(items.size) { 0f }) }
+    var fullWidths by remember { mutableStateOf(List(items.size) { 0f }) }
 
-    // ── Невидимый измеритель ──────────────────────────────────────────────
-    // Рисует те же Row (иконка / иконка+текст), что и реальные вкладки ниже,
-    // но с нулевым итоговым размером — на экране не видно, нужен только для
-    // получения стабильной intrinsic-ширины через layout(0, 0).
     Layout(
         content = {
             items.forEach { item ->
                 Row(
-                    modifier               = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                    verticalAlignment      = Alignment.CenterVertically,
-                    horizontalArrangement  = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(horizontal = itemPaddingH, vertical = itemPaddingV),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(iconLabelGap),
                 ) {
                     Icon(item.icon, contentDescription = null, modifier = Modifier.size(18.dp))
                 }
             }
             items.forEach { item ->
                 Row(
-                    modifier               = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                    verticalAlignment      = Alignment.CenterVertically,
-                    horizontalArrangement  = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(horizontal = itemPaddingH, vertical = itemPaddingV),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(iconLabelGap),
                 ) {
                     Icon(item.icon, contentDescription = null, modifier = Modifier.size(18.dp))
                     Text(item.label, fontSize = 12.sp, fontWeight = FontWeight.Medium)
@@ -118,28 +117,41 @@ fun FloatingPillNav(
             }
         },
     ) { measurables, _ ->
-        // Настоящие безграничные constraints — НЕ наследуем maxWidth от родителя,
-        // иначе измерение зависит от того, что в моменте творится с шириной внешнего
-        // Box (а она сама может плавать), и результат становится нестабильным.
-        val unbounded  = Constraints(minWidth = 0, maxWidth = Constraints.Infinity, minHeight = 0, maxHeight = Constraints.Infinity)
+        val unbounded = Constraints(minWidth = 0, maxWidth = Constraints.Infinity, minHeight = 0, maxHeight = Constraints.Infinity)
         val placeables = measurables.map { it.measure(unbounded) }
-        val n          = items.size
+        val n = items.size
         val newCompact = placeables.take(n).map { it.width.toFloat() }
-        val newFull    = placeables.drop(n).map { it.width.toFloat() }
+        val newFull = placeables.drop(n).map { it.width.toFloat() }
         if (compactWidths != newCompact) compactWidths = newCompact
-        if (fullWidths    != newFull)    fullWidths    = newFull
-        layout(0, 0) {} // ничего не рисуем — только измерение
+        if (fullWidths != newFull) fullWidths = newFull
+        layout(0, 0) {}
     }
 
     val hasSizes = fullWidths.isNotEmpty() && fullWidths.all { it > 0f } && compactWidths.all { it > 0f }
 
-    // ── Ширина каждой вкладки ПРЯМО СЕЙЧАС: полная у активной, компакт у остальных ──
+    // ── 2. Единый источник правды: t едет к индексу выбранной вкладки, без отскока ──
+    val labelSpring = spring<Float>(
+        stiffness = Spring.StiffnessMediumLow,
+        dampingRatio = Spring.DampingRatioNoBouncy,
+    )
+    val t by animateFloatAsState(
+        targetValue = selectedIndex.toFloat(),
+        animationSpec = labelSpring,
+        label = "pillReveal",
+    )
+
+    // reveal(idx) = насколько близко t к этому индексу: 1 — вкладка полностью раскрыта,
+    // 0 — полностью схлопнута. Для соседних индексов сумма долей всегда согласована,
+    // потому что оба выведены из одного и того же t.
+    fun revealOf(idx: Int): Float = (1f - abs(t - idx)).coerceIn(0f, 1f)
+
     val itemWidthsPx = items.indices.map { idx ->
-        if (idx == selectedIndex) fullWidths.getOrElse(idx) { 0f } else compactWidths.getOrElse(idx) { 0f }
+        val compact = compactWidths.getOrElse(idx) { 0f }
+        val full = fullWidths.getOrElse(idx) { 0f }
+        compact + (full - compact) * revealOf(idx)
     }
 
-    // ── X-позиции вкладок считаем сами (не из live layout) — просто накопительная сумма ──
-    val itemXsPx = remember(itemWidthsPx) {
+    val itemXsPx = run {
         val xs = mutableListOf<Float>()
         var acc = 0f
         itemWidthsPx.forEach { w ->
@@ -149,25 +161,39 @@ fun FloatingPillNav(
         xs
     }
 
-    // Сдвигаем позицию влево на величину отступа, чтобы синий фон начинался раньше контента
-    val targetXPx = (itemXsPx.getOrElse(selectedIndex) { 0f } - extraPaddingPx).coerceAtLeast(0f)
-    // Увеличиваем ширину на x2 отступа (чтобы компенсировать левый и правый «воздух»)
-    val targetWPx = itemWidthsPx.getOrElse(selectedIndex) { 0f } + (extraPaddingPx * 2)
+    // ── 3. Скользящий индикатор — отдельная пружина с отскоком ──────────────────
+    // Цель считаем по ФИНАЛЬНЫМ (устоявшимся) ширинам выбранной вкладки, а не по
+    // itemWidthsPx (которые ещё анимируются) — индикатор не участвует в расчёте
+    // размера контейнера, только рисуется поверх него.
+    val indicatorSpring = spring<Float>(
+        stiffness = Spring.StiffnessMediumLow,
+        dampingRatio = Spring.DampingRatioMediumBouncy,
+    )
 
-    // ВРЕМЕННО без пружины — мгновенный снап на target (следующий шаг — вернуть анимацию)
-    val indicatorXPx = targetXPx
-    val indicatorWPx = targetWPx
+    val restX = run {
+        var acc = 0f
+        for (idx in 0 until selectedIndex) {
+            acc += compactWidths.getOrElse(idx) { 0f } + spacingPx
+        }
+        acc
+    }
+    val restWidth = fullWidths.getOrElse(selectedIndex) { 0f }
+
+    val targetIndicatorXPx = (restX - extraPaddingPx).coerceAtLeast(0f)
+    val targetIndicatorWPx = restWidth + extraPaddingPx * 2
+
+    val indicatorXPx by animateFloatAsState(targetIndicatorXPx, indicatorSpring, label = "pillX")
+    val indicatorWPx by animateFloatAsState(targetIndicatorWPx, indicatorSpring, label = "pillW")
 
     Box(
         modifier = modifier
-            .height(IntrinsicSize.Min)          // высота = высота Row-контента
+            .height(IntrinsicSize.Min)
             .clip(CircleShape)
             .background(c.pillBg)
             .border(1.dp, c.border, CircleShape)
             .padding(5.dp),
     ) {
-
-        // ── Скользящий индикатор (слой ПОД элементами) ───────────────────────
+        // ── Скользящий индикатор (слой ПОД элементами) ──────────────────────
         if (hasSizes) {
             Box(
                 modifier = Modifier
@@ -179,57 +205,91 @@ fun FloatingPillNav(
             )
         }
 
-        // ── Навигационные элементы (без своего фона) ─────────────────────────
+        // ── Навигационные элементы ────────────────────────────────────────────
         Row(
             horizontalArrangement = Arrangement.spacedBy(spacingDp),
-            verticalAlignment     = Alignment.CenterVertically,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEachIndexed { idx, item ->
                 val isActive = currentRoute == item.route
+                val reveal = revealOf(idx)
 
                 val contentColor by animateColorAsState(
-                    targetValue   = if (isActive) c.pillActiveText else c.pillInactiveText,
+                    targetValue = if (isActive) c.pillActiveText else c.pillInactiveText,
                     animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                    label         = "pillContent$idx",
+                    label = "pillContent$idx",
                 )
 
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(24.dp))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication        = null, // у индикатора своя анимация — серая вспышка тут лишняя
-                        ) { onNavigate(item.route) }
-                        .padding(
-                            horizontal = 12.dp,
-                            vertical   = 9.dp,
-                        ),
-                    verticalAlignment     = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(
-                        imageVector        = item.icon,
-                        contentDescription = item.label,
-                        tint               = contentColor,
-                        modifier           = Modifier.size(18.dp),
-                    )
-                    AnimatedVisibility(
-                        visible = isActive,
-                        enter = expandHorizontally(
-                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy),
-                            expandFrom = Alignment.Start,
-                        ) + fadeIn(),
-                        exit = shrinkHorizontally(
-                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy),
-                            shrinkTowards = Alignment.Start,
-                        ) + fadeOut(),
+                if (hasSizes) {
+                    // Контролируемая ширина: контейнер жёстко зафиксирован в
+                    // itemWidthsPx (та самая единая анимация), а внутренний Row
+                    // всегда меряется на полный размер (иконка + подпись) и
+                    // просто обрезается снаружи модификатором .clip(). Подпись
+                    // не убирается из разметки — только становится прозрачной
+                    // и попадает под обрезку. Никакой второй системы анимации
+                    // размера здесь нет — только clip по уже готовому числу.
+                    val widthDp = with(density) { itemWidthsPx[idx].toDp() }
+                    Box(
+                        modifier = Modifier
+                            .width(widthDp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { onNavigate(item.route) },
                     ) {
-                        Text(
-                            text       = item.label,
-                            color      = contentColor,
-                            fontSize   = 12.sp,
-                            fontWeight = FontWeight.Medium,
+                        Row(
+                            modifier = Modifier
+                                .wrapContentWidth(unbounded = true, align = Alignment.Start)
+                                .padding(horizontal = itemPaddingH, vertical = itemPaddingV),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(iconLabelGap),
+                        ) {
+                            Icon(
+                                imageVector = item.icon,
+                                contentDescription = item.label,
+                                tint = contentColor,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                text = item.label,
+                                color = contentColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.alpha(reveal),
+                            )
+                        }
+                    }
+                } else {
+                    // Самый первый кадр, пока невидимый замер ещё не отработал —
+                    // рисуем без анимации, просто иконку (+ подпись, если активна),
+                    // чтобы не было пустоты. Как только придут реальные размеры,
+                    // переключаемся на управляемую ветку выше.
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(24.dp))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { onNavigate(item.route) }
+                            .padding(horizontal = itemPaddingH, vertical = itemPaddingV),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(iconLabelGap),
+                    ) {
+                        Icon(
+                            imageVector = item.icon,
+                            contentDescription = item.label,
+                            tint = contentColor,
+                            modifier = Modifier.size(18.dp),
                         )
+                        if (isActive) {
+                            Text(
+                                text = item.label,
+                                color = contentColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
                     }
                 }
             }
