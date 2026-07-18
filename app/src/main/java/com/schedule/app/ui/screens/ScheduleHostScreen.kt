@@ -1,12 +1,14 @@
 package com.schedule.app.ui.screens
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -14,43 +16,66 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
+import com.schedule.app.ui.components.FlipTransitionText
 import com.schedule.app.ui.components.ScheduleMode
 import com.schedule.app.ui.components.ScheduleModeToggle
+import com.schedule.app.ui.theme.LocalAppColors
 
-// Та же длительность, что и TAB_ANIM_MS в AppScaffold для Files ↔ Bells —
-// переключение Ученики/Преподаватели визуально относится к тому же семейству
-// анимаций ("переключение вкладки", а не "переход на глубокий экран").
-private const val HOST_ANIM_MS = 250
+// ─── ScheduleHeaderInfo ─────────────────────────────────────────────────────
+//
+// Раньше каждый под-экран (ScheduleScreen/TeacherScheduleScreen) сам рисовал
+// у себя в шапке заголовок, дату, кнопку назад и полосу загрузки (см. старые
+// SchedHeader/TeacherHeader) — из-за этого при переключении тумблером
+// съезжала ВСЯ шапка целиком вместе с содержимым, что и выглядело странно.
+// Теперь каждый под-экран только ВЫЧИСЛЯЕТ эти данные и поднимает их сюда
+// через onHeaderInfo, а рисует шапку ОДИН раз сам ScheduleHostScreen — при
+// переключении режима она не пересоздаётся и не двигается, меняется только
+// сам текст заголовка (см. FlipTransitionText в теле ScheduleHostScreen).
+data class ScheduleHeaderInfo(
+    val title: String = "",
+    val placeholder: String = "",
+    val dateText: String = "",
+    val isPairsScreen: Boolean = false,
+    val isLoading: Boolean = false,
+    val progress: Float = 0f,
+    val filledFontSize: TextUnit = 22.sp,
+    val onBack: () -> Unit = {},
+)
 
 // ─── ScheduleHostScreen ─────────────────────────────────────────────────────
 //
-// Экран, открывающийся по тапу на файл. Раньше тумблер "Ученики/Преподаватели"
-// жил на главном экране и решал, КАКОЙ из двух экранов открыть дальше —
-// теперь он переехал сюда: оба экрана (ScheduleScreen и TeacherScheduleScreen)
-// монтируются СРАЗУ и ОБА, ровно как Files/Bells в AppScaffold — переключение
-// это просто сдвиг по X без пересоздания композиции, у каждого свой
-// ViewModel и своё независимое состояние (выбранная группа / преподаватель
-// не сбрасываются друг от друга). Тумблер один на двоих (тот же composable
-// передаётся в оба слота), но реально виден только у активного — см.
-// modeToggle-слот в ScheduleScreen/TeacherScheduleScreen, который прячет его
-// на экране пар.
+// Экран, открывающийся по тапу на файл. Оба вида (ScheduleScreen и
+// TeacherScheduleScreen) монтируются СРАЗУ и ОБА — у каждого свой ViewModel
+// и своё независимое состояние (выбранная группа / преподаватель не
+// сбрасываются друг от друга при переключении).
 //
-// Да, это значит, что расписание группы И список преподавателей парсятся и
-// рендерятся одновременно при открытии файла, а не по требованию — сознательный
-// компромисс: элементы интерфейса лёгкие, поэтому на производительность это
-// почти не влияет, а взамен переключение между видами внутри уже открытого
-// файла становится мгновенным (ничего не перезапрашивается и не пересоздаётся).
-
+// Раньше переключение тумблером сдвигало оба вида по X (offset-слайд, как у
+// Files/Bells в AppScaffold) — визуально это читалось как "переход на другой
+// экран", хотя по смыслу это просто переключатель РЕЖИМА одного и того же
+// экрана. Поэтому слайд убран: неактивный вид теперь просто становится
+// невидимым (alpha 0) и перестаёт ловить тапы, БЕЗ какой-либо анимации
+// самого переключения. "Едут" только элементы ВНУТРИ активного вида —
+// карточки пикера группы/преподавателя всё так же анимированно "влетают"
+// (см. revealTrigger/revealEdge, эта часть не менялась).
+//
+// Шапка, тумблер и полоса загрузки теперь тоже не дублируются на два экрана —
+// единственный экземпляр каждого живёт здесь и берёт данные из headerInfo
+// активного в данный момент режима.
 @Composable
 fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
+    val c = LocalAppColors.current
     val defaultMode by AppPrefs.defaultScheduleMode.collectAsState()
 
     // Стартовый режим берём из настроек ровно один раз при открытии ЭТОГО
@@ -59,10 +84,9 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
     // должны "прыгать" обратно на дефолт при рекомпозициях.
     var mode by rememberSaveable(file.name) { mutableStateOf(defaultMode) }
 
-    // Каскадная анимация элементов пикера при переключении тумблером — тот же
-    // приём, что раньше жил в FilesScreen (modeToggleTrigger/modeToggleEdge),
-    // просто теперь управляет карточками пикера группы/преподавателя, а не
-    // карточками файлов.
+    // Каскадная анимация карточек пикера при переключении тумблером — тот же
+    // приём, что и раньше, просто по-прежнему управляет карточками
+    // группы/преподавателя внутри активного вида.
     var toggleTrigger by remember { mutableStateOf(0) }
     var toggleEdge by remember { mutableStateOf(CascadeEdge.LEFT) }
 
@@ -74,53 +98,135 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         mode = newMode
     }
 
-    // Один и тот же тумблер передаётся в оба экрана — контролируемый компонент,
-    // конфликта состояния нет, реально отрисовывается заметно только тот
-    // экземпляр, что сейчас на виду (см. modeToggle-слот внутри каждого экрана).
-    val toggle: @Composable () -> Unit = {
-        ScheduleModeToggle(
-            selected = mode,
-            onSelect = onModeSelect,
-            modifier = Modifier.padding(horizontal = 18.dp),
-        )
-    }
+    // Состояние шапки для каждого из двух видов — оба смонтированы всегда и
+    // независимо сообщают о себе, а рисуется только то, что относится к
+    // активному в данный момент mode.
+    var studentHeader by remember { mutableStateOf(ScheduleHeaderInfo(placeholder = "Выберите группу")) }
+    var teacherHeader by remember { mutableStateOf(ScheduleHeaderInfo(placeholder = "Выберите преподавателя")) }
+    val activeHeader = if (mode == ScheduleMode.STUDENT) studentHeader else teacherHeader
 
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .clipToBounds(), // чтобы неактивный вид не вылезал за край
-    ) {
-        val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
+    Column(modifier = Modifier.fillMaxSize().background(c.bg)) {
 
-        // Студенческий вид стоит в 0, преподавательский сдвинут на +width
-        // (ждёт справа) — offset двигает оба разом.
-        val targetOffset = if (mode == ScheduleMode.STUDENT) 0f else -widthPx
-        val offset by animateFloatAsState(
-            targetValue   = targetOffset,
-            animationSpec = tween(HOST_ANIM_MS, easing = FastOutSlowInEasing),
-            label         = "scheduleModeSlide",
-        )
+        // ── Единая фиксированная шапка ──────────────────────────────────────
+        Column(modifier = Modifier.fillMaxWidth().background(c.surface)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(c.surface2)
+                        .clickable(onClick = activeHeader.onBack),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.ArrowBack,
+                        contentDescription = "Назад",
+                        tint = c.accent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
 
-        Box(modifier = Modifier.fillMaxSize().graphicsLayer { translationX = offset }) {
-            ScheduleScreen(
-                file          = file,
-                onBack        = onBack,
-                active        = mode == ScheduleMode.STUDENT,
-                modeToggle    = toggle,
-                revealTrigger = toggleTrigger,
-                revealEdge    = toggleEdge,
+                Column(modifier = Modifier.weight(1f)) {
+                    val displayTitle = activeHeader.title.ifBlank { activeHeader.placeholder }
+                    FlipTransitionText(
+                        text     = displayTitle,
+                        color    = if (activeHeader.title.isBlank()) c.textSub else c.accent,
+                        fontSize = if (activeHeader.title.isBlank()) 16.sp else activeHeader.filledFontSize,
+                    )
+                    Text(
+                        text = activeHeader.dateText,
+                        color = c.textSub,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(c.border),
             )
         }
 
-        Box(modifier = Modifier.fillMaxSize().graphicsLayer { translationX = offset + widthPx }) {
-            TeacherScheduleScreen(
-                file          = file,
-                onBack        = onBack,
-                active        = mode == ScheduleMode.TEACHER,
-                modeToggle    = toggle,
-                revealTrigger = toggleTrigger,
-                revealEdge    = toggleEdge,
+        // ── Полоса загрузки — теперь НАД тумблером (раньше была под ним) ────
+        if (activeHeader.isLoading) {
+            LinearProgressIndicator(
+                progress   = { activeHeader.progress },
+                modifier   = Modifier.fillMaxWidth().height(2.dp),
+                color      = c.accent,
+                trackColor = c.surface2,
             )
+        }
+
+        // ── Тумблер "Ученики/Преподаватели" — один фиксированный экземпляр,
+        // виден только пока в активном режиме не показано само расписание пар.
+        if (!activeHeader.isPairsScreen) {
+            Spacer(Modifier.height(10.dp))
+            ScheduleModeToggle(
+                selected = mode,
+                onSelect = onModeSelect,
+                modifier = Modifier.padding(horizontal = 18.dp),
+            )
+            Spacer(Modifier.height(4.dp))
+        }
+
+        // ── Содержимое: оба вида смонтированы всегда, неактивный просто
+        // невидим и не ловит тапы — БЕЗ анимации переключения между ними.
+        Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+            val studentActive = mode == ScheduleMode.STUDENT
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = if (studentActive) 1f else 0f }
+                    .blockTouchesIfInactive(!studentActive),
+            ) {
+                ScheduleScreen(
+                    file          = file,
+                    onBack        = onBack,
+                    active        = studentActive,
+                    revealTrigger = toggleTrigger,
+                    revealEdge    = toggleEdge,
+                    onHeaderInfo  = { studentHeader = it },
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = if (!studentActive) 1f else 0f }
+                    .blockTouchesIfInactive(studentActive),
+            ) {
+                TeacherScheduleScreen(
+                    file          = file,
+                    onBack        = onBack,
+                    active        = !studentActive,
+                    revealTrigger = toggleTrigger,
+                    revealEdge    = toggleEdge,
+                    onHeaderInfo  = { teacherHeader = it },
+                )
+            }
         }
     }
 }
+
+// Блокирует все тач-события для невидимого (неактивного) вида — иначе он,
+// будучи смонтированным и занимающим весь экран под активным, мог бы первым
+// перехватывать часть тапов, несмотря на alpha = 0.
+private fun Modifier.blockTouchesIfInactive(inactive: Boolean): Modifier =
+    if (inactive) {
+        this.pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                }
+            }
+        }
+    } else this
