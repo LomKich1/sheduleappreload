@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Refresh
@@ -147,9 +146,12 @@ fun TeacherScheduleScreen(
     // См. аналогичные параметры и комментарий в ScheduleScreen.kt — тут то же
     // самое, зеркально, для преподавательской ветки.
     active: Boolean = true,
-    modeToggle: @Composable () -> Unit = {},
     revealTrigger: Int = 0,
     revealEdge: CascadeEdge = CascadeEdge.BOTTOM,
+    // onHeaderInfo — см. подробный комментарий у аналогичного параметра в
+    // ScheduleScreen.kt: этот экран больше не рисует шапку/тумблер/прогресс-
+    // бар сам, а поднимает их состояние наверх в ScheduleHostScreen.
+    onHeaderInfo: (ScheduleHeaderInfo) -> Unit = {},
 ) {
     val c            = LocalAppColors.current
     val uiState      by vm.uiState.collectAsState()
@@ -209,29 +211,24 @@ fun TeacherScheduleScreen(
             .fillMaxSize()
             .background(c.bg),
     ) {
-        TeacherHeader(
-            teacherName     = headerTeacherName,
-            dateText        = file.dateLabel,
-            // Со экрана пар стрелка ведёт к пикеру преподавателя; с любого
-            // другого под-экрана — как раньше, наружу из TeacherScheduleScreen.
-            // Карандаш "сменить преподавателя" убран — дублировал эту же стрелку.
-            onBack          = if (isPairsScreen) backToPicker else onBack,
-        )
-
-        // Тумблер "Ученики/Преподаватели" — только пока не показано само
-        // расписание пар (см. modeToggle в сигнатуре TeacherScheduleScreen выше).
-        if (!isPairsScreen) {
-            Spacer(Modifier.height(10.dp))
-            modeToggle()
-            Spacer(Modifier.height(4.dp))
-        }
-
-        if (uiState is TeacherUiState.Loading) {
-            LinearProgressIndicator(
-                progress   = { progress },
-                modifier   = Modifier.fillMaxWidth().height(2.dp),
-                color      = c.accent,
-                trackColor = c.surface2,
+        // Шапка/тумблер/полоса загрузки теперь рисуются один раз в
+        // ScheduleHostScreen на оба режима сразу (см. ScheduleHeaderInfo) —
+        // здесь только сообщаем актуальное состояние наверх.
+        SideEffect {
+            onHeaderInfo(
+                ScheduleHeaderInfo(
+                    title          = headerTeacherName,
+                    placeholder    = "Выберите преподавателя",
+                    dateText       = file.dateLabel,
+                    isPairsScreen  = isPairsScreen,
+                    isLoading      = uiState is TeacherUiState.Loading,
+                    progress       = progress,
+                    filledFontSize = 20.sp,
+                    // Со экрана пар стрелка ведёт к пикеру преподавателя; с
+                    // любого другого под-экрана — как раньше, наружу из
+                    // TeacherScheduleScreen.
+                    onBack         = if (isPairsScreen) backToPicker else onBack,
+                ),
             )
         }
 
@@ -310,68 +307,6 @@ fun TeacherScheduleScreen(
                 )
             }
         }
-    }
-}
-
-// ─── Шапка ────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun TeacherHeader(
-    teacherName: String,
-    dateText: String,
-    onBack: () -> Unit,
-) {
-    val c = LocalAppColors.current
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(c.surface),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(c.surface2)
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.ArrowBack,
-                    contentDescription = "Назад",
-                    tint = c.accent,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (teacherName.isBlank()) "Выберите преподавателя" else teacherName,
-                    color = if (teacherName.isBlank()) c.textSub else c.accent,
-                    fontSize = if (teacherName.isBlank()) 16.sp else 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    lineHeight = 24.sp,
-                )
-                Text(
-                    text = dateText,
-                    color = c.textSub,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(c.border),
-        )
     }
 }
 

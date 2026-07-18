@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Refresh
@@ -157,13 +156,16 @@ fun ScheduleScreen(
     //              где студенческий и преподавательский вид смонтированы ОБА
     //              одновременно и просто сдвигаются по X). Нужен, чтобы системный
     //              back-жест не перехватывался невидимой половиной.
-    // modeToggle — слот тумблера "Ученики/Преподаватели", вставляется под шапкой,
-    //              но только пока показан пикер группы (не на расписании пар).
     // revealTrigger/revealEdge — см. комментарий у lastRevealApplied ниже.
     active: Boolean = true,
-    modeToggle: @Composable () -> Unit = {},
     revealTrigger: Int = 0,
     revealEdge: CascadeEdge = CascadeEdge.BOTTOM,
+    // onHeaderInfo — вместо того чтобы рисовать шапку/тумблер/прогресс-бар у
+    // себя (как раньше делал SchedHeader), этот экран теперь только
+    // ВЫЧИСЛЯЕТ их актуальное состояние и поднимает наверх, в
+    // ScheduleHostScreen, который рисует единую фиксированную шапку на оба
+    // режима сразу. См. ScheduleHeaderInfo в ScheduleHostScreen.kt.
+    onHeaderInfo: (ScheduleHeaderInfo) -> Unit = {},
 ) {
     val c         = LocalAppColors.current
     val uiState   by vm.uiState.collectAsState()
@@ -248,28 +250,24 @@ fun ScheduleScreen(
             .fillMaxSize()
             .background(c.bg),
     ) {
-        SchedHeader(
-            groupName = headerGroupName,
-            dateText  = file.dateLabel,
-            // Со экрана пар стрелка ведёт к пикеру группы; с любого другого
-            // под-экрана (пикер, загрузка, ошибка) — как раньше, наружу из ScheduleScreen.
-            onBack    = if (isPairsScreen) backToPicker else onBack,
-        )
-
-        // Тумблер "Ученики/Преподаватели" — только пока не показано само
-        // расписание пар (см. modeToggle в сигнатуре ScheduleScreen выше).
-        if (!isPairsScreen) {
-            Spacer(Modifier.height(10.dp))
-            modeToggle()
-            Spacer(Modifier.height(4.dp))
-        }
-
-        if (uiState is ScheduleUiState.Loading) {
-            LinearProgressIndicator(
-                progress   = { progress },
-                modifier   = Modifier.fillMaxWidth().height(2.dp),
-                color      = c.accent,
-                trackColor = c.surface2,
+        // Шапка/тумблер/полоса загрузки теперь рисуются один раз в
+        // ScheduleHostScreen на оба режима сразу (см. ScheduleHeaderInfo) —
+        // здесь только сообщаем актуальное состояние наверх.
+        SideEffect {
+            onHeaderInfo(
+                ScheduleHeaderInfo(
+                    title          = headerGroupName,
+                    placeholder    = "Выберите группу",
+                    dateText       = file.dateLabel,
+                    isPairsScreen  = isPairsScreen,
+                    isLoading      = uiState is ScheduleUiState.Loading,
+                    progress       = progress,
+                    filledFontSize = 22.sp,
+                    // Со экрана пар стрелка ведёт к пикеру группы; с любого
+                    // другого под-экрана (пикер, загрузка, ошибка) — как
+                    // раньше, наружу из ScheduleScreen.
+                    onBack         = if (isPairsScreen) backToPicker else onBack,
+                ),
             )
         }
 
@@ -358,74 +356,6 @@ fun ScheduleScreen(
                 )
             }
         }
-    }
-}
-
-// ─── Шапка ────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun SchedHeader(
-    groupName: String,
-    dateText: String,
-    onBack: () -> Unit,
-) {
-    val c = LocalAppColors.current
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(c.surface),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            // Кнопка назад — она же "сменить группу": пока показано расписание,
-            // ведёт к пикеру группы (см. backToPicker в ScheduleScreen), с пикера —
-            // выходит из экрана целиком. Раньше рядом была ещё отдельная кнопка
-            // "карандаш" с тем же действием на экране расписания — убрали как
-            // дублирующую, назад и так делает то же самое.
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(c.surface2)
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.ArrowBack,
-                    contentDescription = "Назад",
-                    tint = c.accent,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-
-            // Название группы или плейсхолдер
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (groupName.isBlank()) "Выберите группу" else groupName,
-                    color = if (groupName.isBlank()) c.textSub else c.accent,
-                    fontSize = if (groupName.isBlank()) 16.sp else 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    lineHeight = 24.sp,
-                )
-                Text(
-                    text = dateText,
-                    color = c.textSub,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(c.border),
-        )
     }
 }
 
