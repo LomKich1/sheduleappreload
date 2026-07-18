@@ -83,7 +83,7 @@ fun FloatingPillNav(
 
     val spacingDp = 4.dp
     val spacingPx = with(density) { spacingDp.toPx() }
-    val extraPaddingDp = 12.dp
+    val extraPaddingDp = 4.dp
     val extraPaddingPx = with(density) { extraPaddingDp.toPx() }
     val itemPaddingH = 12.dp
     val itemPaddingV = 9.dp
