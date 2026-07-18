@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -116,9 +117,12 @@ fun FloatingPillNav(
                 }
             }
         },
-    ) { measurables, constraints ->
-        val loose      = constraints.copy(minWidth = 0, minHeight = 0)
-        val placeables = measurables.map { it.measure(loose) }
+    ) { measurables, _ ->
+        // Настоящие безграничные constraints — НЕ наследуем maxWidth от родителя,
+        // иначе измерение зависит от того, что в моменте творится с шириной внешнего
+        // Box (а она сама может плавать), и результат становится нестабильным.
+        val unbounded  = Constraints(minWidth = 0, maxWidth = Constraints.Infinity, minHeight = 0, maxHeight = Constraints.Infinity)
+        val placeables = measurables.map { it.measure(unbounded) }
         val n          = items.size
         val newCompact = placeables.take(n).map { it.width.toFloat() }
         val newFull    = placeables.drop(n).map { it.width.toFloat() }
