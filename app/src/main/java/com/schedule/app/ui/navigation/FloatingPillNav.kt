@@ -87,7 +87,7 @@ fun FloatingPillNav(
     // (AnimatedVisibility) — раньше она резко исчезала/появлялась через
     // обычный if, теперь плавно сжимается, но уже без пружинного "перелёта".
     val springSpec = spring<Float>(
-        stiffness    = Spring.StiffnessMediumLow,
+        stiffness    = Spring.StiffnessLow, // было StiffnessMediumLow — пробуем медленнее, чтобы проверить рывок в конце
         dampingRatio = Spring.DampingRatioMediumBouncy,
     )
     
