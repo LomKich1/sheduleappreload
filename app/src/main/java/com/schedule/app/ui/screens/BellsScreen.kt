@@ -156,8 +156,12 @@ fun BellsScreen(entranceTrigger: Int = 0) {
             .fillMaxSize()
             .background(c.bg),
     ) {
-        // ── Шапка ─────────────────────────────────────────────────────────
-        BellsHeader(timeStr = timeStr)
+        // Шапка ("Расписание звонков") переехала на уровень AppScaffold в
+        // единый AppHeader (заголовок теперь просто "Звонки", с
+        // flip-переходом при переключении вкладок). Живое время раньше было
+        // подписью под тем заголовком — теперь просто отдельная строка тут,
+        // тем же приёмом, что и TodayDateLine на главном экране.
+        LiveTimeLine(timeStr = timeStr)
 
         Spacer(Modifier.height(14.dp))
 
@@ -216,44 +220,21 @@ fun BellsScreen(entranceTrigger: Int = 0) {
     }
 }
 
-// ─── Шапка ───────────────────────────────────────────────────────────────────
+// ─── Живое время ──────────────────────────────────────────────────────────────
+// Раньше было подписью под заголовком BellsHeader — теперь заголовка тут
+// больше нет (он один общий, в AppHeader), а время осталось отдельной
+// строкой, тем же стилем, что и TodayDateLine на главном экране.
 
 @Composable
-private fun BellsHeader(timeStr: String) {
+private fun LiveTimeLine(timeStr: String) {
     val c = LocalAppColors.current
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(c.surface),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Расписание звонков",
-                    color = c.text,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "сейчас $timeStr",
-                    color = c.textSub,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(c.border),
-        )
-    }
+    Text(
+        text = "сейчас $timeStr",
+        color = c.textSub,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.padding(horizontal = 18.dp),
+    )
 }
 
 // ─── Переключатель расписания ─────────────────────────────────────────────────
@@ -402,12 +383,15 @@ private fun BellCard(
     }
     val timeColor   = if (isNow) c.todayAccent else c.text
 
+    // Правка дизайна: рамка и скругление приведены к тем же значениям, что
+    // и в FileCard на главном экране (1dp / 16dp вместо 1.5dp / 14dp) —
+    // раньше карточки пар выглядели чуть массивнее карточек файлов.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(cardBg)
-            .border(1.5.dp, borderColor, RoundedCornerShape(14.dp)),
+            .border(1.dp, borderColor, RoundedCornerShape(16.dp)),
     ) {
         // Левая цветная полоска — как в PairCard
         Box(
@@ -425,10 +409,10 @@ private fun BellCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(11.dp),
         ) {
-            // Значок номера пары
+            // Значок номера пары — 40dp, как круглая иконка в FileCard
             Box(
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(40.dp)
                     .clip(CircleShape)
                     .background(barColor.copy(alpha = 0.18f)),
                 contentAlignment = Alignment.Center,

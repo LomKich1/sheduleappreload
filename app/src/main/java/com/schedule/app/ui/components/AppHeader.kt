@@ -7,7 +7,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -17,23 +16,29 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.schedule.app.R
+import com.schedule.app.ui.navigation.Screen
 import com.schedule.app.ui.theme.LocalAppColors
 
-// ─── Шапка FilesScreen ────────────────────────────────────────────────────────
-// Название приложения слева (как в Telegram) + кнопка меню справа. Перед
-// названием — значок текущего колледжа (ic_camek.xml, трассирован из
-// логотипа СаМеК). Красится в c.text, как обычная иконка, а не хранит
-// собственный брендовый цвет — сейчас колледж всего один, но когда их
-// станет больше, тут будет логотип конкретно выбранного. Кнопка настроек:
-// без круглой серой подложки (осталась только риппл-анимация при нажатии —
-// сама форма кнопки визуально не нужна, это просто иконка), значок —
-// "гамбургер", как раньше было в мобильном Telegram.
+// ─── Единая шапка приложения ──────────────────────────────────────────────────
+//
+//  Раньше FilesScreen и BellsScreen рисовали каждый свою собственную шапку
+//  ("Расписание" / "Расписание звонков" простым статичным текстом) — из-за
+//  этого при переключении вкладок одна шапка резко подменялась другой, без
+//  какой-либо анимации. Теперь шапка ОДНА, живёт на уровне AppScaffold (тот же
+//  приём, что уже применён в ScheduleHostScreen для заголовка группы/препода),
+//  а смена подписи "Расписание" ↔ "Звонки" идёт через FlipTransitionText —
+//  тот самый сплит-флап переворот букв, что и там.
+//
+//  Кнопка настроек теперь доступна с ОБЕИХ вкладок (раньше — только с Files,
+//  на Bells до неё нужно было сначала переключиться на Files).
 
 @Composable
-fun FilesHeader(
+fun AppHeader(
+    activeRoute: String,
     onSettingsClick: () -> Unit,
 ) {
     val c = LocalAppColors.current
+    val title = if (activeRoute == Screen.Files.route) "Расписание" else "Звонки"
 
     Row(
         modifier = Modifier
@@ -53,8 +58,8 @@ fun FilesHeader(
                 tint = c.text,
                 modifier = Modifier.size(26.dp),
             )
-            Text(
-                text = "Расписание",
+            FlipTransitionText(
+                text = title,
                 color = c.text,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
@@ -64,10 +69,6 @@ fun FilesHeader(
         IconButton(
             onClick = onSettingsClick,
             modifier = Modifier
-                // 36dp — единый размер круглых кнопок по всему приложению
-                // (см. кнопки "назад"/"карандаш" в ScheduleScreen, TeacherScheduleScreen,
-                // SettingsScreen). Фон убран по правке — форма нужна только чтобы
-                // ограничить область риппла кругом, а не для видимой подложки.
                 .size(36.dp)
                 .clip(CircleShape),
         ) {

@@ -27,6 +27,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.schedule.app.ui.components.AppHeader
 import com.schedule.app.ui.navigation.FloatingPillNav
 import com.schedule.app.ui.navigation.NavigationHolder
 import com.schedule.app.ui.navigation.Screen
@@ -104,48 +105,63 @@ fun AppScaffold() {
             .background(c.bg)
             .systemBarsPadding(),
     ) {
-        // ── Вкладки: Files и Bells всегда в композиции ──────────────────────
-        //  Раньше это были composable() внутри NavHost — отсюда и лаг.
-        //  Теперь оба экрана собраны один раз и просто сдвигаются по X.
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(if (showPill) Modifier.padding(bottom = 76.dp) else Modifier)
-                .clipToBounds(), // чтобы неактивная вкладка не вылезала за край
-        ) {
-            val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
-
-            // Files стоит в 0, Bells сдвинута на +width (ждёт справа).
-            // offset двигает обе разом — ровно так же, как раньше двигались
-            // tabEnter/tabExit, но без пересборки экрана.
-            val targetOffset = if (activeTab == Screen.Files.route) 0f else -widthPx
-            val offset by animateFloatAsState(
-                targetValue   = targetOffset,
-                animationSpec = tween(TAB_ANIM_MS, easing = FastOutSlowInEasing),
-                label         = "tabSlide",
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { translationX = offset },
-            ) {
-                FilesScreen(
-                    onFileClick     = { file ->
-                        NavigationHolder.pendingFile = file
-                        navController.navigate(Screen.Schedule.route)
-                    },
+        // ── Единая шапка ("Расписание" ↔ "Звонки" через flip) ───────────────
+        //  Раньше каждая вкладка рисовала свою собственную шапку — из-за
+        //  этого при переключении не было анимации самого заголовка, он
+        //  просто резко подменялся. Теперь шапка одна на обе вкладки, скрыта,
+        //  когда сверху открыт глубокий экран (Schedule/Settings) — у них
+        //  своя шапка со стрелкой "назад".
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (!deepScreenOpen) {
+                AppHeader(
+                    activeRoute     = activeTab,
                     onSettingsClick = { navController.navigate(Screen.Settings.route) },
-                    entranceTrigger = filesEntranceTrigger,
                 )
             }
 
-            Box(
+            // ── Вкладки: Files и Bells всегда в композиции ──────────────────
+            //  Раньше это были composable() внутри NavHost — отсюда и лаг.
+            //  Теперь оба экрана собраны один раз и просто сдвигаются по X.
+            BoxWithConstraints(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { translationX = offset + widthPx },
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .then(if (showPill) Modifier.padding(bottom = 76.dp) else Modifier)
+                    .clipToBounds(), // чтобы неактивная вкладка не вылезала за край
             ) {
-                BellsScreen(entranceTrigger = bellsEntranceTrigger)
+                val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
+
+                // Files стоит в 0, Bells сдвинута на +width (ждёт справа).
+                // offset двигает обе разом — ровно так же, как раньше двигались
+                // tabEnter/tabExit, но без пересборки экрана.
+                val targetOffset = if (activeTab == Screen.Files.route) 0f else -widthPx
+                val offset by animateFloatAsState(
+                    targetValue   = targetOffset,
+                    animationSpec = tween(TAB_ANIM_MS, easing = FastOutSlowInEasing),
+                    label         = "tabSlide",
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { translationX = offset },
+                ) {
+                    FilesScreen(
+                        onFileClick     = { file ->
+                            NavigationHolder.pendingFile = file
+                            navController.navigate(Screen.Schedule.route)
+                        },
+                        entranceTrigger = filesEntranceTrigger,
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { translationX = offset + widthPx },
+                ) {
+                    BellsScreen(entranceTrigger = bellsEntranceTrigger)
+                }
             }
         }
 

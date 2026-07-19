@@ -33,7 +33,6 @@ import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.components.FileCard
-import com.schedule.app.ui.components.FilesHeader
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
@@ -48,7 +47,6 @@ import java.util.Calendar
 fun FilesScreen(
     vm: FilesViewModel = viewModel(),
     onFileClick: (ScheduleFile) -> Unit = {},
-    onSettingsClick: () -> Unit = {},
     entranceTrigger: Int = 0,
 ) {
     val uiState by vm.uiState.collectAsState()
@@ -74,8 +72,10 @@ fun FilesScreen(
             .fillMaxSize()
             .background(LocalAppColors.current.bg),
     ) {
-        FilesHeader(onSettingsClick = onSettingsClick)
-
+        // Шапка ("Расписание" + значок колледжа + кнопка настроек) переехала
+        // на уровень AppScaffold в единый AppHeader — общий для Files/Bells,
+        // с flip-переходом названия при переключении вкладок. Тут её больше
+        // нет, поэтому сразу небольшой отступ и дата.
         Spacer(Modifier.height(14.dp))
 
         TodayDateLine()
