@@ -66,4 +66,5 @@ android {
 compose.resources {
     packageOfResClass = "com.schedule.app.generated"
     publicResClass = true
+    generateResClass = always
 }

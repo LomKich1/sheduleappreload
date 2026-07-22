@@ -44,7 +44,7 @@ jobs:
       # Debug APK подписывается автоматически дефолтным Android debug ключом.
       # Устанавливается на любой телефон с включённым "Неизвестные источники".
       - name: Build Debug APK
-        run: gradle assembleDebug --rerun-tasks
+        run: gradle assembleDebug
 
       # ── 6. Signed Release APK (если keystore настроен) ───────────────────
       # Добавь три секрета в Settings → Secrets → Actions:
