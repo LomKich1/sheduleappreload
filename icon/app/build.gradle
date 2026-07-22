@@ -1,0 +1,74 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+android {
+    namespace 'com.schedule.app'
+    compileSdk 35
+
+    // Версия читается из gradle.properties — менять только там.
+    // Вынесено ДО defaultConfig: без явного = Groovy путает присвоение
+    // свойства и вызов метода и падает с "Value is null".
+    def appVersionCode = project.findProperty("APP_VERSION_CODE") ?: "1"
+    def appVersionName = project.findProperty("APP_VERSION")      ?: "1.0.0"
+
+    defaultConfig {
+        applicationId "com.schedule.app"
+        minSdk 26
+        targetSdk 35
+        versionCode = appVersionCode.toInteger()
+        versionName = appVersionName
+    }
+
+    // ── Подпись release APK ───────────────────────────────────────────────
+    // Используется только если переданы параметры -PKEYSTORE_PATH=... и т.д.
+    // Без них assembleRelease создаёт неподписанный APK (для CI без секретов).
+    def ksPath = project.findProperty("KEYSTORE_PATH")
+    if (ksPath) {
+        signingConfigs {
+            release {
+                storeFile     file(ksPath)
+                storePassword project.findProperty("KEYSTORE_PASSWORD") ?: ""
+                keyAlias      project.findProperty("KEY_ALIAS")         ?: "schedule"
+                keyPassword   project.findProperty("KEY_PASSWORD")      ?: ""
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Подписываем релиз только если keystore передан
+            if (ksPath) signingConfig signingConfigs.release
+        }
+        debug {
+            // Debug подписывается автоматически стандартным Android debug-ключом
+            debuggable true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions { jvmTarget = '11' }
+
+    buildFeatures { compose true }
+}
+
+dependencies {
+    // Весь общий код (модели, парсер, экраны, ViewModel'ы, настройки, Compose UI
+    // и его версии) — теперь живёт в :shared и переиспользуется десктопной версией.
+    // Свой Compose BOM здесь больше не нужен — версии приходят из shared как api().
+    implementation project(':shared')
+
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.activity:activity-compose:1.9.0'
+
+    // Версия должна совпадать с той, что тянет Compose Multiplatform 1.7.3 в :shared.
+    debugImplementation 'androidx.compose.ui:ui-tooling:1.9.0'
+}
