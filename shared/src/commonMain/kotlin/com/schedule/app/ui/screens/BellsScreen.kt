@@ -500,10 +500,10 @@ private fun BellCard(
 
 // ─── Preview ────────────────────────────────────────────────────────────────
 
-@Preview(name = "Bells · Dark", showBackground = true, widthDp = 360, heightDp = 780)
+@Preview
 @Composable
 private fun PreviewBellsDark() = AppTheme(ThemePreset.DARK) { BellsScreen() }
 
-@Preview(name = "Bells · AMOLED", showBackground = true, widthDp = 360, heightDp = 780)
+@Preview
 @Composable
 private fun PreviewBellsAmoled() = AppTheme(ThemePreset.AMOLED) { BellsScreen() }

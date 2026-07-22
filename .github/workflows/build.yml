@@ -44,7 +44,7 @@ jobs:
       # Debug APK подписывается автоматически дефолтным Android debug ключом.
       # Устанавливается на любой телефон с включённым "Неизвестные источники".
       - name: Build Debug APK
-        run: gradle assembleDebug
+        run: ./gradlew assembleDebug
 
       # ── 6. Signed Release APK (если keystore настроен) ───────────────────
       # Добавь три секрета в Settings → Secrets → Actions:
@@ -171,7 +171,7 @@ jobs:
       # nativeDistributions умеет собрать только формат, "родной" для ОС
       # раннера (msi/exe — только на Windows, deb — только на Linux и т.д.)
       - name: Build desktop package
-        run: gradle :desktopApp:${{ matrix.task }}
+        run: ./gradlew :desktopApp:${{ matrix.task }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
