@@ -467,6 +467,6 @@ private fun TogglePill(checked: Boolean, onToggle: () -> Unit) {
 
 // ─── Preview ────────────────────────────────────────────────────────────────
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Settings · Dark", showBackground = true)
+@org.jetbrains.compose.ui.tooling.preview.Preview(name = "Settings · Dark", showBackground = true)
 @Composable
 private fun PreviewSettingsDark() = AppTheme(ThemePreset.DARK) { SettingsScreen(onBack = {}) }

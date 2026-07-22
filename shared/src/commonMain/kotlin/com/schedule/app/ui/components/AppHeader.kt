@@ -16,7 +16,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.schedule.app.generated.Res
-import com.schedule.app.generated.resources.ic_camek
 import com.schedule.app.ui.navigation.Screen
 import com.schedule.app.ui.theme.LocalAppColors
 

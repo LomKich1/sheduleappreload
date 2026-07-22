@@ -16,19 +16,20 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation(compose.runtime)
-            implementation(compose.foundation)
-            implementation(compose.material3)
-            implementation(compose.materialIconsExtended)
-            implementation(compose.components.resources)
-            implementation(compose.ui)
+            api(compose.runtime)
+            api(compose.foundation)
+            api(compose.material3)
+            api(compose.materialIconsExtended)
+            api(compose.components.resources)
+            api(compose.components.uiToolingPreview)
+            api(compose.ui)
 
             implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0"
 
-            implementation "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.9.4"
-            implementation "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4"
-            implementation "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.4"
-            implementation "org.jetbrains.androidx.navigation:navigation-compose:2.9.2"
+            api "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.9.4"
+            api "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4"
+            api "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.4"
+            api "org.jetbrains.androidx.navigation:navigation-compose:2.9.2"
 
             // Сеть и парсинг — обычные JVM-библиотеки, работают одинаково
             // на Android и на десктопе (оба таргета — JVM).
@@ -50,7 +51,7 @@ kotlin {
 
 android {
     namespace 'com.schedule.app.shared'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig { minSdk 26 }
 
