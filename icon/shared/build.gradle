@@ -1,0 +1,69 @@
+plugins {
+    id 'org.jetbrains.kotlin.multiplatform'
+    id 'org.jetbrains.kotlin.plugin.compose'
+    id 'org.jetbrains.compose'
+    id 'com.android.library'
+}
+
+kotlin {
+    // Общий код компилируется под Android и под JVM (десктоп).
+    androidTarget {
+        compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11) }
+    }
+    jvm("desktop") {
+        compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11) }
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            api(compose.runtime)
+            api(compose.foundation)
+            api(compose.material3)
+            api(compose.materialIconsExtended)
+            api(compose.components.resources)
+            api(compose.components.uiToolingPreview)
+            api(compose.ui)
+
+            implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0"
+
+            api "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.9.4"
+            api "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4"
+            api "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.4"
+            api "org.jetbrains.androidx.navigation:navigation-compose:2.9.2"
+
+            // Сеть и парсинг — обычные JVM-библиотеки, работают одинаково
+            // на Android и на десктопе (оба таргета — JVM).
+            implementation "com.squareup.okhttp3:okhttp:4.12.0"
+            implementation "org.json:json:20231013"
+        }
+        androidMain.dependencies {
+            implementation "androidx.core:core-ktx:1.13.1"
+            implementation "androidx.activity:activity-compose:1.9.0"
+        }
+        desktopMain {
+            dependencies {
+                implementation(compose.desktop.common)
+                implementation "org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0"
+            }
+        }
+    }
+}
+
+android {
+    namespace 'com.schedule.app.shared'
+    compileSdk 35
+
+    defaultConfig { minSdk 26 }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+// Пакет, в котором окажется сгенерированный класс Res (ic_camek и т.д.) —
+// используется в AppHeader.kt как com.schedule.app.generated.Res
+compose.resources {
+    packageOfResClass = "com.schedule.app.generated"
+    publicResClass = true
+}
