@@ -26,12 +26,13 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ── 3. Gradle 8.4 (без gradlew в репозитории) ─────────────────────────
+      # ── 3. Gradle 8.6 (без gradlew в репозитории) ─────────────────────────
       # gradle/actions умеет ставить Gradle напрямую — враппер не нужен.
-      - name: Set up Gradle 8.4
+      # 8.6 — минимум для связки Kotlin 2.1.20 + Compose Multiplatform 1.7.3.
+      - name: Set up Gradle 8.6
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.4'
+          gradle-version: '8.6'
 
       # ── 4. Принимаем лицензии Android SDK ────────────────────────────────
       # Ubuntu-latest уже содержит SDK с API 34 и build-tools 34.0.0 —
@@ -138,3 +139,43 @@ jobs:
       - name: Cleanup keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/release.jks"
+
+  build-desktop:
+    name: 🖥️ Build Desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            task: packageMsi
+            artifact-glob: desktopApp/build/compose/binaries/main/msi/*.msi
+          - os: ubuntu-latest
+            task: packageDeb
+            artifact-glob: desktopApp/build/compose/binaries/main/deb/*.deb
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Gradle 8.6
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.6'
+
+      # nativeDistributions умеет собрать только формат, "родной" для ОС
+      # раннера (msi/exe — только на Windows, deb — только на Linux и т.д.)
+      - name: Build desktop package
+        run: gradle :desktopApp:${{ matrix.task }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScheduleApp-desktop-${{ matrix.os }}
+          path: ${{ matrix.artifact-glob }}
+          if-no-files-found: error
