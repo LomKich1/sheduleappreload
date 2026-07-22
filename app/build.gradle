@@ -69,6 +69,10 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.activity:activity-compose:1.9.0'
 
+    // Нужна напрямую GitHubApi.kt/YandexDiskApi.kt (пока не перенесены в :shared).
+    // Версия — та же, что уже используется в :shared, чтобы не плодить разные версии.
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
     // Версия должна совпадать с той, что тянет Compose Multiplatform 1.7.3 в :shared.
     debugImplementation 'androidx.compose.ui:ui-tooling:1.9.0'
 }
