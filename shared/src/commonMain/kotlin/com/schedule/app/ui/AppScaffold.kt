@@ -232,7 +232,7 @@ fun AppScaffold() {
     }
 }
 
-@Preview(name = "Главный экран", showSystemUi = true)
+@Preview
 @Composable
 private fun AppScaffoldPreview() {
     AppTheme(preset = ThemePreset.DARK) { AppScaffold() }

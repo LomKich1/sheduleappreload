@@ -333,10 +333,10 @@ private fun FilesError(message: String, onRetry: () -> Unit) {
 
 // ─── Previews ─────────────────────────────────────────────────────────────────
 
-@Preview(name = "Dark", showBackground = true)
+@Preview
 @Composable
 private fun PreviewDark() = AppTheme(ThemePreset.DARK) { FilesScreen() }
 
-@Preview(name = "AMOLED", showBackground = true)
+@Preview
 @Composable
 private fun PreviewAmoled() = AppTheme(ThemePreset.AMOLED) { FilesScreen() }
