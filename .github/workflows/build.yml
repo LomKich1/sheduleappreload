@@ -43,7 +43,9 @@ jobs:
       # ── 4.5. ВРЕМЕННО: диагностика генерации Res-класса ───────────────────
       - name: Debug - dump generated Res class
         run: |
-          gradle :shared:generateComposeResClass || true
+          echo "=== raw composeResources dir as checked out by CI ==="
+          find shared/src/commonMain/composeResources -type f -print
+          gradle :shared:generateComposeResClass --no-build-cache --rerun-tasks || true
           echo "=== searching for generated Res.kt ==="
           find . -path "*generated/compose*" -iname "*.kt" -print -exec cat {} \;
 
@@ -51,7 +53,7 @@ jobs:
       # Debug APK подписывается автоматически дефолтным Android debug ключом.
       # Устанавливается на любой телефон с включённым "Неизвестные источники".
       - name: Build Debug APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug --no-build-cache --rerun-tasks
 
       # ── 6. Signed Release APK (если keystore настроен) ───────────────────
       # Добавь три секрета в Settings → Secrets → Actions:
