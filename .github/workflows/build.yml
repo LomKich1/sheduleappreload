@@ -40,15 +40,6 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      # ── 4.5. ВРЕМЕННО: диагностика генерации Res-класса ───────────────────
-      - name: Debug - dump generated Res class
-        run: |
-          echo "=== raw composeResources dir as checked out by CI ==="
-          find shared/src/commonMain/composeResources -type f -print
-          gradle :shared:generateComposeResClass --no-build-cache --rerun-tasks || true
-          echo "=== searching for generated Res.kt ==="
-          find . -path "*generated/compose*" -iname "*.kt" -print -exec cat {} \;
-
       # ── 5. Debug APK (всегда, без секретов) ──────────────────────────────
       # Debug APK подписывается автоматически дефолтным Android debug ключом.
       # Устанавливается на любой телефон с включённым "Неизвестные источники".
