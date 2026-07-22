@@ -17,3 +17,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "ScheduleApp"
 include ':app'
+include ':shared'
+include ':desktopApp'

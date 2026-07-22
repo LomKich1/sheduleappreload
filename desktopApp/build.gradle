@@ -1,0 +1,36 @@
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+    id 'org.jetbrains.kotlin.plugin.compose'
+    id 'org.jetbrains.compose'
+}
+
+kotlin {
+    compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11) }
+}
+
+dependencies {
+    implementation project(':shared')
+    implementation(compose.desktop.currentOs)
+}
+
+compose.desktop {
+    application {
+        mainClass = "com.schedule.app.desktop.MainKt"
+
+        nativeDistributions {
+            // exe/msi для Windows, deb для Linux, dmg для macOS — GitHub Actions
+            // соберёт тот формат, который соответствует ОС раннера (см. workflow).
+            targetFormats(TargetFormat.Exe, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Dmg)
+            packageName = "ScheduleApp"
+            packageVersion = (project.findProperty("APP_VERSION") ?: "1.0.0").toString()
+
+            windows {
+                menu = true
+                shortcut = true
+                // console = false — по умолчанию, отдельное консольное окно не открывается
+            }
+        }
+    }
+}
