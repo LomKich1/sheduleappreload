@@ -45,7 +45,7 @@ import java.util.Calendar
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun FilesScreen(
-    vm: FilesViewModel = viewModel(),
+    vm: FilesViewModel = viewModel { FilesViewModel() },
     onFileClick: (ScheduleFile) -> Unit = {},
     entranceTrigger: Int = 0,
 ) {

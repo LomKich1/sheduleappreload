@@ -142,7 +142,7 @@ private fun TeacherPickerLoading(entranceTrigger: Any) {
 fun TeacherScheduleScreen(
     file: ScheduleFile,
     onBack: () -> Unit,
-    vm: TeacherScheduleViewModel = viewModel(),
+    vm: TeacherScheduleViewModel = viewModel { TeacherScheduleViewModel() },
     // См. аналогичные параметры и комментарий в ScheduleScreen.kt — тут то же
     // самое, зеркально, для преподавательской ветки.
     active: Boolean = true,
