@@ -150,7 +150,7 @@ private fun GroupPickerLoading(entranceTrigger: Any) {
 fun ScheduleScreen(
     file: ScheduleFile,
     onBack: () -> Unit,
-    vm: ScheduleViewModel = viewModel(),
+    vm: ScheduleViewModel = viewModel { ScheduleViewModel() },
     // ── Параметры для хостинга внутри ScheduleHostScreen ────────────────────
     // active     — виден ли СЕЙЧАС этот экран пользователю (см. ScheduleHostScreen,
     //              где студенческий и преподавательский вид смонтированы ОБА

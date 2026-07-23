@@ -168,20 +168,6 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      # ── ВРЕМЕННО: диагностика конфликта версий Compose runtime/Skiko ─────
-      # Ищем, откуда берутся дублирующиеся версии (runtime-desktop 1.9.3 vs
-      # 1.9.4, lifecycle-runtime-compose 2.9.4 vs 2.9.6 и т.д.) — падает
-      # приложение с UnsatisfiedLinkError из-за рассинхрона Skiko API/native.
-      - name: Debug - dump dependency tree
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          gradle :desktopApp:dependencies --configuration runtimeClasspath > /tmp/deps_desktopApp.txt || true
-          gradle :shared:dependencies --configuration desktopRuntimeClasspath > /tmp/deps_shared.txt || true
-          echo "=== desktopApp:runtimeClasspath ==="
-          cat /tmp/deps_desktopApp.txt
-          echo "=== shared:desktopRuntimeClasspath ==="
-          cat /tmp/deps_shared.txt
-
       # nativeDistributions умеет собрать только формат, "родной" для ОС
       # раннера (msi/exe — только на Windows, deb — только на Linux и т.д.)
       - name: Build desktop package
