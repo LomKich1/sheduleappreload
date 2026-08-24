@@ -1,6 +1,6 @@
 package com.schedule.app.ui.screens
 
-import com.schedule.app.util.BackHandler
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -44,6 +44,7 @@ import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.components.rememberScrollCascadeState
+import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
 
 // Та же длительность, что и SUBSCREEN_ANIM_MS в ScheduleScreen.kt — переходы
@@ -142,7 +143,7 @@ private fun TeacherPickerLoading(entranceTrigger: Any) {
 fun TeacherScheduleScreen(
     file: ScheduleFile,
     onBack: () -> Unit,
-    vm: TeacherScheduleViewModel = viewModel { TeacherScheduleViewModel() },
+    vm: TeacherScheduleViewModel = viewModel(),
     // См. аналогичные параметры и комментарий в ScheduleScreen.kt — тут то же
     // самое, зеркально, для преподавательской ветки.
     active: Boolean = true,
@@ -409,9 +410,9 @@ private fun TeacherCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(AppRadius.card)
             .background(c.surface)
-            .border(1.dp, c.border, RoundedCornerShape(16.dp))
+            .border(1.dp, c.border, AppRadius.card)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -548,9 +549,9 @@ private fun TeacherPairCard(lesson: TeacherLessonEntry, status: TeacherLessonSta
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(AppRadius.card)
                 .background(bgColor)
-                .border(1.5.dp, borderColor, RoundedCornerShape(14.dp)),
+                .border(1.5.dp, borderColor, AppRadius.card),
         ) {
             Box(
                 modifier = Modifier
@@ -581,7 +582,7 @@ private fun TeacherPairCard(lesson: TeacherLessonEntry, status: TeacherLessonSta
                             val badgeText  = if (status.isNow) "▶ СЕЙЧАС" else "СЛЕДУЮЩАЯ"
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(20.dp))
+                                    .clip(AppRadius.capsule)
                                     .background(badgeColor)
                                     .padding(horizontal = 8.dp, vertical = 2.dp),
                             ) {
@@ -746,9 +747,9 @@ private fun TeacherSchedError(message: String, onRetry: () -> Unit) {
         Spacer(Modifier.height(20.dp))
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(12.dp))
+                .clip(AppRadius.capsule)
                 .background(c.surface2)
-                .border(1.dp, c.border, RoundedCornerShape(12.dp))
+                .border(1.dp, c.border, AppRadius.capsule)
                 .clickable(onClick = onRetry)
                 .padding(horizontal = 20.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,

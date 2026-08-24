@@ -8,13 +8,13 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -26,6 +26,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,6 +38,7 @@ import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.components.ScheduleMode
 import com.schedule.app.ui.components.ScheduleModeToggle
 import com.schedule.app.ui.theme.AppColors
+import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
@@ -197,14 +200,14 @@ fun SettingsScreen(onBack: () -> Unit) {
         ) {
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(AppRadius.capsule)
                     .background(c.accent)
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                Icon(Icons.Outlined.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                Text("Настройки сохранены", color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                Icon(Icons.Outlined.Check, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(14.dp))
+                Text("Настройки сохранены", color = c.onAccent, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -215,37 +218,38 @@ fun SettingsScreen(onBack: () -> Unit) {
 @Composable
 private fun SettingsHeader(onBack: () -> Unit) {
     val c = LocalAppColors.current
-    Column(modifier = Modifier.fillMaxWidth().background(c.surface)) {
-        Row(
+    // Раньше здесь был отдельный фон (c.surface) + линия-разделитель снизу —
+    // визуально отличалось от общей шапки Files/Bells (AppHeader: просто c.bg,
+    // без границы). Теперь один и тот же язык шапки везде в приложении.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(c.bg)
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(c.surface2)
+                .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(c.surface2)
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.ArrowBack,
-                    contentDescription = "Назад",
-                    tint = c.accent,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            Text(
-                text = "Настройки",
-                color = c.text,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.Bold,
+            Icon(
+                imageVector = Icons.Outlined.ArrowBack,
+                contentDescription = "Назад",
+                tint = c.accent,
+                modifier = Modifier.size(18.dp),
             )
         }
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(c.border))
+        Text(
+            text = "Настройки",
+            color = c.text,
+            fontSize = 19.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -270,9 +274,9 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(AppRadius.card)
             .background(c.surface)
-            .border(1.dp, c.border, RoundedCornerShape(16.dp))
+            .border(1.dp, c.border, AppRadius.card)
             .padding(14.dp),
         content = content,
     )
@@ -323,34 +327,29 @@ private fun ThemeSwatch(
         label = "swatchRing",
     )
 
+    // Раньше — сплошной круг цвета swatch.bg + отдельный маленький кружок-бейдж
+    // с галочкой в углу ("кружок внутри кружка"). Теперь сам круг честно
+    // показывает половину палитры: левая половина — фон темы, правая —
+    // акцент. Индикатор выбора — та же кольцевая обводка (ringColor), что
+    // была и раньше, без дополнительного бейджа поверх.
     Box(
         modifier = Modifier
             .size(48.dp)
             .clip(CircleShape)
-            .background(swatch.bg)
             .border(2.dp, ringColor, CircleShape)
             .clickable(onClick = onClick),
     ) {
-        // Бейдж снизу-справа: цвет акцента темы обычно, галочка — когда выбрана.
-        // Обводка цветом фона экрана даёт "вырез", отделяющий бейдж от круга.
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .offset(x = 2.dp, y = 2.dp)
-                .size(16.dp)
-                .clip(CircleShape)
-                .background(if (isSelected) c.accent else swatch.accent)
-                .border(1.5.dp, c.surface, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (isSelected) {
-                Icon(
-                    imageVector = Icons.Outlined.Check,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(10.dp),
-                )
-            }
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val halfWidth = size.width / 2f
+            drawRect(
+                color = swatch.bg,
+                size  = Size(halfWidth, size.height),
+            )
+            drawRect(
+                color   = swatch.accent,
+                topLeft = Offset(halfWidth, 0f),
+                size    = Size(halfWidth, size.height),
+            )
         }
     }
 }
@@ -363,7 +362,7 @@ private fun SaveButton(enabled: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(13.dp))
+            .clip(AppRadius.capsule)
             .background(if (enabled) c.accent else c.surface2)
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(vertical = 14.dp),
@@ -371,7 +370,7 @@ private fun SaveButton(enabled: Boolean, onClick: () -> Unit) {
     ) {
         Text(
             text = "Сохранить",
-            color = if (enabled) Color.White else c.textSub,
+            color = if (enabled) c.onAccent else c.textSub,
             fontSize = 14.5.sp,
             fontWeight = FontWeight.Bold,
         )
@@ -448,10 +447,20 @@ private fun TogglePill(checked: Boolean, onToggle: () -> Unit) {
         label         = "toggleThumb",
     )
 
+    // Бегунок раньше был жёстко белым: на тёмном треке (выкл) это ок, но на
+    // светлом accent-треке в Монохроме (0xFFDEDEDE) белый кружок почти
+    // терялся. Теперь цвет бегунка зависит от состояния — c.onAccent на
+    // включённом треке гарантированно контрастен в любой теме.
+    val thumbColor by animateColorAsState(
+        targetValue   = if (checked) c.onAccent else Color.White,
+        animationSpec = tween(200),
+        label         = "toggleThumbColor",
+    )
+
     Box(
         modifier = Modifier
             .size(width = 46.dp, height = 26.dp)
-            .clip(RoundedCornerShape(13.dp))
+            .clip(AppRadius.capsule)
             .background(trackColor)
             .clickable(onClick = onToggle),
     ) {
@@ -460,13 +469,13 @@ private fun TogglePill(checked: Boolean, onToggle: () -> Unit) {
                 .padding(start = thumbStart, top = 3.dp, bottom = 3.dp)
                 .size(20.dp)
                 .clip(CircleShape)
-                .background(Color.White),
+                .background(thumbColor),
         )
     }
 }
 
 // ─── Preview ────────────────────────────────────────────────────────────────
 
-@org.jetbrains.compose.ui.tooling.preview.Preview
+@androidx.compose.ui.tooling.preview.Preview(name = "Settings · Dark", showBackground = true)
 @Composable
 private fun PreviewSettingsDark() = AppTheme(ThemePreset.DARK) { SettingsScreen(onBack = {}) }

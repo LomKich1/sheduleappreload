@@ -5,7 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Description
@@ -20,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.schedule.app.data.model.ScheduleFile
+import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
 
 // ─── Карточка файла расписания ───────────────────────────────────────────────
@@ -40,9 +40,9 @@ fun FileCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(AppRadius.card)
             .background(bg)
-            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+            .border(1.dp, borderColor, AppRadius.card)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -72,7 +72,7 @@ fun FileCard(
         if (file.isToday) {
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(AppRadius.capsule)
                     .background(c.todayAccent)
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             ) {

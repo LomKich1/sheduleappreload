@@ -23,7 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
-import org.jetbrains.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.collectAsState
@@ -33,6 +33,7 @@ import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.components.FileCard
+import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
@@ -45,7 +46,7 @@ import java.util.Calendar
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun FilesScreen(
-    vm: FilesViewModel = viewModel { FilesViewModel() },
+    vm: FilesViewModel = viewModel(),
     onFileClick: (ScheduleFile) -> Unit = {},
     entranceTrigger: Int = 0,
 ) {
@@ -312,9 +313,9 @@ private fun FilesError(message: String, onRetry: () -> Unit) {
 
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(12.dp))
+                .clip(AppRadius.capsule)
                 .background(c.surface2)
-                .border(1.dp, c.border, RoundedCornerShape(12.dp))
+                .border(1.dp, c.border, AppRadius.capsule)
                 .clickable(onClick = onRetry)
                 .padding(horizontal = 20.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -333,10 +334,10 @@ private fun FilesError(message: String, onRetry: () -> Unit) {
 
 // ─── Previews ─────────────────────────────────────────────────────────────────
 
-@Preview
+@Preview(name = "Dark", showBackground = true)
 @Composable
 private fun PreviewDark() = AppTheme(ThemePreset.DARK) { FilesScreen() }
 
-@Preview
+@Preview(name = "AMOLED", showBackground = true)
 @Composable
 private fun PreviewAmoled() = AppTheme(ThemePreset.AMOLED) { FilesScreen() }
