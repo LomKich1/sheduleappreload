@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import org.jetbrains.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.schedule.app.data.prefs.AppPrefs
@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.schedule.app.ui.components.StaggeredSwapItem
+import com.schedule.app.ui.theme.AppRadius
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  BellsScreen — живое расписание звонков
@@ -281,7 +282,7 @@ private fun BellDayTabs(
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
             .padding(horizontal = 18.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(AppRadius.capsule)
             .background(c.surface2)
             .padding(4.dp),
     ) {
@@ -292,7 +293,7 @@ private fun BellDayTabs(
                     .offset { IntOffset(indicatorXPx.roundToInt(), 0) }
                     .fillMaxHeight()
                     .width(with(LocalDensity.current) { indicatorWPx.toDp() })
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(AppRadius.capsule)
                     .background(indicatorColor),
             )
         }
@@ -315,7 +316,7 @@ private fun BellDayTabs(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(AppRadius.capsule)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication        = null,
@@ -389,9 +390,9 @@ private fun BellCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(AppRadius.card)
             .background(cardBg)
-            .border(1.dp, borderColor, RoundedCornerShape(16.dp)),
+            .border(1.dp, borderColor, AppRadius.card),
     ) {
         // Левая цветная полоска — как в PairCard
         Box(
@@ -448,7 +449,7 @@ private fun BellCard(
                         val badgeText  = if (isNow) "▶ СЕЙЧАС" else "СЛЕДУЮЩАЯ"
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(AppRadius.capsule)
                                 .background(badgeColor)
                                 .padding(horizontal = 8.dp, vertical = 3.dp),
                         ) {
@@ -500,10 +501,10 @@ private fun BellCard(
 
 // ─── Preview ────────────────────────────────────────────────────────────────
 
-@Preview
+@Preview(name = "Bells · Dark", showBackground = true, widthDp = 360, heightDp = 780)
 @Composable
 private fun PreviewBellsDark() = AppTheme(ThemePreset.DARK) { BellsScreen() }
 
-@Preview
+@Preview(name = "Bells · AMOLED", showBackground = true, widthDp = 360, heightDp = 780)
 @Composable
 private fun PreviewBellsAmoled() = AppTheme(ThemePreset.AMOLED) { BellsScreen() }

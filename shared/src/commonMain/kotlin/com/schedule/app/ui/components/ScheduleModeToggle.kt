@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
 
 // ─── Режим главного экрана: "я ученик" / "я преподаватель" ──────────────────
@@ -66,9 +66,9 @@ fun ScheduleModeToggle(
         modifier = modifier
             .fillMaxWidth()
             .height(46.dp)
-            .clip(RoundedCornerShape(23.dp))
+            .clip(AppRadius.capsule)
             .background(c.pillBg)
-            .border(1.dp, c.border, RoundedCornerShape(23.dp))
+            .border(1.dp, c.border, AppRadius.capsule)
             .padding(4.dp),
     ) {
         val halfWidth = maxWidth / 2
@@ -92,7 +92,7 @@ fun ScheduleModeToggle(
                 .offset(x = indicatorOffset)
                 .width(halfWidth)
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(19.dp))
+                .clip(AppRadius.capsule)
                 .background(c.pillActive),
         )
 

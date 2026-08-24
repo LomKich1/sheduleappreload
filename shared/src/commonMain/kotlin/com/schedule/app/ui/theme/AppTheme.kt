@@ -17,6 +17,7 @@ data class AppColors(
     val text: Color,
     val textSub: Color,
     val accent: Color,
+    val onAccent: Color,
     val border: Color,
     val pillBg: Color,
     val pillActive: Color,
@@ -39,6 +40,11 @@ val DarkColors = AppColors(
     textSub        = Color(0xFF999999),   // было 0x757575 — не проходило WCAG 4.5:1
                                            // (2.95:1 на surface3), теперь ~4.77-6.58:1
     accent         = Color(0xFF90CAF9),   // Material Blue 200 — стандарт тёмной темы
+    // Раньше везде, где текст/иконка лежит НА заливке accent (кнопка "Сохранить",
+    // бегунок тумблера, тост), использовался жёстко Color.White — при светло-
+    // голубом accent контраст всего ~1.75:1 (заметно "выцветший" текст, ниже
+    // WCAG AA даже для крупного шрифта). onAccent — тёмный, даёт ~12:1.
+    onAccent       = Color(0xFF102030),
     border         = Color(0xFF3A3A3A),
     pillBg         = Color(0xFF1E1E1E),
     pillActive     = Color(0xFF2D3E52),   // dark blue tint
@@ -60,6 +66,7 @@ val LightColors = AppColors(
     text           = Color(0xFF212121),   // Material Grey 900
     textSub        = Color(0xFF757575),   // Material Grey 600
     accent         = Color(0xFF1976D2),   // Material Blue 700
+    onAccent       = Color(0xFFFFFFFF),   // тёмный акцент — контраст с белым уже в норме (~4.6:1)
     border         = Color(0xFFDEDEDE),
     pillBg         = Color(0xFFFFFFFF),
     pillActive     = Color(0xFFE3F2FD),   // Blue 50
@@ -82,6 +89,9 @@ val AmoledColors = AppColors(
     textSub        = Color(0xFF909090),   // было 0x646464 — не проходило WCAG 4.5:1
                                            // (2.66:1 на surface3), теперь ~4.92-6.58:1
     accent         = Color(0xFFDEDEDE),   // почти белый — монохром
+    // Именно тут была жалоба: белый текст на 0xFFDEDEDE давал ~1.35:1 —
+    // кнопка "Сохранить" и бегунок тумблера визуально сливались с заливкой.
+    onAccent       = Color(0xFF0A0A0A),   // ~15.6:1
     border         = Color(0xFF2C2C2C),
     pillBg         = Color(0xFF0F0F0F),
     pillActive     = Color(0xFF232323),
