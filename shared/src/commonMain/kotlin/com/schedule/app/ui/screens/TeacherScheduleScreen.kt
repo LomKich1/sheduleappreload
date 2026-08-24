@@ -1,6 +1,6 @@
 package com.schedule.app.ui.screens
 
-import androidx.activity.compose.BackHandler
+import com.schedule.app.util.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition

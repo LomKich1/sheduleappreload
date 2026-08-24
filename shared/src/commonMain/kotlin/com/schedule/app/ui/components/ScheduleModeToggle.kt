@@ -130,7 +130,7 @@ private fun ModeSegment(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .clip(RoundedCornerShape(19.dp))
+            .clip(AppRadius.capsule)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication        = null, // у индикатора своя анимация — своя вспышка тут лишняя
