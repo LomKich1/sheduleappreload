@@ -108,16 +108,22 @@ fun AppScaffold() {
         // ── Единая шапка ("Расписание" ↔ "Звонки" через flip) ───────────────
         //  Раньше каждая вкладка рисовала свою собственную шапку — из-за
         //  этого при переключении не было анимации самого заголовка, он
-        //  просто резко подменялся. Теперь шапка одна на обе вкладки, скрыта,
-        //  когда сверху открыт глубокий экран (Schedule/Settings) — у них
-        //  своя шапка со стрелкой "назад".
+        //  просто резко подменялся. Теперь шапка одна на обе вкладки.
+        //
+        //  ВАЖНО: раньше она пряталась через `if (!deepScreenOpen)` на время
+        //  Schedule/Settings — из-за этого при открытии глубокого экрана
+        //  AppHeader мгновенно пропадал ИЗ КОМПОЗИЦИИ, Column ужимался, и
+        //  BoxWithConstraints с вкладками дёргался вверх на кадр раньше, чем
+        //  NavHost успевал наехать сверху и всё перекрыть — заметный сдвиг
+        //  интерфейса. AppHeader теперь всегда в композиции: NavHost рисуется
+        //  поверх этого Column в том же родительском Box и его экраны
+        //  (Schedule/Settings) непрозрачны — шапку всё равно не видно, пока
+        //  что-то открыто, но сама Column больше не меняет размер.
         Column(modifier = Modifier.fillMaxSize()) {
-            if (!deepScreenOpen) {
-                AppHeader(
-                    activeRoute     = activeTab,
-                    onSettingsClick = { navController.navigate(Screen.Settings.route) },
-                )
-            }
+            AppHeader(
+                activeRoute     = activeTab,
+                onSettingsClick = { navController.navigate(Screen.Settings.route) },
+            )
 
             // ── Вкладки: Files и Bells всегда в композиции ──────────────────
             //  Раньше это были composable() внутри NavHost — отсюда и лаг.
