@@ -3,6 +3,7 @@ package com.schedule.app.ui
 import com.schedule.app.util.BackHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.util.lerp
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
@@ -38,10 +40,18 @@ import com.schedule.app.ui.screens.SettingsScreen
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
+import kotlin.math.pow
 
 // ── Длительности ─────────────────────────────────────────────────────────────
 private const val NAV_ANIM_MS = 280   // глубокие экраны: Schedule, Settings
-private const val TAB_ANIM_MS = 250   // вкладки: Files ↔ Bells
+private const val TAB_ANIM_MS = 250   // вкладки: Files ↔ Bells (легаси, больше не используется — оставил как справку по прежнему тайминг)
+
+// dampingRatio < 1 = недодемпфировано, даёт лёгкий "довод"/settle в конце,
+// а не сухую остановку по tween. stiffness умеренная — не слишком резко.
+private val TabSpring = spring<Float>(
+    dampingRatio = 0.78f,
+    stiffness    = 380f,
+)
 
 // route-заглушка — единственный startDestination NavHost. Сама ничего не
 // рисует: вкладки Files/Bells больше не живут внутри NavHost (см. ниже),
@@ -108,16 +118,22 @@ fun AppScaffold() {
         // ── Единая шапка ("Расписание" ↔ "Звонки" через flip) ───────────────
         //  Раньше каждая вкладка рисовала свою собственную шапку — из-за
         //  этого при переключении не было анимации самого заголовка, он
-        //  просто резко подменялся. Теперь шапка одна на обе вкладки, скрыта,
-        //  когда сверху открыт глубокий экран (Schedule/Settings) — у них
-        //  своя шапка со стрелкой "назад".
+        //  просто резко подменялся. Теперь шапка одна на обе вкладки.
+        //
+        //  ВАЖНО: раньше она пряталась через `if (!deepScreenOpen)` на время
+        //  Schedule/Settings — из-за этого при открытии глубокого экрана
+        //  AppHeader мгновенно пропадал ИЗ КОМПОЗИЦИИ, Column ужимался, и
+        //  BoxWithConstraints с вкладками дёргался вверх на кадр раньше, чем
+        //  NavHost успевал наехать сверху и всё перекрыть — заметный сдвиг
+        //  интерфейса. AppHeader теперь всегда в композиции: NavHost рисуется
+        //  поверх этого Column в том же родительском Box и его экраны
+        //  (Schedule/Settings) непрозрачны — шапку всё равно не видно, пока
+        //  что-то открыто, но сама Column больше не меняет размер.
         Column(modifier = Modifier.fillMaxSize()) {
-            if (!deepScreenOpen) {
-                AppHeader(
-                    activeRoute     = activeTab,
-                    onSettingsClick = { navController.navigate(Screen.Settings.route) },
-                )
-            }
+            AppHeader(
+                activeRoute     = activeTab,
+                onSettingsClick = { navController.navigate(Screen.Settings.route) },
+            )
 
             // ── Вкладки: Files и Bells всегда в композиции ──────────────────
             //  Раньше это были composable() внутри NavHost — отсюда и лаг.
@@ -134,17 +150,39 @@ fun AppScaffold() {
                 // Files стоит в 0, Bells сдвинута на +width (ждёт справа).
                 // offset двигает обе разом — ровно так же, как раньше двигались
                 // tabEnter/tabExit, но без пересборки экрана.
-                val targetOffset = if (activeTab == Screen.Files.route) 0f else -widthPx
-                val offset by animateFloatAsState(
-                    targetValue   = targetOffset,
-                    animationSpec = tween(TAB_ANIM_MS, easing = FastOutSlowInEasing),
-                    label         = "tabSlide",
+                // Единая пружина ведёт весь переход: не фиксированная
+                // длительность, а damping/stiffness — даёт естественный
+                // лёгкий "довод" в конце вместо сухой остановки.
+                val targetProgress = if (activeTab == Screen.Files.route) 0f else 1f
+                val progress by animateFloatAsState(
+                    targetValue   = targetProgress,
+                    animationSpec = TabSpring,
+                    label         = "tabProgress",
                 )
+
+                // Files — фоновый слой, едет линейно на всю ширину.
+                val filesOffset = -widthPx * progress
+                val filesScale  = lerp(1f, 0.94f, progress)
+                val filesAlpha  = lerp(1f, 0.55f, progress)
+
+                // Bells — передний слой: та же дистанция и те же концевые
+                // точки (виден на 0, скрыт на +widthPx), но своя кривая —
+                // догоняет резче к концу. Разная скорость на одной и той же
+                // дистанции = ощущение параллакса/глубины, а не просто сдвиг.
+                val bellsProgress = 1f - (1f - progress).pow(1.6f)
+                val bellsOffset   = widthPx * (1f - bellsProgress)
+                val bellsScale    = lerp(0.96f, 1f, bellsProgress)
+                val bellsAlpha    = lerp(0.6f, 1f, bellsProgress)
 
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .graphicsLayer { translationX = offset },
+                        .graphicsLayer {
+                            translationX = filesOffset
+                            scaleX = filesScale
+                            scaleY = filesScale
+                            alpha = filesAlpha
+                        },
                 ) {
                     FilesScreen(
                         onFileClick     = { file ->
@@ -158,7 +196,12 @@ fun AppScaffold() {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .graphicsLayer { translationX = offset + widthPx },
+                        .graphicsLayer {
+                            translationX = bellsOffset
+                            scaleX = bellsScale
+                            scaleY = bellsScale
+                            alpha = bellsAlpha
+                        },
                 ) {
                     BellsScreen(entranceTrigger = bellsEntranceTrigger)
                 }

@@ -54,7 +54,12 @@ fun AppHeader(
                 imageVector = CamekIcon,
                 contentDescription = null,
                 tint = c.text,
-                modifier = Modifier.size(26.dp),
+                // эксперимент: уменьшил и сдвинул вправо, подальше от
+                // "зоны кнопки назад" в левом углу — смотрим, читается ли
+                // лучше или нужно возвращать как было.
+                modifier = Modifier
+                    .size(20.dp)
+                    .offset(x = 6.dp),
             )
             FlipTransitionText(
                 text = title,
