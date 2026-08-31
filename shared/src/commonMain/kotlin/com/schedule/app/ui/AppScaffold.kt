@@ -42,8 +42,8 @@ import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
 
 // ── Длительности ─────────────────────────────────────────────────────────────
-private const val NAV_ANIM_MS = 280   // глубокие экраны: Schedule, Settings
-private const val TAB_ANIM_MS = 250   // вкладки: Files ↔ Bells
+private const val NAV_ANIM_MS = 340   // глубокие экраны: Schedule, Settings
+private const val TAB_ANIM_MS = 340   // вкладки: Files ↔ Bells
 
 // Симметричная S-кривая: медленный старт → разгон к середине → торможение
 // к концу. FastOutSlowInEasing для этого не годится — там пик скорости
