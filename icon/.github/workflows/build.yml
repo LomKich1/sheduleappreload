@@ -1,4 +1,4 @@
-name: Build APK
+name: Build & Release
 
 # Запускается при каждом пуше в main/master и вручную через Actions → Run workflow
 on:
@@ -11,8 +11,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: 🤖 Build & Release APK
+  build-android:
+    name: 🤖 Build Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -27,36 +27,22 @@ jobs:
           distribution: 'temurin'
 
       # ── 3. Gradle 8.9 (без gradlew в репозитории) ─────────────────────────
-      # gradle/actions умеет ставить Gradle напрямую — враппер не нужен.
-      # 8.9 — минимум для AGP 8.7.2 (сама AGP нужна для compileSdk 35).
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.9'
 
       # ── 4. Принимаем лицензии Android SDK ────────────────────────────────
-      # Ubuntu-latest уже содержит SDK с API 34 и build-tools 34.0.0 —
-      # нужно только принять лицензии, ничего доустанавливать не надо.
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       # ── 5. Debug APK (всегда, без секретов) ──────────────────────────────
-      # Debug APK подписывается автоматически дефолтным Android debug ключом.
-      # Устанавливается на любой телефон с включённым "Неизвестные источники".
       - name: Build Debug APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug --no-build-cache --rerun-tasks
 
       # ── 6. Signed Release APK (если keystore настроен) ───────────────────
-      # Добавь три секрета в Settings → Secrets → Actions:
-      #   KEYSTORE_BASE64  — keystore.jks закодированный в base64
-      #   KEYSTORE_PASSWORD — пароль от keystore
-      #   KEY_ALIAS         — алиас ключа (например: schedule)
-      #   KEY_PASSWORD      — пароль ключа
-      #
-      # Как создать keystore:
-      #   keytool -genkey -v -keystore keystore.jks -alias schedule \
-      #     -keyalg RSA -keysize 2048 -validity 10000
-      #   base64 keystore.jks | pbcopy   (Mac) / xclip (Linux)
+      # Три секрета в Settings → Secrets → Actions:
+      #   KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
       - name: Build signed Release APK
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -72,7 +58,6 @@ jobs:
             echo "HAS_RELEASE=true" >> "$GITHUB_ENV"
           else
             echo "ℹ️  Keystore не настроен — Release APK пропускаем"
-            echo "    Инструкция в комментарии выше (шаг 6)"
           fi
 
       # ── 7. Читаем версию из gradle.properties ─────────────────────────────
@@ -88,60 +73,28 @@ jobs:
         run: |
           V="${{ steps.ver.outputs.v }}"
           mkdir -p dist
-
-          # Debug — всегда
           cp app/build/outputs/apk/debug/app-debug.apk \
              "dist/ScheduleApp-v${V}-debug.apk"
-
-          # Release — только если собирался
           if [ "$HAS_RELEASE" = "true" ]; then
             cp app/build/outputs/apk/release/app-release.apk \
                "dist/ScheduleApp-v${V}.apk"
           fi
-
-          echo "Файлы для релиза:"
+          echo "Файлы:"
           ls -lh dist/
 
-      # ── 9. Удаляем предыдущий "latest" релиз ──────────────────────────────
-      # Всегда держим один актуальный релиз — не захламляем Releases.
-      - name: Delete previous release
-        run: |
-          gh release delete latest --yes 2>/dev/null || true
-          git push origin --delete latest 2>/dev/null || true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── 10. Публикуем новый релиз ─────────────────────────────────────────
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: latest
-          name: "ScheduleApp v${{ steps.ver.outputs.v }}"
-          body: |
-            **Автосборка** · ветка `${{ github.ref_name }}` · коммит `${{ github.sha }}`
+          name: apk-dist
+          path: dist/*.apk
+          if-no-files-found: error
 
-            ## 📥 Установка
-
-            1. Скачай APK из вложений ниже
-            2. На телефоне: Настройки → Безопасность → Неизвестные источники ✓
-            3. Открой скачанный файл и установи
-
-            | Файл | Описание |
-            |------|----------|
-            | `...-debug.apk` | Тестовый, подписан debug-ключом — всегда доступен |
-            | `...apk` (без суффикса) | Подписанный релиз — только если настроен keystore |
-          files: dist/*.apk
-          make_latest: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── 11. Чистим keystore из памяти раннера ─────────────────────────────
-      - name: Cleanup keystore
-        if: always()
-        run: rm -f "$RUNNER_TEMP/release.jks"
+    outputs:
+      app-version: ${{ steps.ver.outputs.v }}
 
   build-desktop:
     name: 🖥️ Build Desktop (${{ matrix.os }})
+    needs: build-android   # чтобы переиспользовать общую версию из шага выше
     strategy:
       fail-fast: false
       matrix:
@@ -168,14 +121,73 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      # nativeDistributions умеет собрать только формат, "родной" для ОС
-      # раннера (msi/exe — только на Windows, deb — только на Linux и т.д.)
+      # ВАЖНО: packageVersion для десктопа = APP_VERSION + номер CI-рана
+      # (например 1.0.1 -> 1.0.1.42). Это отдельно от Android versionName.
+      # Причина: Windows Installer не поставит MSI поверх уже установленной
+      # копии с ТЕМ ЖЕ ProductVersion — нужно чтобы версия росла на каждой
+      # пересборке, иначе "пакет недействителен" при повторной установке
+      # той же версии 1.0.1. upgradeUuid зафиксирован отдельно в
+      # desktopApp/build.gradle, это решает узнавание "тот же продукт",
+      # а растущая версия — что это именно апдейт, а не даунгрейд.
       - name: Build desktop package
-        run: gradle :desktopApp:${{ matrix.task }}
+        run: gradle :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.build-android.outputs.app-version }}.${{ github.run_number }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ScheduleApp-desktop-${{ matrix.os }}
+          name: desktop-${{ matrix.os }}
           path: ${{ matrix.artifact-glob }}
           if-no-files-found: error
+
+  publish:
+    name: 📦 Publish Release
+    needs: [build-android, build-desktop]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-all
+
+      - name: Flatten dist folder
+        run: |
+          mkdir -p dist
+          find dist-all -type f \( -name "*.apk" -o -name "*.msi" -o -name "*.deb" \) -exec cp {} dist/ \;
+          echo "Итоговые файлы релиза:"
+          ls -lh dist/
+
+      - name: Delete previous release
+        run: |
+          gh release delete latest --yes 2>/dev/null || true
+          git push origin --delete latest 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "ScheduleApp v${{ needs.build-android.outputs.app-version }}"
+          body: |
+            **Автосборка** · ветка `${{ github.ref_name }}` · коммит `${{ github.sha }}`
+
+            ## 📥 Установка
+
+            **Android:** скачай `.apk`, разреши "Неизвестные источники", установи.
+            **Windows:** скачай `.msi`, запусти — ставится и обновляется поверх старой версии автоматически.
+            **Linux (deb-based):** `sudo dpkg -i ScheduleApp-*.deb`
+
+            | Файл | Платформа |
+            |------|-----------|
+            | `...-debug.apk` | Android, тестовый (debug-ключ) |
+            | `...apk` (без суффикса) | Android, релиз (подписан, только если настроен keystore) |
+            | `...msi` | Windows |
+            | `...deb` | Linux (Debian/Ubuntu) |
+          files: dist/*
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

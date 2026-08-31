@@ -7,7 +7,7 @@ plugins {
 }
 
 kotlin {
-    compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11) }
+    compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
 }
 
 dependencies {
@@ -30,7 +30,16 @@ compose.desktop {
                 menu = true
                 shortcut = true
                 // console = false — по умолчанию, отдельное консольное окно не открывается
+
+                // КРИТИЧНО: без явного upgradeUuid Compose генерирует новый
+                // UpgradeCode на КАЖДУЮ сборку -> Windows Installer видит
+                // "разные приложения" вместо апдейта и либо ругается на пакет,
+                // либо ставит второй экземпляр рядом. Значение зафиксировано
+                // раз и навсегда — менять нельзя, иначе апдейт снова сломается
+                // для тех, кто уже поставил версию со старым uuid.
+                upgradeUuid = "A88998F5-E92D-4FF1-88FD-BA08A00C5C73"
             }
         }
     }
 }
+
