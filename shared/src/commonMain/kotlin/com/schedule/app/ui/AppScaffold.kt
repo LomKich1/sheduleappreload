@@ -1,6 +1,8 @@
 package com.schedule.app.ui
 
 import com.schedule.app.util.BackHandler
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -43,6 +45,7 @@ import com.schedule.app.ui.theme.ThemePreset
 import kotlin.math.pow
 
 // ── Длительности ─────────────────────────────────────────────────────────────
+<<<<<<< HEAD
 private const val NAV_ANIM_MS = 280   // глубокие экраны: Schedule, Settings
 private const val TAB_ANIM_MS = 250   // вкладки: Files ↔ Bells (легаси, больше не используется — оставил как справку по прежнему тайминг)
 
@@ -52,6 +55,15 @@ private val TabSpring = spring<Float>(
     dampingRatio = 0.78f,
     stiffness    = 380f,
 )
+=======
+private const val NAV_ANIM_MS = 340   // глубокие экраны: Schedule, Settings
+private const val TAB_ANIM_MS = 340   // вкладки: Files ↔ Bells
+
+// Симметричная S-кривая: медленный старт → разгон к середине → торможение
+// к концу. FastOutSlowInEasing для этого не годится — там пик скорости
+// смещён ближе к началу, а не к центру.
+private val TabSlideEasing: Easing = CubicBezierEasing(0.45f, 0f, 0.55f, 1f)
+>>>>>>> 1691842b452b64808193c1f9d31ab1d46d372047
 
 // route-заглушка — единственный startDestination NavHost. Сама ничего не
 // рисует: вкладки Files/Bells больше не живут внутри NavHost (см. ниже),
@@ -150,6 +162,7 @@ fun AppScaffold() {
                 // Files стоит в 0, Bells сдвинута на +width (ждёт справа).
                 // offset двигает обе разом — ровно так же, как раньше двигались
                 // tabEnter/tabExit, но без пересборки экрана.
+<<<<<<< HEAD
                 // Единая пружина ведёт весь переход: не фиксированная
                 // длительность, а damping/stiffness — даёт естественный
                 // лёгкий "довод" в конце вместо сухой остановки.
@@ -158,6 +171,13 @@ fun AppScaffold() {
                     targetValue   = targetProgress,
                     animationSpec = TabSpring,
                     label         = "tabProgress",
+=======
+                val targetOffset = if (activeTab == Screen.Files.route) 0f else -widthPx
+                val offset by animateFloatAsState(
+                    targetValue   = targetOffset,
+                    animationSpec = tween(TAB_ANIM_MS, easing = TabSlideEasing),
+                    label         = "tabSlide",
+>>>>>>> 1691842b452b64808193c1f9d31ab1d46d372047
                 )
 
                 // Files — фоновый слой, едет линейно на всю ширину.
