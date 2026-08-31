@@ -1,6 +1,8 @@
 package com.schedule.app.ui
 
 import com.schedule.app.util.BackHandler
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -42,6 +44,11 @@ import com.schedule.app.ui.theme.ThemePreset
 // ── Длительности ─────────────────────────────────────────────────────────────
 private const val NAV_ANIM_MS = 280   // глубокие экраны: Schedule, Settings
 private const val TAB_ANIM_MS = 250   // вкладки: Files ↔ Bells
+
+// Симметричная S-кривая: медленный старт → разгон к середине → торможение
+// к концу. FastOutSlowInEasing для этого не годится — там пик скорости
+// смещён ближе к началу, а не к центру.
+private val TabSlideEasing: Easing = CubicBezierEasing(0.45f, 0f, 0.55f, 1f)
 
 // route-заглушка — единственный startDestination NavHost. Сама ничего не
 // рисует: вкладки Files/Bells больше не живут внутри NavHost (см. ниже),
@@ -143,7 +150,7 @@ fun AppScaffold() {
                 val targetOffset = if (activeTab == Screen.Files.route) 0f else -widthPx
                 val offset by animateFloatAsState(
                     targetValue   = targetOffset,
-                    animationSpec = tween(TAB_ANIM_MS, easing = FastOutSlowInEasing),
+                    animationSpec = tween(TAB_ANIM_MS, easing = TabSlideEasing),
                     label         = "tabSlide",
                 )
 
