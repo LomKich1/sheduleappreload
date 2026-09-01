@@ -193,8 +193,20 @@ fun TeacherScheduleScreen(
     var lastRevealApplied by remember { mutableStateOf(revealTrigger) }
     LaunchedEffect(revealTrigger) {
         if (revealTrigger != lastRevealApplied) {
-            pickerRevealEdgeOverride = revealEdge
-            transitionSeq++
+            // Триггер общий на оба экрана (ученики/преподы) — сюда прилетает
+            // ЛЮБОЕ переключение тумблера, не только "вход" в этот режим.
+            // Без "&& active" каскад карточек пикера переигрывался и у
+            // экрана, который в этот момент как раз УХОДИТ (становится
+            // неактивным) — визуально выглядело так, будто статичные
+            // элементы того же вида, что остаётся на экране, вдруг заново
+            // "влетают". Реплеим только когда именно ЭТОТ режим становится
+            // активным, но lastRevealApplied всё равно обновляем всегда —
+            // иначе при следующем реальном переключении сюда старое
+            // значение триггера будет считаться "новым".
+            if (active) {
+                pickerRevealEdgeOverride = revealEdge
+                transitionSeq++
+            }
             lastRevealApplied = revealTrigger
         }
     }
