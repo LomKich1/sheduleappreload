@@ -8,6 +8,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
+import com.schedule.app.data.prefs.AnimPrefs
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.AppScaffold
 import com.schedule.app.ui.theme.AppTheme
@@ -15,6 +16,7 @@ import com.schedule.app.ui.theme.AppTheme
 fun main() = application {
     // На ПК platformHandle не нужен (нет Context) — передаём null.
     AppPrefs.init(null)
+    AnimPrefs.init(null)
 
     Window(
         onCloseRequest = ::exitApplication,
