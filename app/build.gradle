@@ -57,10 +57,7 @@ android {
 
     kotlinOptions { jvmTarget = '11' }
 
-    buildFeatures {
-        compose true
-        buildConfig true   // нужно для BuildConfig.DEBUG (используется в BuildInfo.android.kt)
-    }
+    buildFeatures { compose true }
 
     // ── Lint отключён для release-сборки ──────────────────────────────────
     // AGP-версия Lint здесь падает с IncompatibleClassChangeError внутри
