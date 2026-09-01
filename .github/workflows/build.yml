@@ -1,4 +1,4 @@
-Name: Build & Release
+name: Build & Release
 
 # Запускается при каждом пуше в main/master и вручную через Actions → Run workflow
 on:
