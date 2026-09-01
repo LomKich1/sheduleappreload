@@ -227,8 +227,14 @@ fun ScheduleScreen(
     var lastRevealApplied by remember { mutableStateOf(revealTrigger) }
     LaunchedEffect(revealTrigger) {
         if (revealTrigger != lastRevealApplied) {
-            pickerRevealEdgeOverride = revealEdge
-            transitionSeq++
+            // Триггер общий на оба экрана (ученики/преподы) — см. подробный
+            // комментарий у идентичного блока в TeacherScheduleScreen.kt.
+            // Реплеим каскад пикера только когда именно этот режим становится
+            // активным, иначе он лишний раз переигрывался и у уходящего вида.
+            if (active) {
+                pickerRevealEdgeOverride = revealEdge
+                transitionSeq++
+            }
             lastRevealApplied = revealTrigger
         }
     }
