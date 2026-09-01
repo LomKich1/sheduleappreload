@@ -54,7 +54,6 @@ private const val NAV_ANIM_MS = 340   // глубокие экраны: Schedule
 private const val TABS_PLACEHOLDER = "tabs_placeholder"
 
 // ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
 fun AppScaffold() {
     val c = LocalAppColors.current
@@ -64,29 +63,23 @@ fun AppScaffold() {
     val deepScreenOpen = deepRoute != TABS_PLACEHOLDER
 
     // ── Активная вкладка — состояние ВНЕ NavHost. ───────────────────────────
-    //  Именно это убирает лаг: Files/Bells больше не уничтожаются и не
-    //  пересоздаются при каждом переключении, они всегда в композиции —
-    //  переключение это просто анимация translationX (см. BoxWithConstraints).
+    // Именно это убирает лаг: Files/Bells больше не уничтожаются и не
+    // пересоздаются при каждом переключении, они всегда в композиции —
+    // переключение это просто анимация translationX (см. BoxWithConstraints).
     var activeTab by rememberSaveable { mutableStateOf(Screen.Files.route) }
 
     // ── Триггеры каскадной анимации появления ────────────────────────────────
-    //  Каждый увеличивается ровно в момент, когда соответствующая вкладка
-    //  становится активной (включая самый первый показ) — CascadeEntranceItem
-    //  внутри FilesScreen/BellsScreen смотрит на изменение этого числа и
-    //  заново проигрывает анимацию своих элементов.
     var filesEntranceTrigger by rememberSaveable { mutableStateOf(0) }
     var bellsEntranceTrigger by rememberSaveable { mutableStateOf(0) }
+
     LaunchedEffect(activeTab) {
         if (activeTab == Screen.Files.route) filesEntranceTrigger++ else bellsEntranceTrigger++
     }
 
     // Тот же каскад должен проигрываться и когда мы ЗАКРЫВАЕМ глубокий экран
-    // (Schedule/Settings) и возвращаемся на вкладку — например, после того как
-    // вышли из расписания пар через пикер группы обратно на главный экран.
-    // activeTab при этом не меняется (мы всё это время оставались на вкладке
-    // Files), поэтому LaunchedEffect(activeTab) выше тут не сработает — нужен
-    // отдельный триггер именно на "deepScreenOpen: true → false".
+    // (Schedule/Settings) и возвращаемся на вкладку.
     var wasDeepScreenOpen by rememberSaveable { mutableStateOf(deepScreenOpen) }
+
     LaunchedEffect(deepScreenOpen) {
         if (wasDeepScreenOpen && !deepScreenOpen) {
             if (activeTab == Screen.Files.route) filesEntranceTrigger++ else bellsEntranceTrigger++
@@ -98,8 +91,6 @@ fun AppScaffold() {
 
     // Системная кнопка «назад»: если открыта вкладка Bells и нет глубокого
     // экрана сверху — возвращаем на Files, а не выходим из приложения.
-    // Кнопка «назад» поверх Schedule/Settings продолжает работать как раньше
-    // — её обрабатывает сам NavHost (popBackStack), эта строка ему не мешает.
     BackHandler(enabled = !deepScreenOpen && activeTab == Screen.Bells.route) {
         activeTab = Screen.Files.route
     }
@@ -111,91 +102,98 @@ fun AppScaffold() {
             .systemBarsPadding(),
     ) {
         // ── Единая шапка ("Расписание" ↔ "Звонки" через flip) ───────────────
-        //  Раньше каждая вкладка рисовала свою собственную шапку — из-за
-        //  этого при переключении не было анимации самого заголовка, он
-        //  просто резко подменялся. Теперь шапка одна на обе вкладки.
-        //
-        //  ВАЖНО: раньше она пряталась через `if (!deepScreenOpen)` на время
-        //  Schedule/Settings — из-за этого при открытии глубокого экрана
-        //  AppHeader мгновенно пропадал ИЗ КОМПОЗИЦИИ, Column ужимался, и
-        //  BoxWithConstraints с вкладками дёргался вверх на кадр раньше, чем
-        //  NavHost успевал наехать сверху и всё перекрыть — заметный сдвиг
-        //  интерфейса. AppHeader теперь всегда в композиции: NavHost рисуется
-        //  поверх этого Column в том же родительском Box и его экраны
-        //  (Schedule/Settings) непрозрачны — шапку всё равно не видно, пока
-        //  что-то открыто, но сама Column больше не меняет размер.
+        // AppHeader всегда остаётся в композиции, а NavHost рисуется поверх него.
         Column(modifier = Modifier.fillMaxSize()) {
             AppHeader(
-                activeRoute     = activeTab,
+                activeRoute = activeTab,
                 onSettingsClick = { navController.navigate(Screen.Settings.route) },
             )
 
             // ── Вкладки: Files и Bells всегда в композиции ──────────────────
-            //  Раньше это были composable() внутри NavHost — отсюда и лаг.
-            //  Теперь оба экрана собраны один раз и просто сдвигаются по X.
             BoxWithConstraints(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .then(if (showPill) Modifier.padding(bottom = 76.dp) else Modifier)
-                    .clipToBounds(), // чтобы неактивная вкладка не вылезала за край
+                    .padding(bottom = 76.dp)
+                    .clipToBounds(),
             ) {
                 val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
 
-                // Files стоит в 0, Bells сдвинута на +width (ждёт справа).
-                // Какой конкретно расчёт офсета/scale/alpha использовать —
-                // зависит от режима из AnimPrefs (debug-настройка). Обычный
-                // пользователь релиза всегда на DEFAULT — это ровно то
-                // поведение, что было в проекте до всех экспериментов.
-                val animMode        by AnimPrefs.mode.collectAsState()
+                val animMode by AnimPrefs.mode.collectAsState()
                 val tweenDurationMs by AnimPrefs.durationMs.collectAsState()
-                val springDamping   by AnimPrefs.springDamping.collectAsState()
+                val springDamping by AnimPrefs.springDamping.collectAsState()
                 val springStiffness by AnimPrefs.springStiffness.collectAsState()
-                val parallaxPower   by AnimPrefs.parallaxPower.collectAsState()
+                val parallaxPower by AnimPrefs.parallaxPower.collectAsState()
 
-                val targetProgress = if (activeTab == Screen.Files.route) 0f else 1f
+                val targetProgress =
+                    if (activeTab == Screen.Files.route) 0f else 1f
 
                 val progress: Float = when (animMode) {
                     TabAnimMode.DEFAULT -> {
-                        // Оригинальное поведение: простой tween, без пружины.
                         val p by animateFloatAsState(
-                            targetValue   = targetProgress,
-                            animationSpec = tween(tweenDurationMs, easing = FastOutSlowInEasing),
-                            label         = "tabProgressDefault",
+                            targetValue = targetProgress,
+                            animationSpec = tween(
+                                tweenDurationMs,
+                                easing = FastOutSlowInEasing,
+                            ),
+                            label = "tabProgressDefault",
                         )
                         p
                     }
-                    TabAnimMode.SPRING, TabAnimMode.PARALLAX -> {
+
+                    TabAnimMode.SPRING,
+                    TabAnimMode.PARALLAX -> {
                         val p by animateFloatAsState(
-                            targetValue   = targetProgress,
-                            animationSpec = spring(dampingRatio = springDamping, stiffness = springStiffness),
-                            label         = "tabProgressSpring",
+                            targetValue = targetProgress,
+                            animationSpec = spring(
+                                dampingRatio = springDamping,
+                                stiffness = springStiffness,
+                            ),
+                            label = "tabProgressSpring",
                         )
                         p
                     }
                 }
 
                 // Files — фоновый слой.
-                // DEFAULT/SPRING: жёсткий 1:1 офсет, без scale/alpha/параллакса —
-                //                 ровно как раньше, только источник прогресса разный.
-                // PARALLAX: та же дистанция, лёгкий scale+alpha добавляют глубину.
                 val filesOffset = -widthPx * progress
-                val filesScale  = if (animMode == TabAnimMode.PARALLAX) lerp(1f, 0.94f, progress) else 1f
-                val filesAlpha  = if (animMode == TabAnimMode.PARALLAX) lerp(1f, 0.55f, progress) else 1f
+                val filesScale =
+                    if (animMode == TabAnimMode.PARALLAX) {
+                        lerp(1f, 0.94f, progress)
+                    } else {
+                        1f
+                    }
+
+                val filesAlpha =
+                    if (animMode == TabAnimMode.PARALLAX) {
+                        lerp(1f, 0.55f, progress)
+                    } else {
+                        1f
+                    }
 
                 // Bells — передний слой.
-                // PARALLAX: своя кривая для offset/scale/alpha — та же дистанция
-                //           и те же концевые точки, но догоняет резче к концу
-                //           (parallaxPower настраивается в дебаг-панели).
-                // DEFAULT/SPRING: жёсткий 1:1 офсет вместе с Files, без глубины.
-                val bellsProgress = if (animMode == TabAnimMode.PARALLAX) {
-                    1f - (1f - progress).pow(parallaxPower)
-                } else {
-                    progress
-                }
+                val bellsProgress =
+                    if (animMode == TabAnimMode.PARALLAX) {
+                        1f - (1f - progress).pow(parallaxPower)
+                    } else {
+                        progress
+                    }
+
                 val bellsOffset = widthPx * (1f - bellsProgress)
-                val bellsScale  = if (animMode == TabAnimMode.PARALLAX) lerp(0.96f, 1f, bellsProgress) else 1f
-                val bellsAlpha  = if (animMode == TabAnimMode.PARALLAX) lerp(0.6f, 1f, bellsProgress) else 1f
+
+                val bellsScale =
+                    if (animMode == TabAnimMode.PARALLAX) {
+                        lerp(0.96f, 1f, bellsProgress)
+                    } else {
+                        1f
+                    }
+
+                val bellsAlpha =
+                    if (animMode == TabAnimMode.PARALLAX) {
+                        lerp(0.6f, 1f, bellsProgress)
+                    } else {
+                        1f
+                    }
 
                 Box(
                     modifier = Modifier
@@ -208,7 +206,7 @@ fun AppScaffold() {
                         },
                 ) {
                     FilesScreen(
-                        onFileClick     = { file ->
+                        onFileClick = { file ->
                             NavigationHolder.pendingFile = file
                             navController.navigate(Screen.Schedule.route)
                         },
@@ -232,64 +230,74 @@ fun AppScaffold() {
         }
 
         // ── Глубокие экраны: Schedule, Settings — Telegram-стиль слайда ─────
-        //  Единственный startDestination — пустая заглушка; Schedule/Settings
-        //  накладываются на неё сверху и анимируются как раньше.
         NavHost(
-            navController    = navController,
+            navController = navController,
             startDestination = TABS_PLACEHOLDER,
-            modifier         = Modifier.fillMaxSize(),
-
+            modifier = Modifier.fillMaxSize(),
             enterTransition = {
                 slideInHorizontally(
                     initialOffsetX = { it },
-                    animationSpec  = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
+                    animationSpec = tween(
+                        NAV_ANIM_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
                 ) + fadeIn(animationSpec = tween(NAV_ANIM_MS - 60))
             },
             exitTransition = {
                 slideOutHorizontally(
                     targetOffsetX = { -it / 4 },
-                    animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
+                    animationSpec = tween(
+                        NAV_ANIM_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
                 ) + fadeOut(animationSpec = tween(NAV_ANIM_MS - 60))
             },
             popEnterTransition = {
                 slideInHorizontally(
                     initialOffsetX = { -it / 4 },
-                    animationSpec  = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
+                    animationSpec = tween(
+                        NAV_ANIM_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
                 ) + fadeIn(animationSpec = tween(NAV_ANIM_MS - 60))
             },
             popExitTransition = {
                 slideOutHorizontally(
                     targetOffsetX = { it },
-                    animationSpec = tween(NAV_ANIM_MS, easing = FastOutSlowInEasing),
+                    animationSpec = tween(
+                        NAV_ANIM_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
                 ) + fadeOut(animationSpec = tween(NAV_ANIM_MS - 60))
             },
         ) {
             // Ничего не рисует — вкладки рисует BoxWithConstraints выше.
-            // Прозрачность: клики по областям без deep-экрана уходят
-            // напрямую во FilesScreen/BellsScreen, лежащие ниже по z-оси.
             composable(TABS_PLACEHOLDER) {
                 Box(Modifier.fillMaxSize())
             }
 
             composable(Screen.Schedule.route) {
                 val file = NavigationHolder.pendingFile
+
                 if (file != null) {
                     ScheduleHostScreen(
-                        file   = file,
+                        file = file,
                         onBack = { navController.popBackStack() },
                     )
                 }
             }
 
             composable(Screen.Settings.route) {
-                SettingsScreen(onBack = { navController.popBackStack() })
+                SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                )
             }
         }
 
         if (showPill) {
             FloatingPillNav(
                 currentRoute = activeTab,
-                onNavigate   = { route -> activeTab = route },
+                onNavigate = { route -> activeTab = route },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 20.dp),
@@ -301,6 +309,7 @@ fun AppScaffold() {
 @Preview
 @Composable
 private fun AppScaffoldPreview() {
-    AppTheme(preset = ThemePreset.DARK) { AppScaffold() }
+    AppTheme(preset = ThemePreset.DARK) {
+        AppScaffold()
+    }
 }
-
