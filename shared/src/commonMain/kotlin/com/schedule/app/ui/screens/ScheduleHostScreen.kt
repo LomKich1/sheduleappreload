@@ -1,5 +1,9 @@
 package com.schedule.app.ui.screens
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,20 +23,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import com.schedule.app.data.model.ScheduleFile
+import com.schedule.app.data.prefs.AnimPrefs
 import com.schedule.app.data.prefs.AppPrefs
+import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.FlipTransitionText
 import com.schedule.app.ui.components.ScheduleMode
 import com.schedule.app.ui.components.ScheduleModeToggle
 import com.schedule.app.ui.theme.LocalAppColors
+import kotlin.math.pow
 
 // ─── ScheduleHeaderInfo ─────────────────────────────────────────────────────
 //
@@ -62,14 +72,16 @@ data class ScheduleHeaderInfo(
 // и своё независимое состояние (выбранная группа / преподаватель не
 // сбрасываются друг от друга при переключении).
 //
-// Раньше переключение тумблером сдвигало оба вида по X (offset-слайд, как у
-// Files/Bells в AppScaffold) — визуально это читалось как "переход на другой
-// экран", хотя по смыслу это просто переключатель РЕЖИМА одного и того же
-// экрана. Поэтому слайд убран: неактивный вид теперь просто становится
-// невидимым (alpha 0) и перестаёт ловить тапы, БЕЗ какой-либо анимации
-// самого переключения. "Едут" только элементы ВНУТРИ активного вида —
-// карточки пикера группы/преподавателя всё так же анимированно "влетают"
-// (см. revealTrigger/revealEdge, эта часть не менялась).
+// Слайд-переключение здесь одно время было выпилено (голый alpha 0/1 без
+// анимации) — не понравилось, что тумблер режима визуально путался с
+// переходом на другой экран. На деле это была не ошибка механизма, а просто
+// не подкрученные параметры; теперь переключение работает через тот же
+// AnimPrefs, что и Files↔Bells в AppScaffold — один источник правды на всё
+// приложение (DEFAULT/SPRING/PARALLAX, крутится из debug-панели в Settings).
+// STUDENT — фоновый слой (progress 0), TEACHER — передний (progress 1),
+// та же схема offset/scale/alpha, что и у вкладок. Карточки пикера
+// группы/преподавателя внутри активного вида по-прежнему анимированно
+// "влетают" отдельно (см. revealTrigger/revealEdge, не менялось).
 //
 // Шапка, тумблер и полоса загрузки теперь тоже не дублируются на два экрана —
 // единственный экземпляр каждого живёт здесь и берёт данные из headerInfo
@@ -178,22 +190,73 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
             Spacer(Modifier.height(4.dp))
         }
 
-        // ── Содержимое: оба вида смонтированы всегда, неактивный просто
-        // невидим и не ловит тапы — БЕЗ анимации переключения между ними.
+        // ── Содержимое: оба вида смонтированы всегда, слайд между ними
+        // управляется единым AnimPrefs (см. комментарий выше).
         //
         // zIndex ОБЯЗАТЕЛЕН: без него порядок хит-тестинга тапов определяется
-        // порядком в коде (кто добавлен позже — тот и "сверху", даже если у
-        // него alpha = 0). Из-за этого раньше преподавательский экран, всегда
-        // идущий вторым, перехватывал все тапы и скроллы, даже когда был
-        // невидим и неактивен — из-за чего казалось, что "группы сломались".
-        Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+        // порядком в коде (кто добавлен позже — тот и "сверху"). Из-за этого
+        // раньше преподавательский экран, всегда идущий вторым, перехватывал
+        // все тапы и скроллы, даже когда был неактивен — из-за чего казалось,
+        // что "группы сломались". Блокировка тапов у неактивного вида — по
+        // целевому режиму сразу в момент тапа по тумблеру, не дожидаясь
+        // конца анимации (так же ведёт себя zIndex у Files/Bells).
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().weight(1f).clipToBounds()) {
             val studentActive = mode == ScheduleMode.STUDENT
+            val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
+
+            val animMode by AnimPrefs.mode.collectAsState()
+            val tweenDurationMs by AnimPrefs.durationMs.collectAsState()
+            val springDamping by AnimPrefs.springDamping.collectAsState()
+            val springStiffness by AnimPrefs.springStiffness.collectAsState()
+            val parallaxPower by AnimPrefs.parallaxPower.collectAsState()
+
+            // STUDENT — фоновый слой (progress 0), TEACHER — передний (progress 1),
+            // 1:1 та же схема, что у Files (0) / Bells (1) в AppScaffold.
+            val targetProgress = if (studentActive) 0f else 1f
+
+            val progress: Float = when (animMode) {
+                TabAnimMode.DEFAULT -> {
+                    val p by animateFloatAsState(
+                        targetValue = targetProgress,
+                        animationSpec = tween(tweenDurationMs, easing = FastOutSlowInEasing),
+                        label = "modeProgressDefault",
+                    )
+                    p
+                }
+
+                TabAnimMode.SPRING,
+                TabAnimMode.PARALLAX -> {
+                    val p by animateFloatAsState(
+                        targetValue = targetProgress,
+                        animationSpec = spring(dampingRatio = springDamping, stiffness = springStiffness),
+                        label = "modeProgressSpring",
+                    )
+                    p
+                }
+            }
+
+            // Student — фоновый слой.
+            val studentOffset = -widthPx * progress
+            val studentScale = if (animMode == TabAnimMode.PARALLAX) lerp(1f, 0.94f, progress) else 1f
+            val studentAlpha = if (animMode == TabAnimMode.PARALLAX) lerp(1f, 0.55f, progress) else 1f
+
+            // Teacher — передний слой.
+            val teacherProgress =
+                if (animMode == TabAnimMode.PARALLAX) 1f - (1f - progress).pow(parallaxPower) else progress
+            val teacherOffset = widthPx * (1f - teacherProgress)
+            val teacherScale = if (animMode == TabAnimMode.PARALLAX) lerp(0.96f, 1f, teacherProgress) else 1f
+            val teacherAlpha = if (animMode == TabAnimMode.PARALLAX) lerp(0.6f, 1f, teacherProgress) else 1f
 
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(if (studentActive) 1f else 0f)
-                    .graphicsLayer { alpha = if (studentActive) 1f else 0f }
+                    .graphicsLayer {
+                        translationX = studentOffset
+                        scaleX = studentScale
+                        scaleY = studentScale
+                        alpha = studentAlpha
+                    }
                     .blockTouchesIfInactive(!studentActive),
             ) {
                 ScheduleScreen(
@@ -210,7 +273,12 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(if (!studentActive) 1f else 0f)
-                    .graphicsLayer { alpha = if (!studentActive) 1f else 0f }
+                    .graphicsLayer {
+                        translationX = teacherOffset
+                        scaleX = teacherScale
+                        scaleY = teacherScale
+                        alpha = teacherAlpha
+                    }
                     .blockTouchesIfInactive(studentActive),
             ) {
                 TeacherScheduleScreen(
