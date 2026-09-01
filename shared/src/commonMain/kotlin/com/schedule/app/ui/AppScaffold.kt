@@ -29,6 +29,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.schedule.app.data.prefs.AnimPrefs
+import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.AppHeader
 import com.schedule.app.ui.navigation.FloatingPillNav
 import com.schedule.app.ui.navigation.NavigationHolder
@@ -40,17 +42,11 @@ import com.schedule.app.ui.screens.SettingsScreen
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
+import androidx.compose.runtime.collectAsState
 import kotlin.math.pow
 
 // ── Длительности ─────────────────────────────────────────────────────────────
 private const val NAV_ANIM_MS = 340   // глубокие экраны: Schedule, Settings
-
-// dampingRatio < 1 = недодемпфировано, даёт лёгкий "довод"/settle в конце,
-// а не сухую остановку по tween. stiffness умеренная — не слишком резко.
-private val TabSpring = spring<Float>(
-    dampingRatio = 0.78f,
-    stiffness    = 380f,
-)
 
 // route-заглушка — единственный startDestination NavHost. Сама ничего не
 // рисует: вкладки Files/Bells больше не живут внутри NavHost (см. ниже),
@@ -147,31 +143,59 @@ fun AppScaffold() {
                 val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
 
                 // Files стоит в 0, Bells сдвинута на +width (ждёт справа).
-                // offset двигает обе разом — ровно так же, как раньше двигались
-                // tabEnter/tabExit, но без пересборки экрана.
-                // Единая пружина ведёт весь переход: не фиксированная
-                // длительность, а damping/stiffness — даёт естественный
-                // лёгкий "довод" в конце вместо сухой остановки.
+                // Какой конкретно расчёт офсета/scale/alpha использовать —
+                // зависит от режима из AnimPrefs (debug-настройка). Обычный
+                // пользователь релиза всегда на DEFAULT — это ровно то
+                // поведение, что было в проекте до всех экспериментов.
+                val animMode        by AnimPrefs.mode.collectAsState()
+                val tweenDurationMs by AnimPrefs.durationMs.collectAsState()
+                val springDamping   by AnimPrefs.springDamping.collectAsState()
+                val springStiffness by AnimPrefs.springStiffness.collectAsState()
+                val parallaxPower   by AnimPrefs.parallaxPower.collectAsState()
+
                 val targetProgress = if (activeTab == Screen.Files.route) 0f else 1f
-                val progress by animateFloatAsState(
-                    targetValue   = targetProgress,
-                    animationSpec = TabSpring,
-                    label         = "tabProgress",
-                )
 
-                // Files — фоновый слой, едет линейно на всю ширину.
+                val progress: Float = when (animMode) {
+                    TabAnimMode.DEFAULT -> {
+                        // Оригинальное поведение: простой tween, без пружины.
+                        val p by animateFloatAsState(
+                            targetValue   = targetProgress,
+                            animationSpec = tween(tweenDurationMs, easing = FastOutSlowInEasing),
+                            label         = "tabProgressDefault",
+                        )
+                        p
+                    }
+                    TabAnimMode.SPRING, TabAnimMode.PARALLAX -> {
+                        val p by animateFloatAsState(
+                            targetValue   = targetProgress,
+                            animationSpec = spring(dampingRatio = springDamping, stiffness = springStiffness),
+                            label         = "tabProgressSpring",
+                        )
+                        p
+                    }
+                }
+
+                // Files — фоновый слой.
+                // DEFAULT/SPRING: жёсткий 1:1 офсет, без scale/alpha/параллакса —
+                //                 ровно как раньше, только источник прогресса разный.
+                // PARALLAX: та же дистанция, лёгкий scale+alpha добавляют глубину.
                 val filesOffset = -widthPx * progress
-                val filesScale  = lerp(1f, 0.94f, progress)
-                val filesAlpha  = lerp(1f, 0.55f, progress)
+                val filesScale  = if (animMode == TabAnimMode.PARALLAX) lerp(1f, 0.94f, progress) else 1f
+                val filesAlpha  = if (animMode == TabAnimMode.PARALLAX) lerp(1f, 0.55f, progress) else 1f
 
-                // Bells — передний слой: та же дистанция и те же концевые
-                // точки (виден на 0, скрыт на +widthPx), но своя кривая —
-                // догоняет резче к концу. Разная скорость на одной и той же
-                // дистанции = ощущение параллакса/глубины, а не просто сдвиг.
-                val bellsProgress = 1f - (1f - progress).pow(1.6f)
-                val bellsOffset   = widthPx * (1f - bellsProgress)
-                val bellsScale    = lerp(0.96f, 1f, bellsProgress)
-                val bellsAlpha    = lerp(0.6f, 1f, bellsProgress)
+                // Bells — передний слой.
+                // PARALLAX: своя кривая для offset/scale/alpha — та же дистанция
+                //           и те же концевые точки, но догоняет резче к концу
+                //           (parallaxPower настраивается в дебаг-панели).
+                // DEFAULT/SPRING: жёсткий 1:1 офсет вместе с Files, без глубины.
+                val bellsProgress = if (animMode == TabAnimMode.PARALLAX) {
+                    1f - (1f - progress).pow(parallaxPower)
+                } else {
+                    progress
+                }
+                val bellsOffset = widthPx * (1f - bellsProgress)
+                val bellsScale  = if (animMode == TabAnimMode.PARALLAX) lerp(0.96f, 1f, bellsProgress) else 1f
+                val bellsAlpha  = if (animMode == TabAnimMode.PARALLAX) lerp(0.6f, 1f, bellsProgress) else 1f
 
                 Box(
                     modifier = Modifier
