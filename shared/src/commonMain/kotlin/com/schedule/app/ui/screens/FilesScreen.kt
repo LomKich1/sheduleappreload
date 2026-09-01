@@ -181,18 +181,16 @@ private fun FilesList(
 ) {
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
-    // Правка дизайнера: короткий список (1-3 файла) не должен прилипать к верху
-    // с пустым "хвостом" внизу — центрируем группу карточек по вертикали,
-    // сохраняя интервал между ними. Длинный список работает как раньше.
-    val isShort = files.size <= 3
-
+    // Раньше короткий список (1-3 файла) центрировался по вертикали внутри
+    // доступной высоты — но именно это и было причиной бага со сдвигом:
+    // высота BoxWithConstraints меняется на 76dp при открытии/закрытии
+    // Schedule/Settings (пропадает/появляется паддинг под пилюлю), и группа
+    // карточек пересчитывала центр и прыгала на ~38dp. Список всегда прижат
+    // к верху, независимо от количества файлов — по правке дизайнера.
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
-        verticalArrangement = if (isShort)
-            Arrangement.spacedBy(9.dp, Alignment.CenterVertically)
-        else
-            Arrangement.spacedBy(9.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         itemsIndexed(files, key = { _, file -> file.name }) { index, file ->
             CascadeEntranceItem(
