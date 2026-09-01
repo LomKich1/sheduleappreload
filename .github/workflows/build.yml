@@ -26,13 +26,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ── 3. Настройка Android SDK ──────────────────────────────────────────
+      # ── 3. Настройка Android SDK + автоакцепт лицензий ───────────────────
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
-
-      # ── 3.1 Принудительное принятие лицензий SDK ─────────────────────────
-      - name: Accept Android SDK Licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        with:
+          accept-android-sdk-licenses: true
 
       # ── 4. Gradle 8.9 (без gradlew в репозитории) ─────────────────────────
       - name: Set up Gradle 8.9
