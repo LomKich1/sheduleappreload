@@ -1,11 +1,9 @@
 name: Build & Release
 
 # Запускается при каждом пуше в main/master и вручную через Actions → Run workflow
-
 on:
   push:
     branches: [main, master]
-
   workflow_dispatch:
 
 # Нужно для создания/обновления GitHub Release
@@ -51,18 +49,15 @@ jobs:
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
             echo "🔑 Keystore найден — собираем Release APK"
-
             echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/release.jks"
-
             gradle assembleRelease \
               -PKEYSTORE_PATH="$RUNNER_TEMP/release.jks" \
               -PKEYSTORE_PASSWORD="${{ secrets.KEYSTORE_PASSWORD }}" \
               -PKEY_ALIAS="${{ secrets.KEY_ALIAS }}" \
               -PKEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
-
             echo "HAS_RELEASE=true" >> "$GITHUB_ENV"
           else
-            echo "ℹ️ Keystore не настроен — Release APK пропускаем"
+            echo "ℹ️  Keystore не настроен — Release APK пропускаем"
           fi
 
       # ── 7. Читаем версию из gradle.properties ─────────────────────────────
@@ -71,41 +66,32 @@ jobs:
         run: |
           V=$(grep '^APP_VERSION=' gradle.properties | cut -d= -f2 | tr -d ' \r\n')
           V="${V:-1.0.0}"
-
           echo "v=$V" >> "$GITHUB_OUTPUT"
           echo "Версия: $V"
 
           # Версия для desktop-пакетов (Exe/Msi/Dmg) ДОЛЖНА иметь ровно 3
           # числовые части (MAJOR.MINOR.BUILD) — это требование самого
-          # Compose-плагина, а не наша прихоть.
-          #
-          # APP_VERSION уже 3 части ("1.0.1"), поэтому просто прицепить
-          # run_number сверху (получая "1.0.1.143") нельзя — 4 части ломают
-          # сборку и Windows, и Linux/macOS джобы разом, ещё на этапе
-          # конфигурации Gradle, до всякой реальной компиляции.
-          #
-          # Берём только MAJOR.MINOR из APP_VERSION и подставляем run_number
-          # как BUILD — растущий номер для MSI upgrade-детекции сохраняется,
-          # но формат остаётся валидным.
+          # Compose-плагина, а не наша прихоть. APP_VERSION уже 3 части
+          # ("1.0.1"), поэтому просто прицепить run_number сверху (получая
+          # "1.0.1.143") нельзя — 4 части ломают сборку и Windows, и Linux/
+          # macOS джобы разом, ещё на этапе конфигурации Gradle, до всякой
+          # реальной компиляции. Берём только MAJOR.MINOR из APP_VERSION и
+          # подставляем run_number как BUILD — растущий номер для MSI
+          # upgrade-детекции сохраняется, но формат остаётся валидным.
           MAJOR_MINOR=$(echo "$V" | cut -d. -f1-2)
-
           echo "desktop-v=${MAJOR_MINOR}" >> "$GITHUB_OUTPUT"
 
       # ── 8. Копируем APK в единую папку dist/ ──────────────────────────────
       - name: Collect APKs
         run: |
           V="${{ steps.ver.outputs.v }}"
-
           mkdir -p dist
-
           cp app/build/outputs/apk/debug/app-debug.apk \
-            "dist/ScheduleApp-v${V}-debug.apk"
-
+             "dist/ScheduleApp-v${V}-debug.apk"
           if [ "$HAS_RELEASE" = "true" ]; then
             cp app/build/outputs/apk/release/app-release.apk \
-              "dist/ScheduleApp-v${V}.apk"
+               "dist/ScheduleApp-v${V}.apk"
           fi
-
           echo "Файлы:"
           ls -lh dist/
 
@@ -123,7 +109,6 @@ jobs:
   build-desktop:
     name: 🖥️ Build Desktop (${{ matrix.os }})
     needs: build-android
-
     strategy:
       fail-fast: false
       matrix:
@@ -131,11 +116,9 @@ jobs:
           - os: windows-latest
             task: packageMsi
             artifact-glob: desktopApp/build/compose/binaries/main/msi/*.msi
-
           - os: ubuntu-latest
             task: packageDeb
             artifact-glob: desktopApp/build/compose/binaries/main/deb/*.deb
-
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -153,9 +136,7 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build desktop package
-        run: |
-          gradle :desktopApp:${{ matrix.task }} \
-            -PAPP_VERSION="${{ needs.build-android.outputs.desktop-version }}.${{ github.run_number }}"
+        run: gradle :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.build-android.outputs.desktop-version }}.${{ github.run_number }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -180,11 +161,7 @@ jobs:
       - name: Flatten dist folder
         run: |
           mkdir -p dist
-
-          find dist-all -type f \
-            \( -name "*.apk" -o -name "*.msi" -o -name "*.deb" \) \
-            -exec cp {} dist/ \;
-
+          find dist-all -type f \( -name "*.apk" -o -name "*.msi" -o -name "*.deb" \) -exec cp {} dist/ \;
           echo "Итоговые файлы релиза:"
           ls -lh dist/
 
@@ -200,108 +177,22 @@ jobs:
         with:
           tag_name: latest
           name: "ScheduleApp v${{ needs.build-android.outputs.app-version }}"
-
           body: |
-            # 📅 ScheduleApp v${{ needs.build-android.outputs.app-version }}
+            **Автосборка** · ветка `${{ github.ref_name }}` · коммит `${{ github.sha }}`
 
-            > Удобное расписание колледжа для Android, Windows и Linux.
+            ## 📥 Установка
 
-            ---
+            **Android:** скачай `.apk`, разреши "Неизвестные источники", установи.
+            **Windows:** скачай `.msi`, запусти — ставится и обновляется поверх старой версии автоматически.
+            **Linux (deb-based):** `sudo dpkg -i ScheduleApp-*.deb`
 
-            ## ✨ Что нового
-
-            Обновления и исправления текущей версии.
-
-            ---
-
-            ## 📥 Скачать
-
-            ### 📱 Android
-
-            **Для телефона или планшета на Android**
-
-            Рекомендуется скачать:
-
-            `ScheduleApp-v${{ needs.build-android.outputs.app-version }}.apk`
-
-            Это основная релизная версия приложения.
-
-            Если релизный APK недоступен, можно использовать:
-
-            `ScheduleApp-v${{ needs.build-android.outputs.app-version }}-debug.apk`
-
-            > ⚠️ Debug-версия предназначена в первую очередь для тестирования.
-
-            **Установка:**
-            1. Скачайте APK.
-            2. Откройте скачанный файл.
-            3. Если Android попросит разрешение на установку из неизвестного источника — разрешите его для браузера или файлового менеджера.
-            4. Установите приложение.
-
-            ---
-
-            ### 🪟 Windows
-
-            **Рекомендуемый вариант для Windows**
-
-            Скачайте:
-
-            `ScheduleApp-v${{ needs.build-android.outputs.app-version }}.msi`
-
-            Запустите установщик и следуйте инструкциям.
-
-            При установке новой версии приложение автоматически обновляется поверх предыдущей.
-
-            ---
-
-            ### 🐧 Linux
-
-            **Debian / Ubuntu и другие deb-based системы**
-
-            Скачайте:
-
-            `ScheduleApp-v${{ needs.build-android.outputs.app-version }}.deb`
-
-            Установить можно командой:
-
-            ```bash
-            sudo dpkg -i ScheduleApp-*.deb
-            ```
-
-            ---
-
-            ## 📦 Файлы релиза
-
-            | Файл | Платформа | Назначение |
-            |---|---|---|
-            | `.apk` | 📱 Android | Основная релизная версия |
-            | `-debug.apk` | 📱 Android | Тестовая версия |
-            | `.msi` | 🪟 Windows | Установщик Windows |
-            | `.deb` | 🐧 Linux | Debian / Ubuntu |
-
-            ---
-
-            ## ℹ️ Информация о сборке
-
-            <details>
-            <summary>Показать техническую информацию</summary>
-
-            **Ветка:** `${{ github.ref_name }}`
-
-            **Commit:** `${{ github.sha }}`
-
-            **Сборка:** GitHub Actions
-
-            **Версия:** `${{ needs.build-android.outputs.app-version }}`
-
-            </details>
-
-            ---
-
-            **ScheduleApp** — расписание колледжа без лишней возни.
-
+            | Файл | Платформа |
+            |------|-----------|
+            | `...-debug.apk` | Android, тестовый (debug-ключ) |
+            | `...apk` (без суффикса) | Android, релиз (подписан, только если настроен keystore) |
+            | `...msi` | Windows |
+            | `...deb` | Linux (Debian/Ubuntu) |
           files: dist/*
           make_latest: true
-
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
