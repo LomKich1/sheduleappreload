@@ -83,34 +83,35 @@ private data class BellPeriod(
 private val BELLS_MON = listOf(
     BellPeriod("I",   "09:00", "09:45", "09:50", "10:35"),
     BellPeriod("II",  "10:45", "11:30", "11:35", "12:20"),
-    BellPeriod("III", "12:50", "13:35", "13:40", "14:25"),
-    BellPeriod("IV",  "14:35", "15:35"),
-    BellPeriod("V",   "15:45", "16:45"),
-    BellPeriod("VI",  "16:55", "17:55"),
+    BellPeriod("III", "12:40", "13:25", "13:30", "14:15"),
+    BellPeriod("IV",  "14:25", "15:10", "15:15", "16:00"),
+    BellPeriod("V",   "16:10", "16:55", "17:00", "17:45"),
+    BellPeriod("VI",  "17:55", "18:40", "18:45", "19:30"),
 )
 private val BELLS_TUE = listOf(
     BellPeriod("I",   "08:30", "09:15", "09:20", "10:05"),
     BellPeriod("II",  "10:15", "11:00", "11:05", "11:50"),
-    BellPeriod("III", "12:20", "13:05", "13:10", "13:55"),
-    BellPeriod("IV",  "14:05", "15:05"),
-    BellPeriod("V",   "15:15", "16:15"),
-    BellPeriod("VI",  "16:25", "17:25"),
+    BellPeriod("III", "12:10", "12:55", "13:00", "13:45"),
+    BellPeriod("IV",  "13:55", "14:40", "14:45", "15:30"),
+    BellPeriod("V",   "15:40", "16:25", "16:30", "17:15"),
+    BellPeriod("VI",  "17:25", "18:10", "18:15", "19:00"),
 )
-private val BELLS_SAT = listOf(
-    BellPeriod("I",   "08:30", "09:30"),
-    BellPeriod("II",  "09:40", "10:40"),
-    BellPeriod("III", "10:50", "11:50"),
-    BellPeriod("IV",  "12:00", "13:00"),
-    BellPeriod("V",   "13:10", "14:10"),
-    BellPeriod("VI",  "14:20", "15:20"),
-)
+// Расписание звонков на субботу совместили с расписанием вт-пт, надо править файлы...
+//private val BELLS_SAT = listOf(
+//    BellPeriod("I",   "08:30", "09:30"),
+//    BellPeriod("II",  "09:40", "10:40"),
+//    BellPeriod("III", "10:50", "11:50"),
+//    BellPeriod("IV",  "12:00", "13:00"),
+//    BellPeriod("V",   "13:10", "14:10"),
+//    BellPeriod("VI",  "14:20", "15:20"),
+//)
 
 // Зачем сюда лезть? норм код так-то)
 
 private fun bellsFor(type: BellDayType) = when (type) {
     BellDayType.MON     -> BELLS_MON
     BellDayType.TUE_FRI -> BELLS_TUE
-    BellDayType.SAT     -> BELLS_SAT
+    BellDayType.SAT     -> BELLS_TUE
 }
 
 private fun dayTypeFor(dayOfWeek: Int): BellDayType = when (dayOfWeek) {
