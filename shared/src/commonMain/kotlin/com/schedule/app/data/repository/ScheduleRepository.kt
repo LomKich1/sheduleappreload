@@ -65,7 +65,7 @@ object ScheduleRepository {
         Logger.d(TAG, "Пробуем GitHub...")
         val githubResult = runCatching {
             GitHubApi.listFiles().mapNotNull { remote ->
-                val file = scheduleFileFromName(remote.name, downloadUrl = remote.downloadUrl)
+                val file = scheduleFileFromName(remote.name, downloadUrl = remote.downloadUrl, sha = remote.sha)
                 if (file == null) Logger.w(TAG, "  GitHub: имя '${remote.name}' не распознано")
                 file
             }
@@ -104,7 +104,7 @@ object ScheduleRepository {
             YandexDiskApi.downloadBytes(href, onProgress)
         } else {
             Logger.d(TAG, "  источник: прямой URL (GitHub)")
-            GitHubApi.downloadBytes(url, onProgress)
+            GitHubApi.downloadBytes(url, expectedSha = file.sha, onProgress)
         }
     }
 

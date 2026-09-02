@@ -3,6 +3,7 @@ package com.schedule.app.data.remote
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 // ─── GitHub — fallback источник файлов расписания ────────────────────────────
@@ -26,6 +27,7 @@ object GitHubApi {
         val name: String,        // "Понедельник 09.06.doc"
         val downloadUrl: String, // прямой raw URL
         val size: Long,
+        val sha: String,         // git blob SHA1 — для проверки целостности после скачивания
     )
 
     /**
@@ -54,16 +56,40 @@ object GitHubApi {
                     name        = name,
                     downloadUrl = obj.optString("download_url", ""),
                     size        = obj.optLong("size", 0L),
+                    sha         = obj.optString("sha", ""),
                 ))
             }
         }
     }
 
     /**
-     * Скачивает файл. Пробует основной raw URL и три зеркала.
+     * git blob SHA1 файла — тот же алгоритм, что использует сам git и что
+     * GitHub API возвращает в поле "sha" для контента репозитория:
+     * sha1("blob " + размер_в_байтах + "\u0000" + содержимое).
      */
-    fun downloadBytes(rawUrl: String, onProgress: (Float) -> Unit = {}): ByteArray {
-        // Зеркала на случай, если raw.githubusercontent.com недоступен
+    private fun gitBlobSha1(bytes: ByteArray): String {
+        val header = "blob ${bytes.size}\u0000".toByteArray(Charsets.UTF_8)
+        val digest = MessageDigest.getInstance("SHA-1")
+        digest.update(header)
+        digest.update(bytes)
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * Скачивает файл. Пробует основной raw URL и зеркала (mirror.ghproxy.com,
+     * ghfast.top — используются, когда raw.githubusercontent.com недоступен
+     * из сети пользователя).
+     *
+     * ВАЖНО: зеркала — сторонние прокси, не под нашим контролем. Владелец
+     * такого домена технически мог бы подменить содержимое файла на лету.
+     * Поэтому после скачивания С ЛЮБОГО источника (включая основной)
+     * содержимое сверяется по SHA1 с тем, что вернул официальный
+     * GitHub Contents API (см. [RemoteFile.sha]) — если хэш не совпал,
+     * файл не тот, что ожидался, пробуем следующее зеркало. Так подмена
+     * содержимого технически невозможна, независимо от того, насколько
+     * можно доверять конкретному зеркалу.
+     */
+    fun downloadBytes(rawUrl: String, expectedSha: String, onProgress: (Float) -> Unit = {}): ByteArray {
         val mirrors = listOf(
             rawUrl,
             rawUrl.replace("raw.githubusercontent.com", "mirror.ghproxy.com/raw.githubusercontent.com"),
@@ -77,13 +103,21 @@ object GitHubApi {
                 val req = Request.Builder().url(url)
                     .header("User-Agent", "ScheduleApp/1.0")
                     .build()
-                return client.newCall(req).execute().use { resp ->
+                val bytes = client.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
                     onProgress(0.8f)
-                    val bytes = resp.body!!.bytes()
-                    onProgress(1f)
-                    bytes
+                    resp.body!!.bytes()
                 }
+
+                if (expectedSha.isNotEmpty()) {
+                    val actualSha = gitBlobSha1(bytes)
+                    if (!actualSha.equals(expectedSha, ignoreCase = true)) {
+                        throw Exception("Целостность файла нарушена (SHA не совпал, источник: $url)")
+                    }
+                }
+
+                onProgress(1f)
+                return bytes
             } catch (e: Exception) {
                 lastErr = e
             }
