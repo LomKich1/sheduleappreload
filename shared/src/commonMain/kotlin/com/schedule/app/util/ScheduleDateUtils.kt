@@ -24,7 +24,7 @@ private val WEEKDAY_RU = mapOf(
  * Превращает имя файла в [ScheduleFile].
  * Возвращает null, если имя не соответствует шаблону "dd_MM_yyyy_ДЕНЬ.*".
  */
-fun scheduleFileFromName(name: String, downloadUrl: String): ScheduleFile? {
+fun scheduleFileFromName(name: String, downloadUrl: String, sha: String = ""): ScheduleFile? {
     val withoutExt = name.substringBeforeLast('.')
     val match = FILE_NAME_REGEX.find(withoutExt) ?: return null
 
@@ -46,5 +46,6 @@ fun scheduleFileFromName(name: String, downloadUrl: String): ScheduleFile? {
         dateLabel   = dateLabel,
         downloadUrl = downloadUrl,
         isToday     = isToday,
+        sha         = sha,
     )
 }
