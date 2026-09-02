@@ -65,8 +65,21 @@ jobs:
         id: ver
         run: |
           V=$(grep '^APP_VERSION=' gradle.properties | cut -d= -f2 | tr -d ' \r\n')
-          echo "v=${V:-1.0.0}" >> "$GITHUB_OUTPUT"
-          echo "Версия: ${V:-1.0.0}"
+          V="${V:-1.0.0}"
+          echo "v=$V" >> "$GITHUB_OUTPUT"
+          echo "Версия: $V"
+
+          # Версия для desktop-пакетов (Exe/Msi/Dmg) ДОЛЖНА иметь ровно 3
+          # числовые части (MAJOR.MINOR.BUILD) — это требование самого
+          # Compose-плагина, а не наша прихоть. APP_VERSION уже 3 части
+          # ("1.0.1"), поэтому просто прицепить run_number сверху (получая
+          # "1.0.1.143") нельзя — 4 части ломают сборку и Windows, и Linux/
+          # macOS джобы разом, ещё на этапе конфигурации Gradle, до всякой
+          # реальной компиляции. Берём только MAJOR.MINOR из APP_VERSION и
+          # подставляем run_number как BUILD — растущий номер для MSI
+          # upgrade-детекции сохраняется, но формат остаётся валидным.
+          MAJOR_MINOR=$(echo "$V" | cut -d. -f1-2)
+          echo "desktop-v=${MAJOR_MINOR}" >> "$GITHUB_OUTPUT"
 
       # ── 8. Копируем APK в единую папку dist/ ──────────────────────────────
       - name: Collect APKs
@@ -91,6 +104,7 @@ jobs:
 
     outputs:
       app-version: ${{ steps.ver.outputs.v }}
+      desktop-version: ${{ steps.ver.outputs.desktop-v }}
 
   build-desktop:
     name: 🖥️ Build Desktop (${{ matrix.os }})
@@ -122,7 +136,7 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build desktop package
-        run: gradle :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.build-android.outputs.app-version }}.${{ github.run_number }}"
+        run: gradle :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.build-android.outputs.desktop-version }}.${{ github.run_number }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

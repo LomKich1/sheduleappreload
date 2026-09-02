@@ -10,4 +10,7 @@ data class ScheduleFile(
     val dateLabel: String,    // "09.06"
     val downloadUrl: String,  // прямая ссылка на скачивание файла
     val isToday: Boolean,
+    val sha: String = "",     // git blob SHA1 (только для файлов с GitHub — см. GitHubApi),
+                               // используется для проверки целостности после скачивания
+                               // через зеркала. У файлов с Я.Диска — пустая строка.
 )
