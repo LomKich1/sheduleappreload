@@ -6,7 +6,7 @@ import java.awt.FileDialog
 import java.io.File
 
 @Composable
-actual fun rememberJsonFilePicker(onFilePicked: (String?) -> Unit): () -> Unit {
+actual fun rememberJsonFilePicker(onFilePicked: (PickedTextFile?) -> Unit): () -> Unit {
     // FileDialog.isVisible = true — модальный вызов (блокирует до выбора
     // файла или отмены), это ожидаемое поведение для системного диалога,
     // ничего чинить не нужно.
@@ -21,7 +21,8 @@ actual fun rememberJsonFilePicker(onFilePicked: (String?) -> Unit): () -> Unit {
             if (dir == null || name == null) {
                 onFilePicked(null)
             } else {
-                onFilePicked(runCatching { File(dir, name).readText() }.getOrNull())
+                val content = runCatching { File(dir, name).readText() }.getOrNull()
+                if (content == null) onFilePicked(null) else onFilePicked(PickedTextFile(name = name, content = content))
             }
         }
     }
