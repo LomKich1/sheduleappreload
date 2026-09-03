@@ -21,12 +21,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.schedule.app.data.parser.JsonScheduleParser
 import com.schedule.app.data.prefs.AnimPrefs
 import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
+import com.schedule.app.util.rememberJsonFilePicker
 
 // ─── DebugSettingsScreen ──────────────────────────────────────────────────────
 // Отдельный экран для всех debug-only настроек (раньше жили инлайном прямо в
@@ -35,9 +37,9 @@ import com.schedule.app.ui.theme.ThemePreset
 // целиком). Доступен только из SettingsScreen, только когда IsDebugBuild
 // (сама кнопка-переход туда тоже скрыта в релизе).
 //
-// Пока внутри — только тонкая настройка анимации переключения вкладок.
-// Следующий кандидат сюда — переключатель тестового JSON-пути парсинга
-// (JsonScheduleParser, параллельный DocParser), когда до него дойдут руки в UI.
+// Внутри — тонкая настройка анимации переключения вкладок, и тестовый
+// прогон JSON-файлов расписания через JsonScheduleParser (см. JsonTestSection
+// ниже) — без сети, без Я.Диска/GitHub, просто локальный файл с телефона.
 
 @Composable
 fun DebugSettingsScreen(onBack: () -> Unit) {
@@ -55,6 +57,13 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
             SettingsSectionLabel("Анимация вкладок")
             SettingsCard {
                 AnimDebugSection()
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            SettingsSectionLabel("Тест JSON-файла расписания")
+            SettingsCard {
+                JsonTestSection()
             }
 
             Spacer(Modifier.height(80.dp))
@@ -242,6 +251,107 @@ private fun LabeledSlider(
                 inactiveTrackColor = c.surface3,
             ),
         )
+    }
+}
+
+// ─── Тест JSON-файла ──────────────────────────────────────────────────────────
+// Кнопка выбора локального .json-файла с телефона/диска + мгновенный
+// предпросмотр того, что из него распарсилось (группы/преподы) — не нужно
+// заливать тестовый файл на Я.Диск/GitHub каждый раз, пока JSON-конструктора
+// ещё не существует и файлы приходится писать руками для проверки схемы.
+
+private sealed class JsonTestState {
+    object Idle : JsonTestState()
+    data class Error(val message: String) : JsonTestState()
+    data class Success(val groups: List<String>, val teachers: List<String>) : JsonTestState()
+}
+
+@Composable
+private fun JsonTestSection() {
+    val c = LocalAppColors.current
+    var state by remember { mutableStateOf<JsonTestState>(JsonTestState.Idle) }
+
+    val pickFile = rememberJsonFilePicker { text ->
+        state = when {
+            text == null -> JsonTestState.Idle // отмена выбора — молча ничего не меняем
+            else -> runCatching {
+                val groups   = JsonScheduleParser.detectGroups(text)
+                val teachers = JsonScheduleParser.detectTeachers(text)
+                JsonTestState.Success(groups, teachers)
+            }.getOrElse { err ->
+                JsonTestState.Error(err.message ?: "Не удалось разобрать файл как JSON")
+            }
+        }
+    }
+
+    Column {
+        Text(
+            text = "Выбери .json-файл дня — покажем, что из него нашлось, без сети и без ScheduleViewModel",
+            color = c.textSub,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(AppRadius.capsule)
+                .background(c.accent)
+                .clickable { pickFile() }
+                .padding(vertical = 11.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("📄 Выбрать JSON-файл", color = c.onAccent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        }
+
+        when (val s = state) {
+            is JsonTestState.Idle -> Unit
+
+            is JsonTestState.Error -> {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "❌ ${s.message}",
+                    color = c.text,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                )
+            }
+
+            is JsonTestState.Success -> {
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    text = "Найдено групп: ${s.groups.size}",
+                    color = c.text,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (s.groups.isNotEmpty()) {
+                    Text(
+                        text = s.groups.joinToString(", "),
+                        color = c.textSub,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 10.dp),
+                    )
+                }
+                Text(
+                    text = "Найдено преподавателей: ${s.teachers.size}",
+                    color = c.text,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (s.teachers.isNotEmpty()) {
+                    Text(
+                        text = s.teachers.joinToString(", "),
+                        color = c.textSub,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
