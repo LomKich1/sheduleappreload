@@ -16,33 +16,73 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Получаем код ───────────────────────────────────────────────────
+      # ── 1. Получаем код (полная история + теги — нужны для проверки
+      #      версии и статистики релиза дальше по пайплайну) ────────────────
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # ── 2. JDK 17 (требуется AGP 8.x) ────────────────────────────────────
+      # ── 2. Читаем версию из gradle.properties ──────────────────────────────
+      - name: Read version
+        id: ver
+        run: |
+          V=$(grep '^APP_VERSION=' gradle.properties | cut -d= -f2 | tr -d ' \r\n')
+          V="${V:-1.0.0}"
+          echo "v=$V" >> "$GITHUB_OUTPUT"
+          echo "Версия: $V"
+
+          # Версия для desktop-пакетов (Exe/Msi/Dmg) ДОЛЖНА иметь ровно 3
+          # числовые части (MAJOR.MINOR.BUILD) — это требование самого
+          # Compose-плагина, а не наша прихоть. APP_VERSION уже 3 части
+          # ("1.0.1"), поэтому просто прицепить run_number сверху (получая
+          # "1.0.1.143") нельзя — 4 части ломают сборку и Windows, и Linux/
+          # macOS джобы разом, ещё на этапе конфигурации Gradle, до всякой
+          # реальной компиляции. Берём только MAJOR.MINOR из APP_VERSION и
+          # подставляем run_number как BUILD — растущий номер для MSI
+          # upgrade-детекции сохраняется, но формат остаётся валидным.
+          MAJOR_MINOR=$(echo "$V" | cut -d. -f1-2)
+          echo "desktop-v=${MAJOR_MINOR}" >> "$GITHUB_OUTPUT"
+
+      # ── 3. Тег релиза не должен уже существовать ───────────────────────────
+      # Каждый релиз теперь — отдельный тег v{APP_VERSION}, а не один
+      # перезаписываемый "latest". Если тег уже есть на GitHub — значит
+      # APP_VERSION в gradle.properties забыли поднять перед мержем в main.
+      # Падаем здесь, до сборки, вместо того чтобы молча затереть релиз
+      # прошлой версии тем же содержимым.
+      - name: Check release tag is not taken
+        run: |
+          TAG="v${{ steps.ver.outputs.v }}"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+            echo "❌ Тег $TAG уже существует на GitHub."
+            echo "   Подними APP_VERSION в gradle.properties перед мержем в main."
+            exit 1
+          fi
+          echo "✅ Тег $TAG свободен, можно собирать релиз"
+
+      # ── 4. JDK 17 (требуется AGP 8.x) ────────────────────────────────────
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # ── 3. Gradle 8.9 (без gradlew в репозитории) ─────────────────────────
+      # ── 5. Настройка Android SDK + автоакцепт лицензий ───────────────────
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          accept-android-sdk-licenses: true
+
+      # ── 6. Gradle 8.9 (без gradlew в репозитории) ─────────────────────────
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.9'
 
-      # ── 4. Принимаем лицензии Android SDK ────────────────────────────────
-      - name: Accept Android SDK licenses
-        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-      # ── 5. Debug APK (всегда, без секретов) ──────────────────────────────
+      # ── 7. Debug APK (всегда, без секретов) ──────────────────────────────
       - name: Build Debug APK
         run: gradle assembleDebug --no-build-cache --rerun-tasks
 
-      # ── 6. Signed Release APK (если keystore настроен) ───────────────────
-      # Три секрета в Settings → Secrets → Actions:
-      #   KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
+      # ── 8. Signed Release APK (если keystore настроен) ───────────────────
       - name: Build signed Release APK
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -60,15 +100,7 @@ jobs:
             echo "ℹ️  Keystore не настроен — Release APK пропускаем"
           fi
 
-      # ── 7. Читаем версию из gradle.properties ─────────────────────────────
-      - name: Read version
-        id: ver
-        run: |
-          V=$(grep '^APP_VERSION=' gradle.properties | cut -d= -f2 | tr -d ' \r\n')
-          echo "v=${V:-1.0.0}" >> "$GITHUB_OUTPUT"
-          echo "Версия: ${V:-1.0.0}"
-
-      # ── 8. Копируем APK в единую папку dist/ ──────────────────────────────
+      # ── 9. Копируем APK в единую папку dist/ ──────────────────────────────
       - name: Collect APKs
         run: |
           V="${{ steps.ver.outputs.v }}"
@@ -91,10 +123,11 @@ jobs:
 
     outputs:
       app-version: ${{ steps.ver.outputs.v }}
+      desktop-version: ${{ steps.ver.outputs.desktop-v }}
 
   build-desktop:
     name: 🖥️ Build Desktop (${{ matrix.os }})
-    needs: build-android   # чтобы переиспользовать общую версию из шага выше
+    needs: build-android
     strategy:
       fail-fast: false
       matrix:
@@ -121,16 +154,8 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      # ВАЖНО: packageVersion для десктопа = APP_VERSION + номер CI-рана
-      # (например 1.0.1 -> 1.0.1.42). Это отдельно от Android versionName.
-      # Причина: Windows Installer не поставит MSI поверх уже установленной
-      # копии с ТЕМ ЖЕ ProductVersion — нужно чтобы версия росла на каждой
-      # пересборке, иначе "пакет недействителен" при повторной установке
-      # той же версии 1.0.1. upgradeUuid зафиксирован отдельно в
-      # desktopApp/build.gradle, это решает узнавание "тот же продукт",
-      # а растущая версия — что это именно апдейт, а не даунгрейд.
       - name: Build desktop package
-        run: gradle :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.build-android.outputs.app-version }}.${{ github.run_number }}"
+        run: gradle :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.build-android.outputs.desktop-version }}.${{ github.run_number }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -145,7 +170,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Полная история нужна, чтобы найти предыдущий релизный тег и
+      # посчитать по нему статистику (файлы/строки/дни с прошлого релиза).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -159,21 +188,54 @@ jobs:
           echo "Итоговые файлы релиза:"
           ls -lh dist/
 
-      - name: Delete previous release
+      # ── Статистика относительно предыдущего релизного тега ─────────────────
+      # Ищем самый свежий уже существующий тег вида vX.Y.Z (кроме текущего —
+      # его ещё нет, он появится только при публикации ниже) и считаем
+      # git diff --shortstat + сколько дней прошло с его коммита.
+      - name: Compute release stats
+        id: stats
         run: |
-          gh release delete latest --yes 2>/dev/null || true
-          git push origin --delete latest 2>/dev/null || true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "ℹ️  Предыдущих релизных тегов нет — это первый версионный релиз"
+            {
+              echo "block<<STATS_EOF"
+              echo "_Первый релиз с версионными тегами — сравнивать не с чем._"
+              echo "STATS_EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Предыдущий тег: $PREV_TAG"
+
+          SHORTSTAT=$(git diff --shortstat "$PREV_TAG" HEAD)
+          FILES=$(echo "$SHORTSTAT" | grep -oE '[0-9]+ file' | grep -oE '[0-9]+' || echo 0)
+          ADDS=$(echo "$SHORTSTAT" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo 0)
+          DELS=$(echo "$SHORTSTAT" | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo 0)
+          COMMITS=$(git rev-list --count "$PREV_TAG"..HEAD)
+
+          PREV_DATE=$(git log -1 --format=%ct "$PREV_TAG")
+          NOW_DATE=$(date +%s)
+          DAYS=$(( (NOW_DATE - PREV_DATE) / 86400 ))
+
+          {
+            echo "block<<STATS_EOF"
+            echo "**📊 Статистика релиза**"
+            echo '```'
+            echo "Файлов изменено: $FILES | Добавлено строк: $ADDS | Удалено строк: $DELS"
+            echo "Коммитов: $COMMITS | Дней с прошлого релиза: $DAYS"
+            echo '```'
+            echo "STATS_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
+          tag_name: "v${{ needs.build-android.outputs.app-version }}"
           name: "ScheduleApp v${{ needs.build-android.outputs.app-version }}"
+          generate_release_notes: true
           body: |
-            **Автосборка** · ветка `${{ github.ref_name }}` · коммит `${{ github.sha }}`
-
             ## 📥 Установка
 
             **Android:** скачай `.apk`, разреши "Неизвестные источники", установи.
@@ -186,8 +248,11 @@ jobs:
             | `...apk` (без суффикса) | Android, релиз (подписан, только если настроен keystore) |
             | `...msi` | Windows |
             | `...deb` | Linux (Debian/Ubuntu) |
+
+            ---
+
+            ${{ steps.stats.outputs.block }}
           files: dist/*
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
