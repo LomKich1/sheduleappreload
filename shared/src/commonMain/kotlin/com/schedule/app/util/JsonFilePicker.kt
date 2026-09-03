@@ -2,11 +2,13 @@ package com.schedule.app.util
 
 import androidx.compose.runtime.Composable
 
+/** Выбранный файл: имя (для scheduleFileFromName — определить день/дату) + текст содержимого. */
+data class PickedTextFile(val name: String, val content: String)
+
 /**
  * Возвращает функцию-лаунчер: вызови её, чтобы открыть системный диалог
- * выбора файла. Колбэк [onFilePicked] получает содержимое выбранного файла
- * как текст (UTF-8), либо null — если пользователь отменил выбор или файл
- * не прочитался.
+ * выбора файла. Колбэк [onFilePicked] получает выбранный файл, либо null —
+ * если пользователь отменил выбор или файл не прочитался.
  *
  * Только для debug-сборки: нужен, чтобы проверять JsonScheduleParser на
  * локальных тестовых файлах, не дожидаясь настоящего JSON-конструктора и не
@@ -15,4 +17,4 @@ import androidx.compose.runtime.Composable
  * делает (не его дело решать, показывать кнопку или нет).
  */
 @Composable
-expect fun rememberJsonFilePicker(onFilePicked: (String?) -> Unit): () -> Unit
+expect fun rememberJsonFilePicker(onFilePicked: (PickedTextFile?) -> Unit): () -> Unit

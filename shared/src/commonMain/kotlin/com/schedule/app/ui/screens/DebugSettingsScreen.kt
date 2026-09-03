@@ -23,11 +23,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.schedule.app.data.parser.JsonScheduleParser
 import com.schedule.app.data.prefs.AnimPrefs
+import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.data.prefs.TabAnimMode
+import com.schedule.app.data.repository.DebugFileStore
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
+import com.schedule.app.util.PickedTextFile
 import com.schedule.app.util.rememberJsonFilePicker
 
 // ─── DebugSettingsScreen ──────────────────────────────────────────────────────
@@ -263,7 +266,8 @@ private fun LabeledSlider(
 private sealed class JsonTestState {
     object Idle : JsonTestState()
     data class Error(val message: String) : JsonTestState()
-    data class Success(val groups: List<String>, val teachers: List<String>) : JsonTestState()
+    data class Success(val file: PickedTextFile, val groups: List<String>, val teachers: List<String>) : JsonTestState()
+    data class Saved(val fileName: String) : JsonTestState()
 }
 
 @Composable
@@ -271,13 +275,13 @@ private fun JsonTestSection() {
     val c = LocalAppColors.current
     var state by remember { mutableStateOf<JsonTestState>(JsonTestState.Idle) }
 
-    val pickFile = rememberJsonFilePicker { text ->
+    val pickFile = rememberJsonFilePicker { picked ->
         state = when {
-            text == null -> JsonTestState.Idle // отмена выбора — молча ничего не меняем
+            picked == null -> JsonTestState.Idle // отмена выбора — молча ничего не меняем
             else -> runCatching {
-                val groups   = JsonScheduleParser.detectGroups(text)
-                val teachers = JsonScheduleParser.detectTeachers(text)
-                JsonTestState.Success(groups, teachers)
+                val groups   = JsonScheduleParser.detectGroups(picked.content)
+                val teachers = JsonScheduleParser.detectTeachers(picked.content)
+                JsonTestState.Success(picked, groups, teachers)
             }.getOrElse { err ->
                 JsonTestState.Error(err.message ?: "Не удалось разобрать файл как JSON")
             }
@@ -318,6 +322,16 @@ private fun JsonTestSection() {
                 )
             }
 
+            is JsonTestState.Saved -> {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "✅ Сохранено как «${s.fileName}» — открой вкладку Файлы, он там сверху списка",
+                    color = c.text,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                )
+            }
+
             is JsonTestState.Success -> {
                 Spacer(Modifier.height(14.dp))
                 Text(
@@ -349,6 +363,50 @@ private fun JsonTestSection() {
                         lineHeight = 16.sp,
                         modifier = Modifier.padding(top = 2.dp),
                     )
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Сохранение — держит файл в оперативной памяти (DebugFileStore),
+                // ровно как обычный кеш файлов с Я.Диска. Пропадёт при
+                // перезапуске приложения — это ожидаемо, не баг.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(AppRadius.capsule)
+                            .background(c.surface2)
+                            .clickable { state = JsonTestState.Idle }
+                            .padding(vertical = 11.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("Не сохранять", color = c.textSub, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(AppRadius.capsule)
+                            .background(c.accent)
+                            .clickable {
+                                val saved = DebugFileStore.save(s.file.name, s.file.content)
+                                state = if (saved != null) {
+                                    AppPrefs.requestFilesRefresh()
+                                    JsonTestState.Saved(saved.name)
+                                } else {
+                                    JsonTestState.Error(
+                                        "Имя файла «${s.file.name}» не похоже на день расписания " +
+                                            "(нужен формат dd_MM_yyyy_ДЕНЬ.json)"
+                                    )
+                                }
+                            }
+                            .padding(vertical = 11.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("Сохранить", color = c.onAccent, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

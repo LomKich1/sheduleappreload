@@ -18,6 +18,10 @@ object ScheduleRepository {
     var lastSource: String = ""
         private set
 
+    /** Подмешивает debug-файл (если есть) в начало списка — см. DebugFileStore. */
+    private fun withDebugFile(files: List<ScheduleFile>): List<ScheduleFile> =
+        DebugFileStore.injectedFile?.let { debugFile -> listOf(debugFile) + files } ?: files
+
     suspend fun getFiles(
         publicKey: String,
         forceRefresh: Boolean = false,
@@ -27,7 +31,7 @@ object ScheduleRepository {
 
         if (!forceRefresh && cachedKey == publicKey && cachedFiles.isNotEmpty()) {
             Logger.d(TAG, "getFiles() → из кеша (${cachedFiles.size} файлов)")
-            return@withContext cachedFiles
+            return@withContext withDebugFile(cachedFiles)
         }
 
         // ── Попытка 1: Яндекс.Диск ───────────────────────────────────────
@@ -55,7 +59,7 @@ object ScheduleRepository {
             cachedKey   = publicKey
             cachedFiles = files
             lastSource  = "Яндекс.Диск"
-            return@withContext files
+            return@withContext withDebugFile(files)
         }
 
         val yandexErr = yandexResult.exceptionOrNull()
@@ -77,11 +81,19 @@ object ScheduleRepository {
             cachedKey   = publicKey
             cachedFiles = files
             lastSource  = "GitHub"
-            return@withContext files
+            return@withContext withDebugFile(files)
         }
 
         val githubErr = githubResult.exceptionOrNull()
         Logger.e(TAG, "GitHub ОШИБКА: ${githubErr?.message}", githubErr)
+
+        // Оба реальных источника недоступны — но если есть debug-файл,
+        // хотя бы его показать вместо голой ошибки (удобно тестировать
+        // JSON-парсинг вообще без сети/VPN).
+        DebugFileStore.injectedFile?.let { debugFile ->
+            Logger.w(TAG, "Оба источника недоступны, но есть debug-файл — показываем только его")
+            return@withContext listOf(debugFile)
+        }
 
         val errorMsg = "Нет соединения.\n" +
             "Я.Диск: ${yandexErr?.message}\n" +
@@ -97,7 +109,11 @@ object ScheduleRepository {
     ): ByteArray = withContext(Dispatchers.IO) {
         val url = file.downloadUrl
         Logger.d(TAG, "downloadFile() '${file.name}' url='${url.take(60)}...'")
-        if (url.startsWith("yadisk:")) {
+        if (DebugFileStore.isDebugUrl(url)) {
+            Logger.d(TAG, "  источник: debug-файл (из памяти, без сети)")
+            onProgress(1f)
+            DebugFileStore.bytesFor(url) ?: throw Exception("Debug-файл потерян (перезапуск приложения?)")
+        } else if (url.startsWith("yadisk:")) {
             val path = url.removePrefix("yadisk:")
             Logger.d(TAG, "  источник: Яндекс.Диск, path='$path'")
             val href = YandexDiskApi.getDownloadUrl(publicKey, path)
