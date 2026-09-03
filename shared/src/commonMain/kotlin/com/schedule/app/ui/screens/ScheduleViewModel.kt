@@ -6,8 +6,10 @@ import com.schedule.app.data.model.ScheduleDay
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.model.ScheduleParseResult
 import com.schedule.app.data.parser.DocParser
+import com.schedule.app.data.parser.JsonScheduleParser
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.data.repository.ScheduleRepository
+import com.schedule.app.util.IsDebugBuild
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,6 +50,12 @@ class ScheduleViewModel : ViewModel() {
     // повторный сетевой запрос: пикер ↔ расписание без скачивания.
     private var cachedBytes: ByteArray? = null
 
+    // Сам файл (не только байты) — нужен для JSON-пути: dayLabel/dateLabel/
+    // isToday там взять больше неоткуда (в .doc эти вещи парсер вычитывает
+    // из текста самого файла, в JSON — просто нет смысла дублировать то, что
+    // уже вычислено один раз при листинге файлов, см. scheduleFileFromName).
+    private var currentFile: ScheduleFile? = null
+
     init {
         viewModelScope.launch {
             while (true) {
@@ -80,6 +88,7 @@ class ScheduleViewModel : ViewModel() {
             }
 
             cachedBytes     = bytes
+            currentFile     = file
             _progress.value = 0.9f
 
             // Пикер показывается всегда — даже если группа уже когда-то выбиралась.
@@ -93,7 +102,10 @@ class ScheduleViewModel : ViewModel() {
     /** Показывает список групп из файла (детект по байтам, уже скачанным). */
     private suspend fun showGroupPicker(bytes: ByteArray) {
         withContext(Dispatchers.Default) {
-            runCatching { DocParser.detectGroups(bytes) }
+            runCatching {
+                if (isDebugJsonFile()) JsonScheduleParser.detectGroups(bytes.decodeToString())
+                else DocParser.detectGroups(bytes)
+            }
                 .onSuccess { groups ->
                     _progress.value = 1f
                     _uiState.value  = ScheduleUiState.GroupPicker(groups)
@@ -109,7 +121,20 @@ class ScheduleViewModel : ViewModel() {
     /** Парсим байты под конкретную группу (после выбора в пикере). */
     private suspend fun parseForGroup(bytes: ByteArray, group: String, fileName: String) {
         withContext(Dispatchers.Default) {
-            runCatching { DocParser.parseForGroup(bytes, group, fileName) }
+            runCatching {
+                if (isDebugJsonFile()) {
+                    val file = currentFile
+                    JsonScheduleParser.parseForGroup(
+                        json    = bytes.decodeToString(),
+                        group   = group,
+                        header  = file?.let { "${it.dayLabel} · ${it.dateLabel}" } ?: fileName,
+                        isToday = file?.isToday ?: false,
+                        weekday = weekdayOf(file),
+                    )
+                } else {
+                    DocParser.parseForGroup(bytes, group, fileName)
+                }
+            }
                 .onSuccess { result ->
                     _progress.value = 1f
                     _uiState.value  = when (result) {
@@ -127,6 +152,18 @@ class ScheduleViewModel : ViewModel() {
                 }
         }
     }
+
+    // JSON-путь пока только в debug-сборке — схема ещё не обкатана на реальных
+    // данных препода (сам JSON-конструктор ещё не написан).
+    private fun isDebugJsonFile(): Boolean =
+        IsDebugBuild && currentFile?.name?.endsWith(".json", ignoreCase = true) == true
+
+    private fun weekdayOf(file: ScheduleFile?): Int =
+        if (file?.dayLabel?.startsWith("Понедельник", ignoreCase = true) == true) {
+            Calendar.MONDAY
+        } else {
+            Calendar.TUESDAY // важно только MONDAY vs не-MONDAY, см. Bells.forWeekday
+        }
 
     /** Пользователь выбрал группу из пикера — сохраняем и сразу парсим из кеша */
     fun selectGroup(group: String, fileName: String) {

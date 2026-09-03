@@ -36,6 +36,7 @@ import com.schedule.app.ui.navigation.FloatingPillNav
 import com.schedule.app.ui.navigation.NavigationHolder
 import com.schedule.app.ui.navigation.Screen
 import com.schedule.app.ui.screens.BellsScreen
+import com.schedule.app.ui.screens.DebugSettingsScreen
 import com.schedule.app.ui.screens.FilesScreen
 import com.schedule.app.ui.screens.ScheduleHostScreen
 import com.schedule.app.ui.screens.SettingsScreen
@@ -289,6 +290,13 @@ fun AppScaffold() {
 
             composable(Screen.Settings.route) {
                 SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToDebug = { navController.navigate(Screen.DebugSettings.route) },
+                )
+            }
+
+            composable(Screen.DebugSettings.route) {
+                DebugSettingsScreen(
                     onBack = { navController.popBackStack() },
                 )
             }

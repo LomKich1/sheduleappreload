@@ -40,30 +40,25 @@ object DocParser {
 
     // ── Расписание звонков ────────────────────────────────────────────────────
     // [timeStart, timeEnd, breakStart?, breakEnd?]
+    // Идентичны BELLS_MON / BELLS_TUE в BellsScreen.kt.
+    // Суббота больше не отдельное расписание — с 2026-2027 уч. года
+    // объединена с Вт-Пт (см. bellsForFile ниже).
 
     private val BELLS_MON = mapOf(
         "I"   to listOf("09:00", "09:45", "09:50", "10:35"),
         "II"  to listOf("10:45", "11:30", "11:35", "12:20"),
-        "III" to listOf("12:50", "13:35", "13:40", "14:25"),
-        "IV"  to listOf("14:35", "15:35", null,    null   ),
-        "V"   to listOf("15:45", "16:45", null,    null   ),
-        "VI"  to listOf("16:55", "17:55", null,    null   ),
+        "III" to listOf("12:40", "13:25", "13:30", "14:15"),
+        "IV"  to listOf("14:25", "15:10", "15:15", "16:00"),
+        "V"   to listOf("16:10", "16:55", "17:00", "17:45"),
+        "VI"  to listOf("17:55", "18:40", "18:45", "19:30"),
     )
     private val BELLS_TUE = mapOf(
         "I"   to listOf("08:30", "09:15", "09:20", "10:05"),
         "II"  to listOf("10:15", "11:00", "11:05", "11:50"),
-        "III" to listOf("12:20", "13:05", "13:10", "13:55"),
-        "IV"  to listOf("14:05", "15:05", null,    null   ),
-        "V"   to listOf("15:15", "16:15", null,    null   ),
-        "VI"  to listOf("16:25", "17:25", null,    null   ),
-    )
-    private val BELLS_SAT = mapOf(
-        "I"   to listOf("08:30", "09:30", null, null),
-        "II"  to listOf("09:40", "10:40", null, null),
-        "III" to listOf("10:50", "11:50", null, null),
-        "IV"  to listOf("12:00", "13:00", null, null),
-        "V"   to listOf("13:10", "14:10", null, null),
-        "VI"  to listOf("14:20", "15:20", null, null),
+        "III" to listOf("12:10", "12:55", "13:00", "13:45"),
+        "IV"  to listOf("13:55", "14:40", "14:45", "15:30"),
+        "V"   to listOf("15:40", "16:25", "16:30", "17:15"),
+        "VI"  to listOf("17:25", "18:10", "18:15", "19:00"),
     )
 
     private val ROMAN = setOf("I", "II", "III", "IV", "V", "VI")
@@ -495,8 +490,20 @@ object DocParser {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
+    // ВАЖНО: обычный \s в Kotlin/Java-регексах ловит только ASCII-пробелы
+    // (' ', '\t', '\n' и т.п.) — НЕ ловит юникодные пробелы вроде
+    // неразрывного (U+00A0). Word регулярно вставляет U+00A0 между
+    // фамилией и инициалами ("Титова\u00A0М.В."), чтобы имя не рвалось
+    // по строке при переносе — и это разный препод-составитель делает не
+    // всегда одинаково день ото дня (нет строгого формата файла).
+    // Без явного перечисления этих символов normalize("Титова М.В.") и
+    // normalize("Титова\u00A0М.В.") дают РАЗНЫЕ строки → parseForTeacher
+    // молча теряет пары этого преподавателя в конкретный день, без единой
+    // ошибки в логах — только пустой список на экране.
+    private val INVISIBLE_SPACES = Regex("[\\s\u00A0\u2007\u202F\u200B\u2060-]")
+
     private fun normalize(s: String) =
-        s.trim().uppercase().replace(Regex("""[\s\-.]"""), "")
+        s.trim().uppercase().replace(INVISIBLE_SPACES, "").replace(".", "")
 
     private fun looksLikeGroup(cell: String): Boolean {
         val line = cell.lines().firstOrNull { it.isNotBlank() }?.trim() ?: return false
@@ -507,8 +514,7 @@ object DocParser {
         val upper = fileName.uppercase()
         return when {
             "ПОНЕДЕЛЬНИК" in upper -> BELLS_MON
-            "СУББОТ"      in upper -> BELLS_SAT
-            else                   -> BELLS_TUE
+            else                   -> BELLS_TUE   // Вт-Пт и Суббота — одно расписание
         }
     }
 
@@ -660,7 +666,13 @@ object DocParser {
         return if (entries.isNotEmpty()) BlockEntries(headerLine, entries) else null
     }
 
-    /** Находит первый блок "Расписание занятий" в файле и разбирает его по всем группам. */
+    /** Находит ВСЕ блоки "Расписание занятий" в файле и собирает данные по всем
+     *  группам сразу — не только из первого. Раньше здесь стоял `?.let { return it }`,
+     *  который возвращался при первом же успешно распарсенном блоке: для дня с
+     *  десятками групп это самая первая табличная секция файла (несколько групп),
+     *  а весь остаток дня (остальные блоки/страницы) молча пропадал — отсюда
+     *  "Найдено 3 преподавателей" вместо реальных 20-30 за весь день.
+     */
     private fun parseAllBlocks(data: ByteArray): BlockEntries? {
         val cells = getCells(data)
         if (cells.isEmpty()) return null
@@ -669,11 +681,18 @@ object DocParser {
         if (hdrIndices.isEmpty()) return null
 
         val boundaries = hdrIndices + listOf(cells.size)
+        var headerLine = ""
+        val allEntries = mutableListOf<Triple<String, String, String>>()
+
         for (bi in 0 until boundaries.size - 1) {
-            parseBlockAllGroups(cells, boundaries[bi], boundaries[bi + 1])?.let { return it }
+            val block = parseBlockAllGroups(cells, boundaries[bi], boundaries[bi + 1]) ?: continue
+            if (headerLine.isBlank()) headerLine = block.headerLine
+            allEntries += block.entries
         }
-        return null
+
+        return if (allEntries.isNotEmpty()) BlockEntries(headerLine, allEntries) else null
     }
+
 
     /** Разбирает текст ячейки на (предмет, преподаватель, кабинет) — общий кусок для группы/учителя. */
     private fun splitCell(cellText: String): Triple<String, String?, String?> {
