@@ -40,30 +40,25 @@ object DocParser {
 
     // ── Расписание звонков ────────────────────────────────────────────────────
     // [timeStart, timeEnd, breakStart?, breakEnd?]
+    // Идентичны BELLS_MON / BELLS_TUE в BellsScreen.kt.
+    // Суббота больше не отдельное расписание — с 2026-2027 уч. года
+    // объединена с Вт-Пт (см. bellsForFile ниже).
 
     private val BELLS_MON = mapOf(
         "I"   to listOf("09:00", "09:45", "09:50", "10:35"),
         "II"  to listOf("10:45", "11:30", "11:35", "12:20"),
-        "III" to listOf("12:50", "13:35", "13:40", "14:25"),
-        "IV"  to listOf("14:35", "15:35", null,    null   ),
-        "V"   to listOf("15:45", "16:45", null,    null   ),
-        "VI"  to listOf("16:55", "17:55", null,    null   ),
+        "III" to listOf("12:40", "13:25", "13:30", "14:15"),
+        "IV"  to listOf("14:25", "15:10", "15:15", "16:00"),
+        "V"   to listOf("16:10", "16:55", "17:00", "17:45"),
+        "VI"  to listOf("17:55", "18:40", "18:45", "19:30"),
     )
     private val BELLS_TUE = mapOf(
         "I"   to listOf("08:30", "09:15", "09:20", "10:05"),
         "II"  to listOf("10:15", "11:00", "11:05", "11:50"),
-        "III" to listOf("12:20", "13:05", "13:10", "13:55"),
-        "IV"  to listOf("14:05", "15:05", null,    null   ),
-        "V"   to listOf("15:15", "16:15", null,    null   ),
-        "VI"  to listOf("16:25", "17:25", null,    null   ),
-    )
-    private val BELLS_SAT = mapOf(
-        "I"   to listOf("08:30", "09:30", null, null),
-        "II"  to listOf("09:40", "10:40", null, null),
-        "III" to listOf("10:50", "11:50", null, null),
-        "IV"  to listOf("12:00", "13:00", null, null),
-        "V"   to listOf("13:10", "14:10", null, null),
-        "VI"  to listOf("14:20", "15:20", null, null),
+        "III" to listOf("12:10", "12:55", "13:00", "13:45"),
+        "IV"  to listOf("13:55", "14:40", "14:45", "15:30"),
+        "V"   to listOf("15:40", "16:25", "16:30", "17:15"),
+        "VI"  to listOf("17:25", "18:10", "18:15", "19:00"),
     )
 
     private val ROMAN = setOf("I", "II", "III", "IV", "V", "VI")
@@ -507,8 +502,7 @@ object DocParser {
         val upper = fileName.uppercase()
         return when {
             "ПОНЕДЕЛЬНИК" in upper -> BELLS_MON
-            "СУББОТ"      in upper -> BELLS_SAT
-            else                   -> BELLS_TUE
+            else                   -> BELLS_TUE   // Вт-Пт и Суббота — одно расписание
         }
     }
 
