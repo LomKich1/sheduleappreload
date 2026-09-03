@@ -490,8 +490,20 @@ object DocParser {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
+    // ВАЖНО: обычный \s в Kotlin/Java-регексах ловит только ASCII-пробелы
+    // (' ', '\t', '\n' и т.п.) — НЕ ловит юникодные пробелы вроде
+    // неразрывного (U+00A0). Word регулярно вставляет U+00A0 между
+    // фамилией и инициалами ("Титова\u00A0М.В."), чтобы имя не рвалось
+    // по строке при переносе — и это разный препод-составитель делает не
+    // всегда одинаково день ото дня (нет строгого формата файла).
+    // Без явного перечисления этих символов normalize("Титова М.В.") и
+    // normalize("Титова\u00A0М.В.") дают РАЗНЫЕ строки → parseForTeacher
+    // молча теряет пары этого преподавателя в конкретный день, без единой
+    // ошибки в логах — только пустой список на экране.
+    private val INVISIBLE_SPACES = Regex("[\\s\u00A0\u2007\u202F\u200B\u2060-]")
+
     private fun normalize(s: String) =
-        s.trim().uppercase().replace(Regex("""[\s\-.]"""), "")
+        s.trim().uppercase().replace(INVISIBLE_SPACES, "").replace(".", "")
 
     private fun looksLikeGroup(cell: String): Boolean {
         val line = cell.lines().firstOrNull { it.isNotBlank() }?.trim() ?: return false
@@ -654,7 +666,13 @@ object DocParser {
         return if (entries.isNotEmpty()) BlockEntries(headerLine, entries) else null
     }
 
-    /** Находит первый блок "Расписание занятий" в файле и разбирает его по всем группам. */
+    /** Находит ВСЕ блоки "Расписание занятий" в файле и собирает данные по всем
+     *  группам сразу — не только из первого. Раньше здесь стоял `?.let { return it }`,
+     *  который возвращался при первом же успешно распарсенном блоке: для дня с
+     *  десятками групп это самая первая табличная секция файла (несколько групп),
+     *  а весь остаток дня (остальные блоки/страницы) молча пропадал — отсюда
+     *  "Найдено 3 преподавателей" вместо реальных 20-30 за весь день.
+     */
     private fun parseAllBlocks(data: ByteArray): BlockEntries? {
         val cells = getCells(data)
         if (cells.isEmpty()) return null
@@ -663,11 +681,18 @@ object DocParser {
         if (hdrIndices.isEmpty()) return null
 
         val boundaries = hdrIndices + listOf(cells.size)
+        var headerLine = ""
+        val allEntries = mutableListOf<Triple<String, String, String>>()
+
         for (bi in 0 until boundaries.size - 1) {
-            parseBlockAllGroups(cells, boundaries[bi], boundaries[bi + 1])?.let { return it }
+            val block = parseBlockAllGroups(cells, boundaries[bi], boundaries[bi + 1]) ?: continue
+            if (headerLine.isBlank()) headerLine = block.headerLine
+            allEntries += block.entries
         }
-        return null
+
+        return if (allEntries.isNotEmpty()) BlockEntries(headerLine, allEntries) else null
     }
+
 
     /** Разбирает текст ячейки на (предмет, преподаватель, кабинет) — общий кусок для группы/учителя. */
     private fun splitCell(cellText: String): Triple<String, String?, String?> {
