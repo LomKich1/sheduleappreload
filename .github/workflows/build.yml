@@ -26,23 +26,23 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ── 3. Настройка Android SDK + автоакцепт лицензий ───────────────────
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          accept-android-sdk-licenses: true
-
-      # ── 4. Gradle 8.9 (без gradlew в репозитории) ─────────────────────────
+      # ── 3. Gradle 8.9 (без gradlew в репозитории) ─────────────────────────
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.9'
+
+      # ── 4. Принимаем лицензии Android SDK ────────────────────────────────
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       # ── 5. Debug APK (всегда, без секретов) ──────────────────────────────
       - name: Build Debug APK
         run: gradle assembleDebug --no-build-cache --rerun-tasks
 
       # ── 6. Signed Release APK (если keystore настроен) ───────────────────
+      # Три секрета в Settings → Secrets → Actions:
+      #   KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
       - name: Build signed Release APK
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -65,21 +65,8 @@ jobs:
         id: ver
         run: |
           V=$(grep '^APP_VERSION=' gradle.properties | cut -d= -f2 | tr -d ' \r\n')
-          V="${V:-1.0.0}"
-          echo "v=$V" >> "$GITHUB_OUTPUT"
-          echo "Версия: $V"
-
-          # Версия для desktop-пакетов (Exe/Msi/Dmg) ДОЛЖНА иметь ровно 3
-          # числовые части (MAJOR.MINOR.BUILD) — это требование самого
-          # Compose-плагина, а не наша прихоть. APP_VERSION уже 3 части
-          # ("1.0.1"), поэтому просто прицепить run_number сверху (получая
-          # "1.0.1.143") нельзя — 4 части ломают сборку и Windows, и Linux/
-          # macOS джобы разом, ещё на этапе конфигурации Gradle, до всякой
-          # реальной компиляции. Берём только MAJOR.MINOR из APP_VERSION и
-          # подставляем run_number как BUILD — растущий номер для MSI
-          # upgrade-детекции сохраняется, но формат остаётся валидным.
-          MAJOR_MINOR=$(echo "$V" | cut -d. -f1-2)
-          echo "desktop-v=${MAJOR_MINOR}" >> "$GITHUB_OUTPUT"
+          echo "v=${V:-1.0.0}" >> "$GITHUB_OUTPUT"
+          echo "Версия: ${V:-1.0.0}"
 
       # ── 8. Копируем APK в единую папку dist/ ──────────────────────────────
       - name: Collect APKs
@@ -104,11 +91,10 @@ jobs:
 
     outputs:
       app-version: ${{ steps.ver.outputs.v }}
-      desktop-version: ${{ steps.ver.outputs.desktop-v }}
 
   build-desktop:
     name: 🖥️ Build Desktop (${{ matrix.os }})
-    needs: build-android
+    needs: build-android   # чтобы переиспользовать общую версию из шага выше
     strategy:
       fail-fast: false
       matrix:
@@ -135,8 +121,16 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      # ВАЖНО: packageVersion для десктопа = APP_VERSION + номер CI-рана
+      # (например 1.0.1 -> 1.0.1.42). Это отдельно от Android versionName.
+      # Причина: Windows Installer не поставит MSI поверх уже установленной
+      # копии с ТЕМ ЖЕ ProductVersion — нужно чтобы версия росла на каждой
+      # пересборке, иначе "пакет недействителен" при повторной установке
+      # той же версии 1.0.1. upgradeUuid зафиксирован отдельно в
+      # desktopApp/build.gradle, это решает узнавание "тот же продукт",
+      # а растущая версия — что это именно апдейт, а не даунгрейд.
       - name: Build desktop package
-        run: gradle :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.build-android.outputs.desktop-version }}.${{ github.run_number }}"
+        run: gradle :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.build-android.outputs.app-version }}.${{ github.run_number }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -196,3 +190,4 @@ jobs:
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
