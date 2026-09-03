@@ -132,8 +132,15 @@ object JsonScheduleParser {
             }
         }
 
-        return if (lessons.isNotEmpty()) {
-            TeacherParseResult.Found(TeacherDay(header = header, lessons = lessons, isToday = isToday))
+        // Пары собирались по порядку групп в JSON (см. цикл выше), а не по
+        // времени — отсюда "скачущие" номера пар в UI. Группы, которые
+        // сходятся у препода на одном и том же номере пары (ведёт несколько
+        // групп параллельно), это не дубликат, а два реальных занятия —
+        // сортировка просто ставит их рядом в правильном месте по времени.
+        val sortedLessons = lessons.sortedBy { it.startMin }
+
+        return if (sortedLessons.isNotEmpty()) {
+            TeacherParseResult.Found(TeacherDay(header = header, lessons = sortedLessons, isToday = isToday))
         } else {
             TeacherParseResult.NotFound
         }
