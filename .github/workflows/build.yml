@@ -49,7 +49,13 @@ jobs:
       # APP_VERSION в gradle.properties забыли поднять перед мержем в main.
       # Падаем здесь, до сборки, вместо того чтобы молча затереть релиз
       # прошлой версии тем же содержимым.
+      #
+      # Актуально ТОЛЬКО для main/master — тегов там пока быть не должно.
+      # На dev (и любой другой ветке) версия ещё "черновая", релиз не
+      # создаётся вообще (см. publish-джоб ниже), поэтому и проверять
+      # тут нечего — не мешаем тестовым прогонам собираться.
       - name: Check release tag is not taken
+        if: github.ref_name == 'main' || github.ref_name == 'master'
         run: |
           TAG="v${{ steps.ver.outputs.v }}"
           if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
@@ -168,6 +174,11 @@ jobs:
     name: 📦 Publish Release
     needs: [build-android, build-desktop]
     runs-on: ubuntu-latest
+    # Релиз создаётся ТОЛЬКО из main/master. На dev (и любой другой ветке,
+    # например при тестовом workflow_dispatch --ref dev) сборка доходит
+    # только до Artifacts в build-android/build-desktop — этот джоб целиком
+    # пропускается, GitHub Release не создаётся и не трогается.
+    if: github.ref_name == 'main' || github.ref_name == 'master'
 
     steps:
       # Полная история нужна, чтобы найти предыдущий релизный тег и
