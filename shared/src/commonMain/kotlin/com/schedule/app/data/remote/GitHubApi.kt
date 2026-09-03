@@ -1,5 +1,6 @@
 package com.schedule.app.data.remote
 
+import com.schedule.app.util.IsDebugBuild
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -51,7 +52,12 @@ object GitHubApi {
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)
                 val name = obj.optString("name", "")
-                if (!name.endsWith(".doc", ignoreCase = true)) continue
+                // .json — параллельный debug-only путь (JsonScheduleParser),
+                // см. IsDebugBuild. В релизе игнорируется, даже если случайно
+                // окажется в этой папке репозитория.
+                val isAccepted = name.endsWith(".doc", ignoreCase = true) ||
+                    (IsDebugBuild && name.endsWith(".json", ignoreCase = true))
+                if (!isAccepted) continue
                 add(RemoteFile(
                     name        = name,
                     downloadUrl = obj.optString("download_url", ""),

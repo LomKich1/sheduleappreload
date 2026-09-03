@@ -6,8 +6,10 @@ import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.model.TeacherDay
 import com.schedule.app.data.model.TeacherParseResult
 import com.schedule.app.data.parser.DocParser
+import com.schedule.app.data.parser.JsonScheduleParser
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.data.repository.ScheduleRepository
+import com.schedule.app.util.IsDebugBuild
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,6 +56,10 @@ class TeacherScheduleViewModel : ViewModel() {
     // файл заново: пикер ↔ расписание работают из кеша.
     private var cachedBytes: ByteArray? = null
 
+    // См. ScheduleViewModel.currentFile — та же причина (dayLabel/isToday для
+    // JSON-пути, которого DocParser не знает и знать не должен).
+    private var currentFile: ScheduleFile? = null
+
     init {
         viewModelScope.launch {
             while (true) {
@@ -85,6 +91,7 @@ class TeacherScheduleViewModel : ViewModel() {
             }
 
             cachedBytes     = bytes
+            currentFile     = file
             _progress.value = 0.9f
 
             showTeacherPicker(bytes)
@@ -94,7 +101,10 @@ class TeacherScheduleViewModel : ViewModel() {
     /** Показывает список преподавателей из файла (детект по байтам, уже скачанным). */
     private suspend fun showTeacherPicker(bytes: ByteArray) {
         withContext(Dispatchers.Default) {
-            runCatching { DocParser.detectTeachers(bytes) }
+            runCatching {
+                if (isDebugJsonFile()) JsonScheduleParser.detectTeachers(bytes.decodeToString())
+                else DocParser.detectTeachers(bytes)
+            }
                 .onSuccess { teachers ->
                     _progress.value = 1f
                     _uiState.value  = TeacherUiState.TeacherPicker(teachers)
@@ -110,7 +120,20 @@ class TeacherScheduleViewModel : ViewModel() {
     /** Парсим байты под конкретного преподавателя (после выбора в пикере). */
     private suspend fun parseForTeacher(bytes: ByteArray, teacher: String, fileName: String) {
         withContext(Dispatchers.Default) {
-            runCatching { DocParser.parseForTeacher(bytes, teacher, fileName) }
+            runCatching {
+                if (isDebugJsonFile()) {
+                    val file = currentFile
+                    JsonScheduleParser.parseForTeacher(
+                        json        = bytes.decodeToString(),
+                        teacherName = teacher,
+                        header      = file?.let { "${it.dayLabel} · ${it.dateLabel}" } ?: fileName,
+                        isToday     = file?.isToday ?: false,
+                        weekday     = weekdayOf(file),
+                    )
+                } else {
+                    DocParser.parseForTeacher(bytes, teacher, fileName)
+                }
+            }
                 .onSuccess { result ->
                     _progress.value = 1f
                     _uiState.value  = when (result) {
@@ -127,6 +150,17 @@ class TeacherScheduleViewModel : ViewModel() {
                 }
         }
     }
+
+    // См. ScheduleViewModel.isDebugJsonFile/weekdayOf — те же соображения.
+    private fun isDebugJsonFile(): Boolean =
+        IsDebugBuild && currentFile?.name?.endsWith(".json", ignoreCase = true) == true
+
+    private fun weekdayOf(file: ScheduleFile?): Int =
+        if (file?.dayLabel?.startsWith("Понедельник", ignoreCase = true) == true) {
+            Calendar.MONDAY
+        } else {
+            Calendar.TUESDAY
+        }
 
     /** Пользователь выбрал преподавателя из пикера — сразу парсим из кеша. */
     fun selectTeacher(teacher: String, fileName: String) {

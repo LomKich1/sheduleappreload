@@ -21,8 +21,6 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,9 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.schedule.app.data.prefs.AnimPrefs
 import com.schedule.app.data.prefs.AppPrefs
-import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.components.ScheduleMode
@@ -58,7 +54,7 @@ import kotlinx.coroutines.launch
 // сохранения — как и договаривались в плане.
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onNavigateToDebug: () -> Unit = {}) {
     val c = LocalAppColors.current
     val scope = rememberCoroutineScope()
 
@@ -180,16 +176,27 @@ fun SettingsScreen(onBack: () -> Unit) {
 
                 Spacer(Modifier.height(22.dp))
 
-                // ── Debug-only: тонкая настройка анимации переключения вкладок ──
+                // ── Debug-only: переход на отдельный debug-экран ────────────────
                 // Видно только в debug-сборке (IsDebugBuild). Обычный пользователь
-                // релиза этой секции вообще не видит и всегда сидит на DEFAULT —
-                // старом простом поведении, никаких сюрпризов.
+                // релиза этот пункт вообще не видит. Раньше все debug-настройки
+                // (анимация вкладок и т.д.) жили прямо тут инлайном — теперь это
+                // отдельный экран (DebugSettingsScreen), чтобы Settings не раздувался
+                // по мере роста числа debug-инструментов (например тестового JSON-пути).
                 if (IsDebugBuild) {
                     CascadeEntranceItem(index = 4, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
                         Column {
-                            SettingsSectionLabel("🐞 Debug: анимация вкладок")
+                            SettingsSectionLabel("🐞 Debug")
                             SettingsCard {
-                                AnimDebugSection()
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(onClick = onNavigateToDebug),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("Debug-настройки", color = c.text, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
+                                    Text("›", color = c.textSub, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -277,7 +284,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
 // ─── Мелкие строительные блоки ────────────────────────────────────────────────
 
 @Composable
-private fun SettingsSectionLabel(text: String) {
+fun SettingsSectionLabel(text: String) {
     val c = LocalAppColors.current
     Text(
         text = text.uppercase(),
@@ -290,7 +297,7 @@ private fun SettingsSectionLabel(text: String) {
 }
 
 @Composable
-private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     val c = LocalAppColors.current
     Column(
         modifier = Modifier
@@ -446,154 +453,6 @@ private fun GroupRememberRow(
                 modifier = Modifier.padding(top = 10.dp),
             )
         }
-    }
-}
-
-// ─── Debug: настройка анимации переключения вкладок ───────────────────────────
-
-@Composable
-private fun AnimDebugSection() {
-    val c = LocalAppColors.current
-
-    val mode        by AnimPrefs.mode.collectAsState()
-    val durationMs  by AnimPrefs.durationMs.collectAsState()
-    val damping     by AnimPrefs.springDamping.collectAsState()
-    val stiffness   by AnimPrefs.springStiffness.collectAsState()
-    val parallaxPow by AnimPrefs.parallaxPower.collectAsState()
-
-    Column {
-        Text(
-            text = "Меняется сразу — переключись на вкладки Расписание/Звонки чтобы проверить",
-            color = c.textSub,
-            fontSize = 11.sp,
-            lineHeight = 15.sp,
-            modifier = Modifier.padding(bottom = 12.dp),
-        )
-
-        // ── Выбор режима: три чипа ──────────────────────────────────────────
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            AnimModeChip("Default", mode == TabAnimMode.DEFAULT, Modifier.weight(1f)) { AnimPrefs.setMode(TabAnimMode.DEFAULT) }
-            AnimModeChip("Spring", mode == TabAnimMode.SPRING, Modifier.weight(1f)) { AnimPrefs.setMode(TabAnimMode.SPRING) }
-            AnimModeChip("Parallax", mode == TabAnimMode.PARALLAX, Modifier.weight(1f)) { AnimPrefs.setMode(TabAnimMode.PARALLAX) }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        // ── Крутилки: разные для разных режимов ─────────────────────────────
-        AnimatedVisibility(visible = mode == TabAnimMode.DEFAULT) {
-            LabeledSlider(
-                label     = "Длительность",
-                valueText = "${durationMs}мс",
-                value     = durationMs.toFloat(),
-                range     = 100f..600f,
-                onChange  = { AnimPrefs.setDurationMs(it.toInt()) },
-            )
-        }
-
-        AnimatedVisibility(visible = mode == TabAnimMode.SPRING || mode == TabAnimMode.PARALLAX) {
-            Column {
-                LabeledSlider(
-                    label     = "Damping (упругость)",
-                    valueText = "%.2f".format(damping),
-                    value     = damping,
-                    range     = 0.3f..1.5f,
-                    onChange  = { AnimPrefs.setSpringDamping(it) },
-                )
-                Spacer(Modifier.height(10.dp))
-                LabeledSlider(
-                    label     = "Stiffness (жёсткость)",
-                    valueText = "%.0f".format(stiffness),
-                    value     = stiffness,
-                    range     = 50f..1500f,
-                    onChange  = { AnimPrefs.setSpringStiffness(it) },
-                )
-                if (mode == TabAnimMode.PARALLAX) {
-                    Spacer(Modifier.height(10.dp))
-                    LabeledSlider(
-                        label     = "Parallax power",
-                        valueText = "%.2f".format(parallaxPow),
-                        value     = parallaxPow,
-                        range     = 1f..3f,
-                        onChange  = { AnimPrefs.setParallaxPower(it) },
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        Text(
-            text = "Сбросить к дефолтам",
-            color = c.accent,
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier
-                .clickable { AnimPrefs.resetToDefaults() }
-                .padding(vertical = 4.dp),
-        )
-    }
-}
-
-@Composable
-private fun AnimModeChip(
-    text: String,
-    isSelected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    val c = LocalAppColors.current
-    val bg by animateColorAsState(
-        targetValue   = if (isSelected) c.accent else c.surface2,
-        animationSpec = tween(150),
-        label         = "animChipBg",
-    )
-    val fg by animateColorAsState(
-        targetValue   = if (isSelected) c.onAccent else c.textSub,
-        animationSpec = tween(150),
-        label         = "animChipFg",
-    )
-    Box(
-        modifier = modifier
-            .clip(AppRadius.capsule)
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(vertical = 9.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text = text, color = fg, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun LabeledSlider(
-    label: String,
-    valueText: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    onChange: (Float) -> Unit,
-) {
-    val c = LocalAppColors.current
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(text = label, color = c.text, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
-            Text(text = valueText, color = c.textSub, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
-        }
-        Slider(
-            value = value,
-            onValueChange = onChange,
-            valueRange = range,
-            colors = SliderDefaults.colors(
-                thumbColor         = c.accent,
-                activeTrackColor   = c.accent,
-                inactiveTrackColor = c.surface3,
-            ),
-        )
     }
 }
 
