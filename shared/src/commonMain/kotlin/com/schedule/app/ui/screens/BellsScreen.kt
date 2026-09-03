@@ -54,8 +54,7 @@ import com.schedule.app.ui.theme.AppRadius
 
 enum class BellDayType(val label: String) {
     MON("Пн"),
-    TUE_FRI("Вт–Пт"),
-    SAT("Сб"),
+    TUE_SAT("Вт–Сб"),
 }
 
 // ─── Модель одной пары ────────────────────────────────────────────────────────
@@ -78,7 +77,7 @@ private data class BellPeriod(
 }
 
 // ─── Данные звонков ───────────────────────────────────────────────────────────
-// Идентичны BELLS_MON / BELLS_TUE / BELLS_SAT в DocParser.kt
+// Идентичны BELLS_MON / BELLS_TUE в DocParser.kt
 
 private val BELLS_MON = listOf(
     BellPeriod("I",   "09:00", "09:45", "09:50", "10:35"),
@@ -96,28 +95,15 @@ private val BELLS_TUE = listOf(
     BellPeriod("V",   "15:40", "16:25", "16:30", "17:15"),
     BellPeriod("VI",  "17:25", "18:10", "18:15", "19:00"),
 )
-// Расписание звонков на субботу совместили с расписанием вт-пт, надо править файлы...
-//private val BELLS_SAT = listOf(
-//    BellPeriod("I",   "08:30", "09:30"),
-//    BellPeriod("II",  "09:40", "10:40"),
-//    BellPeriod("III", "10:50", "11:50"),
-//    BellPeriod("IV",  "12:00", "13:00"),
-//    BellPeriod("V",   "13:10", "14:10"),
-//    BellPeriod("VI",  "14:20", "15:20"),
-//)
-
-// Зачем сюда лезть? норм код так-то)
 
 private fun bellsFor(type: BellDayType) = when (type) {
     BellDayType.MON     -> BELLS_MON
-    BellDayType.TUE_FRI -> BELLS_TUE
-    BellDayType.SAT     -> BELLS_TUE
+    BellDayType.TUE_SAT -> BELLS_TUE
 }
 
 private fun dayTypeFor(dayOfWeek: Int): BellDayType = when (dayOfWeek) {
-    Calendar.MONDAY   -> BellDayType.MON
-    Calendar.SATURDAY -> BellDayType.SAT
-    else              -> BellDayType.TUE_FRI
+    Calendar.MONDAY -> BellDayType.MON
+    else            -> BellDayType.TUE_SAT
 }
 
 private fun toMin(t: String): Int {
@@ -250,8 +236,8 @@ private fun BellDayTabs(
     onSelect: (BellDayType) -> Unit,
 ) {
     val c = LocalAppColors.current
-    val itemXsPx = remember { mutableStateListOf(0f, 0f, 0f) }
-    val itemWsPx = remember { mutableStateListOf(0f, 0f, 0f) }
+    val itemXsPx = remember { mutableStateListOf(0f, 0f) }
+    val itemWsPx = remember { mutableStateListOf(0f, 0f) }
     val selectedIndex = BellDayType.values().indexOf(selected)
 
     // ── Целевой цвет индикатора: обычный акцент или today-акцент ──────────

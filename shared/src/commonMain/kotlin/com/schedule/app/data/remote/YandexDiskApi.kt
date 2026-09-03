@@ -1,5 +1,6 @@
 package com.schedule.app.data.remote
 
+import com.schedule.app.util.IsDebugBuild
 import com.schedule.app.util.Logger
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -60,8 +61,13 @@ object YandexDiskApi {
                 val name = obj.optString("name", "")
                 val type = obj.optString("type", "")
                 Logger.d(TAG, "  item[$i]: name='$name' type='$type'")
-                if (!name.endsWith(".doc", ignoreCase = true)) {
-                    Logger.d(TAG, "  ↳ пропущен (не .doc)")
+                // .json — параллельный debug-only путь (JsonScheduleParser),
+                // см. IsDebugBuild. В релизе такие файлы по-прежнему игнорируются,
+                // даже если по ошибке окажутся в папке на Я.Диске.
+                val isAccepted = name.endsWith(".doc", ignoreCase = true) ||
+                    (IsDebugBuild && name.endsWith(".json", ignoreCase = true))
+                if (!isAccepted) {
+                    Logger.d(TAG, "  ↳ пропущен (не .doc${if (IsDebugBuild) "/.json" else ""})")
                     continue
                 }
                 val remote = RemoteFile(
@@ -72,7 +78,7 @@ object YandexDiskApi {
                 Logger.d(TAG, "  ↳ добавлен: path='${remote.path}' size=${remote.size}")
                 add(remote)
             }
-        }.also { Logger.d(TAG, "listFiles() итого .doc файлов: ${it.size}") }
+        }.also { Logger.d(TAG, "listFiles() итого файлов: ${it.size}") }
     }
 
     fun getDownloadUrl(publicKey: String, path: String): String {
