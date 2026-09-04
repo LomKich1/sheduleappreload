@@ -38,6 +38,16 @@ private fun u32(data: ByteArray, off: Int): Long =
 
 object DocParser {
 
+    // Реальные файлы расписания — десятки/сотни КБ. 5 МБ — щедрый запас на
+    // случай нестандартного файла, но при этом отсекает битые/подменённые/
+    // случайно залитые не те файлы ДО того, как весь Ole2Reader полезет их
+    // разбирать и раздует память телефона одним большим аллоком.
+    //
+    // Примечание: это повторное применение фикса — он предлагался в самом
+    // начале одной из прошлых сессий, но тогда не долетел до коммита
+    // (обсуждение переключилось на другую тему раньше, чем файлы скопировали).
+    const val MAX_DOC_SIZE_BYTES = 5L * 1024 * 1024
+
     // ── Расписание звонков ────────────────────────────────────────────────────
     // [timeStart, timeEnd, breakStart?, breakEnd?]
     // Идентичны BELLS_MON / BELLS_TUE в BellsScreen.kt.
@@ -159,6 +169,12 @@ object DocParser {
     // нужно собирать текст через PlcPcd (Piece table) из стрима *Table.
 
     fun extractText(data: ByteArray): String {
+        // Второй рубеж защиты (первый — проверка размера при скачивании в
+        // GitHubApi/YandexDiskApi). Нужен на случай, если сервер не прислал
+        // Content-Length или соврал — тут data уже в памяти, но хотя бы не
+        // даём Ole2Reader раздувать её ещё сильнее на разборе.
+        if (data.size > MAX_DOC_SIZE_BYTES) return ""
+
         val sig = byteArrayOf(0xD0.toByte(), 0xCF.toByte(), 0x11.toByte(), 0xE0.toByte(),
                               0xA1.toByte(), 0xB1.toByte(), 0x1A.toByte(), 0xE1.toByte())
         if (data.size < 512) return ""
