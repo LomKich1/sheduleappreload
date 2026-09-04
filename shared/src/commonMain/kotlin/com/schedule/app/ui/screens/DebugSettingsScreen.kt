@@ -64,6 +64,13 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
 
+            SettingsSectionLabel("Анимация перехода между экранами")
+            SettingsCard {
+                NavAnimDebugSection()
+            }
+
+            Spacer(Modifier.height(20.dp))
+
             SettingsSectionLabel("Тест JSON-файла расписания")
             SettingsCard {
                 JsonTestSection()
@@ -145,7 +152,7 @@ private fun AnimDebugSection() {
         // ── Крутилки: разные для разных режимов ─────────────────────────────
         AnimatedVisibility(visible = mode == TabAnimMode.DEFAULT) {
             LabeledSlider(
-                label     = "Длительность",
+                label     = "Длительность (таб: Файлы↔Звонки, Ученики↔Преподы)",
                 valueText = "${durationMs}мс",
                 value     = durationMs.toFloat(),
                 range     = 100f..600f,
@@ -192,6 +199,45 @@ private fun AnimDebugSection() {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .clickable { AnimPrefs.resetToDefaults() }
+                .padding(vertical = 4.dp),
+        )
+    }
+}
+
+// ─── Переход между экранами (NavHost) ──────────────────────────────────────────
+// Отдельный механизм от табов выше: Files/Bells → Schedule/Settings/Debug —
+// это push/pop в NavHost, а не offset внутри одного экрана. Раньше был
+// захардкожен константой NAV_ANIM_MS в AppScaffold.kt, теперь настраивается
+// так же, как таб-анимация.
+
+@Composable
+private fun NavAnimDebugSection() {
+    val c = LocalAppColors.current
+    val navDurationMs by AnimPrefs.navDurationMs.collectAsState()
+
+    Column {
+        Text(
+            text = "Меняется сразу — открой Настройки или тапни файл, чтобы проверить",
+            color = c.textSub,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        LabeledSlider(
+            label     = "Длительность перехода",
+            valueText = "${navDurationMs}мс",
+            value     = navDurationMs.toFloat(),
+            range     = 100f..700f,
+            onChange  = { AnimPrefs.setNavDurationMs(it.toInt()) },
+        )
+        Spacer(Modifier.height(14.dp))
+        Text(
+            text = "Сбросить к дефолту",
+            color = c.accent,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .clickable { AnimPrefs.setNavDurationMs(AnimPrefs.DEFAULT_NAV_DURATION_MS) }
                 .padding(vertical = 4.dp),
         )
     }

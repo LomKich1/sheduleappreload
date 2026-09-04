@@ -24,6 +24,7 @@ object AnimPrefs {
     private const val KEY_SPRING_DAMPING  = "tab_anim_spring_damping"
     private const val KEY_SPRING_STIFF    = "tab_anim_spring_stiffness"
     private const val KEY_PARALLAX_POWER  = "tab_anim_parallax_power"
+    private const val KEY_NAV_MS          = "nav_anim_duration_ms"
 
     // Дефолты подобраны в этом чате: DEFAULT_MS — как было в проекте изначально,
     // SPRING/PARALLAX — то, что мы вместе настроили и на чём остановились.
@@ -32,6 +33,11 @@ object AnimPrefs {
     const val DEFAULT_SPRING_DAMPING   = 0.78f
     const val DEFAULT_SPRING_STIFFNESS = 380f
     const val DEFAULT_PARALLAX_POWER   = 1.6f
+    // Отдельная длительность — для NavHost-переходов между "глубокими" экранами
+    // (Files/Bells → Schedule/Settings/DebugSettings), а не для табов внутри
+    // экрана (те выше, DEFAULT_DURATION_MS и др.). Два разных механизма
+    // анимации в проекте, каждый со своей настройкой — см. AppScaffold.kt.
+    const val DEFAULT_NAV_DURATION_MS  = 340
 
     private var initialized = false
 
@@ -49,6 +55,9 @@ object AnimPrefs {
 
     private val _parallaxPower = MutableStateFlow(DEFAULT_PARALLAX_POWER)
     val parallaxPower: StateFlow<Float> = _parallaxPower.asStateFlow()
+
+    private val _navDurationMs = MutableStateFlow(DEFAULT_NAV_DURATION_MS)
+    val navDurationMs: StateFlow<Int> = _navDurationMs.asStateFlow()
 
     /** Вызывается вместе с AppPrefs.init() — PrefsStorage.init() уже идемпотентен. */
     fun init(platformHandle: Any?) {
@@ -75,6 +84,10 @@ object AnimPrefs {
         _parallaxPower.value = runCatching {
             PrefsStorage.getString(KEY_PARALLAX_POWER, DEFAULT_PARALLAX_POWER.toString()).toFloat()
         }.getOrDefault(DEFAULT_PARALLAX_POWER)
+
+        _navDurationMs.value = runCatching {
+            PrefsStorage.getString(KEY_NAV_MS, DEFAULT_NAV_DURATION_MS.toString()).toInt()
+        }.getOrDefault(DEFAULT_NAV_DURATION_MS)
     }
 
     fun setMode(newMode: TabAnimMode) {
@@ -102,6 +115,11 @@ object AnimPrefs {
         PrefsStorage.putString(KEY_PARALLAX_POWER, v.toString())
     }
 
+    fun setNavDurationMs(ms: Int) {
+        _navDurationMs.value = ms
+        PrefsStorage.putString(KEY_NAV_MS, ms.toString())
+    }
+
     /** Сброс всех крутилок к значениям по умолчанию (кнопка в дебаг-панели). */
     fun resetToDefaults() {
         setMode(DEFAULT_MODE)
@@ -109,5 +127,6 @@ object AnimPrefs {
         setSpringDamping(DEFAULT_SPRING_DAMPING)
         setSpringStiffness(DEFAULT_SPRING_STIFFNESS)
         setParallaxPower(DEFAULT_PARALLAX_POWER)
+        setNavDurationMs(DEFAULT_NAV_DURATION_MS)
     }
 }

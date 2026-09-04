@@ -47,7 +47,6 @@ import androidx.compose.runtime.collectAsState
 import kotlin.math.pow
 
 // ── Длительности ─────────────────────────────────────────────────────────────
-private const val NAV_ANIM_MS = 340   // глубокие экраны: Schedule, Settings
 
 // route-заглушка — единственный startDestination NavHost. Сама ничего не
 // рисует: вкладки Files/Bells больше не живут внутри NavHost (см. ниже),
@@ -231,6 +230,7 @@ fun AppScaffold() {
         }
 
         // ── Глубокие экраны: Schedule, Settings — Telegram-стиль слайда ─────
+        val navDurationMs by AnimPrefs.navDurationMs.collectAsState()
         NavHost(
             navController = navController,
             startDestination = TABS_PLACEHOLDER,
@@ -239,37 +239,37 @@ fun AppScaffold() {
                 slideInHorizontally(
                     initialOffsetX = { it },
                     animationSpec = tween(
-                        NAV_ANIM_MS,
+                        navDurationMs,
                         easing = FastOutSlowInEasing,
                     ),
-                ) + fadeIn(animationSpec = tween(NAV_ANIM_MS - 60))
+                ) + fadeIn(animationSpec = tween(navDurationMs - 60))
             },
             exitTransition = {
                 slideOutHorizontally(
                     targetOffsetX = { -it / 4 },
                     animationSpec = tween(
-                        NAV_ANIM_MS,
+                        navDurationMs,
                         easing = FastOutSlowInEasing,
                     ),
-                ) + fadeOut(animationSpec = tween(NAV_ANIM_MS - 60))
+                ) + fadeOut(animationSpec = tween(navDurationMs - 60))
             },
             popEnterTransition = {
                 slideInHorizontally(
                     initialOffsetX = { -it / 4 },
                     animationSpec = tween(
-                        NAV_ANIM_MS,
+                        navDurationMs,
                         easing = FastOutSlowInEasing,
                     ),
-                ) + fadeIn(animationSpec = tween(NAV_ANIM_MS - 60))
+                ) + fadeIn(animationSpec = tween(navDurationMs - 60))
             },
             popExitTransition = {
                 slideOutHorizontally(
                     targetOffsetX = { it },
                     animationSpec = tween(
-                        NAV_ANIM_MS,
+                        navDurationMs,
                         easing = FastOutSlowInEasing,
                     ),
-                ) + fadeOut(animationSpec = tween(NAV_ANIM_MS - 60))
+                ) + fadeOut(animationSpec = tween(navDurationMs - 60))
             },
         ) {
             // Ничего не рисует — вкладки рисует BoxWithConstraints выше.

@@ -1,5 +1,6 @@
 package com.schedule.app.data.remote
 
+import com.schedule.app.data.parser.DocParser
 import com.schedule.app.util.IsDebugBuild
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -111,8 +112,20 @@ object GitHubApi {
                     .build()
                 val bytes = client.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
+                    // Рубеж №1: смотрим заявленный размер ДО чтения тела в память —
+                    // если сервер/зеркало прислали Content-Length больше разумного
+                    // для файла расписания, не тратим память и трафик на скачивание.
+                    val declaredSize = resp.body?.contentLength() ?: -1L
+                    if (declaredSize > DocParser.MAX_DOC_SIZE_BYTES) {
+                        throw Exception("Файл слишком большой ($declaredSize байт), пропускаем: $url")
+                    }
                     onProgress(0.8f)
                     resp.body!!.bytes()
+                }
+
+                // Рубеж №2: на случай chunked-ответа без Content-Length.
+                if (bytes.size > DocParser.MAX_DOC_SIZE_BYTES) {
+                    throw Exception("Файл слишком большой (${bytes.size} байт) после скачивания: $url")
                 }
 
                 if (expectedSha.isNotEmpty()) {

@@ -1,5 +1,6 @@
 package com.schedule.app.data.remote
 
+import com.schedule.app.data.parser.DocParser
 import com.schedule.app.util.IsDebugBuild
 import com.schedule.app.util.Logger
 import okhttp3.OkHttpClient
@@ -114,8 +115,23 @@ object YandexDiskApi {
 
         return client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw Exception("Скачивание: HTTP ${resp.code}")
+
+            // Рубеж №1: заявленный размер ДО чтения тела в память.
+            val declaredSize = resp.body?.contentLength() ?: -1L
+            if (declaredSize > DocParser.MAX_DOC_SIZE_BYTES) {
+                Logger.e(TAG, "downloadBytes() файл слишком большой: $declaredSize байт")
+                throw Exception("Файл слишком большой ($declaredSize байт)")
+            }
+
             onProgress(0.5f)
             val bytes = resp.body!!.bytes()
+
+            // Рубеж №2: на случай chunked-ответа без Content-Length.
+            if (bytes.size > DocParser.MAX_DOC_SIZE_BYTES) {
+                Logger.e(TAG, "downloadBytes() файл слишком большой после скачивания: ${bytes.size} байт")
+                throw Exception("Файл слишком большой (${bytes.size} байт)")
+            }
+
             onProgress(1f)
             Logger.d(TAG, "downloadBytes() скачано ${bytes.size} байт")
             bytes
