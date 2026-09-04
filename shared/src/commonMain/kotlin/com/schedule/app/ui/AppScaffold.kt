@@ -2,8 +2,6 @@ package com.schedule.app.ui
 
 import com.schedule.app.util.BackHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -21,7 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.util.lerp
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -32,6 +30,7 @@ import androidx.navigation.compose.rememberNavController
 import com.schedule.app.data.prefs.AnimPrefs
 import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.AppHeader
+import com.schedule.app.ui.components.rememberSwipableProgress
 import com.schedule.app.ui.navigation.FloatingPillNav
 import com.schedule.app.ui.navigation.NavigationHolder
 import com.schedule.app.ui.navigation.Screen
@@ -110,50 +109,41 @@ fun AppScaffold() {
             )
 
             // ── Вкладки: Files и Bells всегда в композиции ──────────────────
-            BoxWithConstraints(
+            // Раньше тут стоял BoxWithConstraints — он был нужен только ради
+            // maxWidth. Теперь ширина нужна ДО входа в scope (чтобы передать
+            // её в rememberSwipableProgress и повесить dragModifier на сам
+            // контейнер), поэтому вместо BoxWithConstraints — обычный Box с
+            // onSizeChanged, а ширина живёт в состоянии.
+            var widthPx by remember { mutableStateOf(0f) }
+
+            val animMode by AnimPrefs.mode.collectAsState()
+            val tweenDurationMs by AnimPrefs.durationMs.collectAsState()
+            val springDamping by AnimPrefs.springDamping.collectAsState()
+            val springStiffness by AnimPrefs.springStiffness.collectAsState()
+            val parallaxPower by AnimPrefs.parallaxPower.collectAsState()
+
+            val activeIndex = if (activeTab == Screen.Files.route) 0 else 1
+
+            val swipable = rememberSwipableProgress(
+                activeIndex = activeIndex,
+                onSwitch = { idx -> activeTab = if (idx == 0) Screen.Files.route else Screen.Bells.route },
+                widthPx = widthPx,
+                animMode = animMode,
+                tweenDurationMs = tweenDurationMs,
+                springDamping = springDamping,
+                springStiffness = springStiffness,
+            )
+
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(bottom = 76.dp)
-                    .clipToBounds(),
+                    .clipToBounds()
+                    .onSizeChanged { widthPx = it.width.toFloat() }
+                    .then(swipable.dragModifier),
             ) {
-                val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
-
-                val animMode by AnimPrefs.mode.collectAsState()
-                val tweenDurationMs by AnimPrefs.durationMs.collectAsState()
-                val springDamping by AnimPrefs.springDamping.collectAsState()
-                val springStiffness by AnimPrefs.springStiffness.collectAsState()
-                val parallaxPower by AnimPrefs.parallaxPower.collectAsState()
-
-                val targetProgress =
-                    if (activeTab == Screen.Files.route) 0f else 1f
-
-                val progress: Float = when (animMode) {
-                    TabAnimMode.DEFAULT -> {
-                        val p by animateFloatAsState(
-                            targetValue = targetProgress,
-                            animationSpec = tween(
-                                tweenDurationMs,
-                                easing = FastOutSlowInEasing,
-                            ),
-                            label = "tabProgressDefault",
-                        )
-                        p
-                    }
-
-                    TabAnimMode.SPRING,
-                    TabAnimMode.PARALLAX -> {
-                        val p by animateFloatAsState(
-                            targetValue = targetProgress,
-                            animationSpec = spring(
-                                dampingRatio = springDamping,
-                                stiffness = springStiffness,
-                            ),
-                            label = "tabProgressSpring",
-                        )
-                        p
-                    }
-                }
+                val progress = swipable.progress
 
                 // Files — фоновый слой.
                 val filesOffset = -widthPx * progress
