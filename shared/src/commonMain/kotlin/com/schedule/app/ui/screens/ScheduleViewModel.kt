@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Calendar
+import com.schedule.app.util.currentMinutesSinceMidnight
 
 // ─── UI-состояния ScheduleScreen ──────────────────────────────────────────────
 
@@ -160,9 +160,9 @@ class ScheduleViewModel : ViewModel() {
 
     private fun weekdayOf(file: ScheduleFile?): Int =
         if (file?.dayLabel?.startsWith("Понедельник", ignoreCase = true) == true) {
-            Calendar.MONDAY
+            1
         } else {
-            Calendar.TUESDAY // важно только MONDAY vs не-MONDAY, см. Bells.forWeekday
+            2 // важно только MONDAY vs не-MONDAY, см. Bells.forWeekday
         }
 
     /** Пользователь выбрал группу из пикера — сохраняем и сразу парсим из кеша */
@@ -185,7 +185,6 @@ class ScheduleViewModel : ViewModel() {
     }
 
     private fun nowMin(): Int {
-        val cal = Calendar.getInstance()
-        return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        return currentMinutesSinceMidnight()
     }
 }

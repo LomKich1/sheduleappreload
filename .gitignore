@@ -25,9 +25,9 @@ local.properties
 .DS_Store
 Thumbs.db
 
-# Gradle cache
+# Gradle cache (the wrapper JAR itself is source-controlled so Xcode can invoke Gradle).
 .gradle/
-gradle/wrapper/gradle-wrapper.jar
+.kotlin/
 
 # Capture files (Android Studio profiler)
 captures/

@@ -6,9 +6,7 @@ import com.schedule.app.data.model.ScheduleParseResult
 import com.schedule.app.data.model.TeacherDay
 import com.schedule.app.data.model.TeacherLessonEntry
 import com.schedule.app.data.model.TeacherParseResult
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.util.Calendar
+import com.schedule.app.util.currentLocalDateTime
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  DocParser  —  OLE2 / .doc  →  List<ScheduleDay>
@@ -35,6 +33,45 @@ private fun u32(data: ByteArray, off: Int): Long =
     ((data[off + 1].toLong() and 0xFF) shl 8) or
     ((data[off + 2].toLong() and 0xFF) shl 16) or
     ((data[off + 3].toLong() and 0xFF) shl 24)
+
+private fun i64(data: ByteArray, off: Int): Long {
+    var value = 0L
+    repeat(8) { index -> value = value or ((data[off + index].toLong() and 0xff) shl (index * 8)) }
+    return value
+}
+
+private fun decodeWindows1251(data: ByteArray, offset: Int, length: Int): String = buildString(length) {
+    for (index in offset until offset + length) {
+        val byte = data[index].toInt() and 0xff
+        append(
+            when (byte) {
+                in 0x00..0x7f -> byte.toChar()
+                in 0xc0..0xdf -> ('А'.code + byte - 0xc0).toChar()
+                in 0xe0..0xff -> ('а'.code + byte - 0xe0).toChar()
+                0xa8 -> 'Ё'
+                0xb8 -> 'ё'
+                0x85 -> '…'
+                0x91, 0x92 -> '’'
+                0x93, 0x94 -> '”'
+                0x96, 0x97 -> '—'
+                0xa0 -> ' '
+                0xab -> '«'
+                0xb9 -> '№'
+                0xbb -> '»'
+                else -> byte.toChar()
+            },
+        )
+    }
+}
+
+private fun decodeUtf16Le(data: ByteArray, offset: Int, length: Int): String = buildString(length / 2) {
+    var index = offset
+    val end = (offset + length).coerceAtMost(data.size)
+    while (index + 1 < end) {
+        append(((data[index].toInt() and 0xff) or ((data[index + 1].toInt() and 0xff) shl 8)).toChar())
+        index += 2
+    }
+}
 
 object DocParser {
 
@@ -118,11 +155,10 @@ object DocParser {
                 if (e.size < 128) break
                 val nl = (e[64].toInt() and 0xFF) or ((e[65].toInt() and 0xFF) shl 8)
                 if (nl < 2) continue
-                val name = runCatching { String(e.copyOfRange(0, nl - 2), Charsets.UTF_16LE) }
+                val name = runCatching { decodeUtf16Le(e, 0, nl - 2) }
                     .getOrNull() ?: continue
-                val buf = ByteBuffer.wrap(e).order(ByteOrder.LITTLE_ENDIAN)
-                val start = buf.getInt(116).toLong() and 0xFFFFFFFFL
-                val size  = buf.getLong(120)
+                val start = u32(e, 116)
+                val size = i64(e, 120)
                 entries += DirEntry(name, start, size)
             }
             dirEntries = entries
@@ -148,7 +184,7 @@ object DocParser {
             var pos = 0
             for (c in chunks) {
                 val take = minOf(c.size, out.size - pos)
-                System.arraycopy(c, 0, out, pos, take)
+                c.copyInto(out, destinationOffset = pos, endIndex = take)
                 pos += take
                 if (pos >= out.size) break
             }
@@ -209,7 +245,7 @@ object DocParser {
         val start = fcMin.coerceIn(0, wd.size)
         val end   = (start + ccpText * 2).coerceAtMost(wd.size)
         if (start >= end) return ""
-        return runCatching { String(wd.copyOfRange(start, end), Charsets.UTF_16LE) }
+        return runCatching { decodeUtf16Le(wd, start, end - start) }
             .getOrElse { "" }
     }
 
@@ -269,13 +305,13 @@ object DocParser {
                 val byteOff = fc / 2
                 val end = (byteOff + nChars).coerceAtMost(wd.size)
                 if (byteOff >= wd.size || byteOff >= end) "" else
-                    runCatching { String(wd, byteOff, end - byteOff, charset("windows-1251")) }
+                    runCatching { decodeWindows1251(wd, byteOff, end - byteOff) }
                         .getOrElse { "" }
             } else {
                 val byteOff = fc
                 val end = (byteOff + nChars * 2).coerceAtMost(wd.size)
                 if (byteOff >= wd.size || byteOff >= end) "" else
-                    runCatching { String(wd, byteOff, end - byteOff, Charsets.UTF_16LE) }
+                    runCatching { decodeUtf16Le(wd, byteOff, end - byteOff) }
                         .getOrElse { "" }
             }
             sb.append(piece)
@@ -401,8 +437,7 @@ object DocParser {
         if (rawPairs.isEmpty()) return null
 
         val bells   = bellsForFile(fileName)
-        val cal     = Calendar.getInstance()
-        val isToday = checkIsToday(headerLine, cal)
+        val isToday = checkIsToday(headerLine)
 
         val lessons = rawPairs.map { (roman, rawText) ->
             val b = bells[roman]
@@ -540,14 +575,13 @@ object DocParser {
         return parts[0].toIntOrNull()?.times(60)?.plus(parts[1].toIntOrNull() ?: 0) ?: 0
     }
 
-    private fun checkIsToday(header: String, cal: Calendar): Boolean {
+    private fun checkIsToday(header: String): Boolean {
         val m = Regex("""(\d{2})\.(\d{2})\.(\d{4})""").find(header) ?: return false
         val d = m.groupValues[1].toInt()
-        val mo = m.groupValues[2].toInt() - 1
+        val mo = m.groupValues[2].toInt()
         val y  = m.groupValues[3].toInt()
-        return d  == cal.get(Calendar.DAY_OF_MONTH) &&
-               mo == cal.get(Calendar.MONTH) &&
-               y  == cal.get(Calendar.YEAR)
+        val now = currentLocalDateTime()
+        return d == now.dayOfMonth && mo == now.monthNumber && y == now.year
     }
 
     /** Извлекает название предмета и строку преподавателя из строк ячейки */
@@ -732,7 +766,8 @@ object DocParser {
         for ((_, _, cellText) in block.entries) {
             val (_, teacher, _) = splitCell(cellText)
             if (teacher.isNullOrBlank()) continue
-            byNorm.putIfAbsent(normalize(teacher), teacher)
+            val normalized = normalize(teacher)
+            if (normalized !in byNorm) byNorm[normalized] = teacher
         }
         return byNorm.values.sorted()
     }
@@ -746,8 +781,7 @@ object DocParser {
         val normTeacher = normalize(teacherName)
 
         val bells   = bellsForFile(fileName)
-        val cal     = Calendar.getInstance()
-        val isToday = checkIsToday(block.headerLine, cal)
+        val isToday = checkIsToday(block.headerLine)
 
         val lessons = mutableListOf<TeacherLessonEntry>()
         for ((group, roman, cellText) in block.entries) {

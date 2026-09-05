@@ -1,7 +1,5 @@
 package com.schedule.app.data.model
 
-import java.util.Calendar
-
 // ─── Bells ────────────────────────────────────────────────────────────────────
 // Единый справочник времени звонков. Пока используется только JsonScheduleParser
 // (JSON не хранит время каждой пары — только номер, время берётся отсюда по дню
@@ -36,7 +34,7 @@ object Bells {
         BellPeriod("VI",  "17:25", "18:10", "18:15", "19:00"),
     )
 
-    /** [dayOfWeek] — java.util.Calendar.MONDAY..SATURDAY (Calendar-константы). */
+    /** [dayOfWeek] is ISO-8601: Monday = 1 through Sunday = 7. */
     fun forWeekday(dayOfWeek: Int): List<BellPeriod> =
-        if (dayOfWeek == Calendar.MONDAY) MON else TUE_SAT
+        if (dayOfWeek == 1) MON else TUE_SAT
 }

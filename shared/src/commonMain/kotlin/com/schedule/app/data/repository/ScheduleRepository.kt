@@ -25,7 +25,7 @@ object ScheduleRepository {
     suspend fun getFiles(
         publicKey: String,
         forceRefresh: Boolean = false,
-    ): List<ScheduleFile> = withContext(Dispatchers.IO) {
+    ): List<ScheduleFile> = withContext(Dispatchers.Default) {
 
         Logger.d(TAG, "getFiles() publicKey='$publicKey' forceRefresh=$forceRefresh")
 
@@ -106,7 +106,7 @@ object ScheduleRepository {
         publicKey: String,
         file: ScheduleFile,
         onProgress: (Float) -> Unit = {},
-    ): ByteArray = withContext(Dispatchers.IO) {
+    ): ByteArray = withContext(Dispatchers.Default) {
         val url = file.downloadUrl
         Logger.d(TAG, "downloadFile() '${file.name}' url='${url.take(60)}...'")
         if (DebugFileStore.isDebugUrl(url)) {

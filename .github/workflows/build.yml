@@ -1,9 +1,9 @@
 name: Build & Release
 
-# Запускается при каждом пуше в main/master и вручную через Actions → Run workflow
+# Запускается при каждом пуше в dev/main/master и вручную через Actions → Run workflow
 on:
   push:
-    branches: [main, master]
+    branches: [dev, main, master]
   workflow_dispatch:
 
 # Нужно для создания/обновления GitHub Release
@@ -143,6 +143,9 @@ jobs:
           - os: ubuntu-latest
             task: packageDeb
             artifact-glob: desktopApp/build/compose/binaries/main/deb/*.deb
+          - os: macos-latest
+            task: packageDmg
+            artifact-glob: desktopApp/build/compose/binaries/main/dmg/*.dmg
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -169,9 +172,48 @@ jobs:
           path: ${{ matrix.artifact-glob }}
           if-no-files-found: error
 
+  build-ios:
+    name: 🍎 Build iPhone app
+    needs: build-android
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.9'
+
+      # Собираем и симуляторный, и устройство-ориентированный Kotlin framework.
+      - name: Build shared iOS frameworks
+        run: gradle :shared:linkDebugFrameworkIosSimulatorArm64 :shared:linkReleaseFrameworkIosArm64
+
+      # Это неподписанная сборка для симулятора. Подписанный .ipa для реального
+      # iPhone появляется после настройки Apple Developer Team в Xcode.
+      - name: Build iPhone Simulator app
+        run: >-
+          xcodebuild -project iosApp/ScheduleApp.xcodeproj -scheme ScheduleApp
+          -configuration Debug -sdk iphonesimulator
+          -derivedDataPath "$RUNNER_TEMP/ScheduleApp-derived" build
+          CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload iPhone Simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-app
+          path: ${{ runner.temp }}/ScheduleApp-derived/Build/Products/Debug-iphonesimulator/ScheduleApp.app
+          if-no-files-found: error
+
   publish:
     name: 📦 Publish Release
-    needs: [build-android, build-desktop]
+    needs: [build-android, build-desktop, build-ios]
     runs-on: ubuntu-latest
     # Релиз создаётся ТОЛЬКО из main/master. На dev (и любой другой ветке,
     # например при тестовом workflow_dispatch --ref dev) сборка доходит
@@ -194,7 +236,7 @@ jobs:
       - name: Flatten dist folder
         run: |
           mkdir -p dist
-          find dist-all -type f \( -name "*.apk" -o -name "*.msi" -o -name "*.deb" \) -exec cp {} dist/ \;
+          find dist-all -type f \( -name "*.apk" -o -name "*.msi" -o -name "*.deb" -o -name "*.dmg" \) -exec cp {} dist/ \;
           echo "Итоговые файлы релиза:"
           ls -lh dist/
 
@@ -251,6 +293,7 @@ jobs:
             **Android:** скачай `.apk`, разреши "Неизвестные источники", установи.
             **Windows:** скачай `.msi`, запусти — ставится и обновляется поверх старой версии автоматически.
             **Linux (deb-based):** `sudo dpkg -i ScheduleApp-*.deb`
+            **macOS:** открой `.dmg`, перенеси ScheduleApp в Applications и запусти его.
 
             | Файл | Платформа |
             |------|-----------|
@@ -258,6 +301,7 @@ jobs:
             | `...apk` (без суффикса) | Android, релиз (подписан, только если настроен keystore) |
             | `...msi` | Windows |
             | `...deb` | Linux (Debian/Ubuntu) |
+            | `...dmg` | macOS |
 
             ---
 

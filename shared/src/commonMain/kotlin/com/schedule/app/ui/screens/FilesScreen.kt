@@ -37,7 +37,7 @@ import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
-import java.util.Calendar
+import com.schedule.app.util.currentLocalDateTime
 
 // ─── FilesScreen ──────────────────────────────────────────────────────────────
 // Шаг 2.2: реальная загрузка через FilesViewModel (Я.Диск → GitHub).
@@ -139,7 +139,7 @@ private fun TodayDateLine() {
 
 private val WEEKDAYS_RU = listOf(
     "воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота",
-) // Calendar.DAY_OF_WEEK: 1 = воскресенье ... 7 = суббота
+)
 
 private val MONTHS_RU_GENITIVE = listOf(
     "января", "февраля", "марта", "апреля", "мая", "июня",
@@ -147,11 +147,11 @@ private val MONTHS_RU_GENITIVE = listOf(
 )
 
 private fun formatTodayRu(): String {
-    val cal      = Calendar.getInstance()
-    val dayName  = WEEKDAYS_RU[cal.get(Calendar.DAY_OF_WEEK) - 1]
+    val now      = currentLocalDateTime()
+    val dayName  = WEEKDAYS_RU[(now.dayOfWeek.ordinal + 1) % 7]
         .replaceFirstChar { it.uppercaseChar() }
-    val day      = cal.get(Calendar.DAY_OF_MONTH)
-    val month    = MONTHS_RU_GENITIVE[cal.get(Calendar.MONTH)]
+    val day      = now.dayOfMonth
+    val month    = MONTHS_RU_GENITIVE[now.monthNumber - 1]
     return "Сегодня — $dayName, $day $month"
 }
 

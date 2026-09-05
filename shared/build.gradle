@@ -6,12 +6,22 @@ plugins {
 }
 
 kotlin {
-    // Общий код компилируется под Android и под JVM (десктоп).
+    // Один UI и бизнес-логика для Android, macOS (JVM) и iOS.
     androidTarget {
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11) }
     }
     jvm("desktop") {
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11) }
+    }
+    iosArm64()
+    iosSimulatorArm64()
+    iosX64()
+
+    targets.withType(org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget).configureEach {
+        binaries.framework {
+            baseName = "ScheduleShared"
+            isStatic = true
+        }
     }
 
     sourceSets {
@@ -25,26 +35,32 @@ kotlin {
             api(compose.ui)
 
             implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0"
+            implementation "org.jetbrains.kotlinx:kotlinx-datetime:0.6.2"
+            implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1"
+            implementation "io.ktor:ktor-client-core:3.1.3"
 
             api "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.9.4"
             api "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4"
             api "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.4"
-            api "org.jetbrains.androidx.navigation:navigation-compose:2.9.2"
+            // 2.9.2 publishes iOS klibs built with Kotlin 2.2.x; this project
+            // remains on Kotlin 2.1.20, so use the compatible 2.9.0 KMP release.
+            api "org.jetbrains.androidx.navigation:navigation-compose:2.9.0"
 
-            // Сеть и парсинг — обычные JVM-библиотеки, работают одинаково
-            // на Android и на десктопе (оба таргета — JVM).
-            implementation "com.squareup.okhttp3:okhttp:4.12.0"
-            implementation "org.json:json:20231013"
         }
         androidMain.dependencies {
             implementation "androidx.core:core-ktx:1.13.1"
             implementation "androidx.activity:activity-compose:1.9.0"
+            implementation "io.ktor:ktor-client-okhttp:3.1.3"
         }
         desktopMain {
             dependencies {
                 implementation(compose.desktop.common)
                 implementation "org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0"
+                implementation "io.ktor:ktor-client-okhttp:3.1.3"
             }
+        }
+        iosMain.dependencies {
+            implementation "io.ktor:ktor-client-darwin:3.1.3"
         }
     }
 }
