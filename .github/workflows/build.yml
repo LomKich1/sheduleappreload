@@ -11,8 +11,17 @@ permissions:
   contents: write
 
 jobs:
-  build-android:
-    name: 🤖 Build Android APK
+  # ── Общая для всех трёх сборок часть: версия + guard на тег ───────────────
+  # Раньше это жило внутри build-android, а build-desktop/build-ios висели
+  # на needs: build-android целиком — то есть Windows/Linux/macOS-десктоп и
+  # iOS ждали ПОЛНУЮ сборку Android APK (5+ минут), хотя реально им нужна
+  # была только строка версии оттуда (а build-ios она вообще не нужна — там
+  # было чистое ожидание без единого обращения к needs.build-android.outputs).
+  # Вынесено в отдельную лёгкую джобу — она не трогает Gradle/JDK/SDK вообще,
+  # только читает файл и делает один git ls-remote, занимает секунды. Теперь
+  # Android/Desktop/iOS стартуют ПАРАЛЛЕЛЬНО сразу после неё, а не гуськом.
+  prepare:
+    name: 🔖 Версия и guard на тег
     runs-on: ubuntu-latest
 
     steps:
@@ -47,8 +56,9 @@ jobs:
       # Каждый релиз теперь — отдельный тег v{APP_VERSION}, а не один
       # перезаписываемый "latest". Если тег уже есть на GitHub — значит
       # APP_VERSION в gradle.properties забыли поднять перед мержем в main.
-      # Падаем здесь, до сборки, вместо того чтобы молча затереть релиз
-      # прошлой версии тем же содержимым.
+      # Падаем здесь, до сборки (и до того, как Android/Desktop/iOS вообще
+      # успеют потратить хоть минуту CI), вместо того чтобы молча затереть
+      # релиз прошлой версии тем же содержимым.
       #
       # Актуально ТОЛЬКО для main/master — тегов там пока быть не должно.
       # На dev (и любой другой ветке) версия ещё "черновая", релиз не
@@ -64,6 +74,18 @@ jobs:
             exit 1
           fi
           echo "✅ Тег $TAG свободен, можно собирать релиз"
+
+    outputs:
+      app-version: ${{ steps.ver.outputs.v }}
+      desktop-version: ${{ steps.ver.outputs.desktop-v }}
+
+  build-android:
+    name: 🤖 Build Android APK
+    needs: prepare
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
 
       # ── 4. JDK 17 (требуется AGP 8.x) ────────────────────────────────────
       - name: Set up JDK 17
@@ -108,7 +130,7 @@ jobs:
       # ── 9. Копируем APK в единую папку dist/ ──────────────────────────────
       - name: Collect APKs
         run: |
-          V="${{ steps.ver.outputs.v }}"
+          V="${{ needs.prepare.outputs.app-version }}"
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk \
              "dist/ScheduleApp-v${V}-debug.apk"
@@ -126,13 +148,9 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
-    outputs:
-      app-version: ${{ steps.ver.outputs.v }}
-      desktop-version: ${{ steps.ver.outputs.desktop-v }}
-
   build-desktop:
     name: 🖥️ Build Desktop (${{ matrix.os }})
-    needs: build-android
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -163,7 +181,7 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build desktop package
-        run: gradle :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.build-android.outputs.desktop-version }}.${{ github.run_number }}"
+        run: gradle :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.prepare.outputs.desktop-version }}.${{ github.run_number }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -174,7 +192,7 @@ jobs:
 
   build-ios:
     name: 🍎 Build iPhone app
-    needs: build-android
+    needs: prepare
     runs-on: macos-latest
 
     steps:
@@ -213,7 +231,7 @@ jobs:
 
   publish:
     name: 📦 Publish Release
-    needs: [build-android, build-desktop, build-ios]
+    needs: [prepare, build-android, build-desktop, build-ios]
     runs-on: ubuntu-latest
     # Релиз создаётся ТОЛЬКО из main/master. На dev (и любой другой ветке,
     # например при тестовом workflow_dispatch --ref dev) сборка доходит
@@ -284,8 +302,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ needs.build-android.outputs.app-version }}"
-          name: "ScheduleApp v${{ needs.build-android.outputs.app-version }}"
+          tag_name: "v${{ needs.prepare.outputs.app-version }}"
+          name: "ScheduleApp v${{ needs.prepare.outputs.app-version }}"
           generate_release_notes: true
           body: |
             ## 📥 Установка
