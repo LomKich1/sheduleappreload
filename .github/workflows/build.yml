@@ -1,9 +1,28 @@
 name: Build & Release
 
-# Запускается при каждом пуше в dev/main/master и вручную через Actions → Run workflow
+# Заголовок запуска в списке Actions. У push-события GitHub и так сам
+# подставляет туда текст коммита — оставляем это поведение как есть.
+# У workflow_dispatch (ручной "gh workflow run" / кнопка Run workflow)
+# коммит-сообщения в контексте нет вообще, поэтому без этой строки GitHub
+# просто пишет название воркфлоу ("Build & Release") без единой зацепки,
+# на каком коммите и кем запущено — что и было исходным вопросом. Полного
+# текста коммита для ручного запуска взять неоткуда (run-name считается ДО
+# старта джоб, обращаться к API коммита тут нельзя) — ветка/номер запуска/
+# автор это максимум, что доступно на этом этапе.
+run-name: >-
+  ${{
+    github.event_name == 'workflow_dispatch'
+      && format('🔧 Ручной запуск #{0}: {1} — {2}', github.run_number, github.ref_name, github.actor)
+      || github.event.head_commit.message
+  }}
+
+# Запускается при пуше в main/master и вручную через Actions → Run workflow.
+# На dev автозапуска НЕТ специально — сборка там только по явному
+# gh workflow run build.yml --ref dev, чтобы не гонять CI на каждый
+# промежуточный коммит во время активной разработки.
 on:
   push:
-    branches: [dev, main, master]
+    branches: [main, master]
   workflow_dispatch:
 
 # Нужно для создания/обновления GitHub Release
