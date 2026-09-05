@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Calendar
+import com.schedule.app.util.currentMinutesSinceMidnight
 
 // ─── UI-состояния TeacherScheduleScreen ───────────────────────────────────────
 // Почти зеркало ScheduleUiState, но без OnPractice: "на практике" — это
@@ -157,9 +157,9 @@ class TeacherScheduleViewModel : ViewModel() {
 
     private fun weekdayOf(file: ScheduleFile?): Int =
         if (file?.dayLabel?.startsWith("Понедельник", ignoreCase = true) == true) {
-            Calendar.MONDAY
+            1
         } else {
-            Calendar.TUESDAY
+            2
         }
 
     /** Пользователь выбрал преподавателя из пикера — сразу парсим из кеша. */
@@ -182,7 +182,6 @@ class TeacherScheduleViewModel : ViewModel() {
     }
 
     private fun nowMin(): Int {
-        val cal = Calendar.getInstance()
-        return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        return currentMinutesSinceMidnight()
     }
 }

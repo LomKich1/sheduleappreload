@@ -31,7 +31,7 @@ import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
 import kotlinx.coroutines.delay
-import java.util.Calendar
+import com.schedule.app.util.currentLocalDateTime
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.animation.core.animateFloatAsState
@@ -102,8 +102,8 @@ private fun bellsFor(type: BellDayType) = when (type) {
 }
 
 private fun dayTypeFor(dayOfWeek: Int): BellDayType = when (dayOfWeek) {
-    Calendar.MONDAY -> BellDayType.MON
-    else            -> BellDayType.TUE_SAT
+    1    -> BellDayType.MON // ISO-8601 Monday
+    else -> BellDayType.TUE_SAT
 }
 
 private fun toMin(t: String): Int {
@@ -127,11 +127,11 @@ fun BellsScreen(entranceTrigger: Int = 0) {
         }
     }
 
-    val cal       = remember(tick) { Calendar.getInstance() }
-    val nowMin    = remember(tick) { cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE) }
-    val todayType = remember(tick) { dayTypeFor(cal.get(Calendar.DAY_OF_WEEK)) }
+    val now       = remember(tick) { currentLocalDateTime() }
+    val nowMin    = now.hour * 60 + now.minute
+    val todayType = dayTypeFor(now.dayOfWeek.ordinal + 1)
     val timeStr   = remember(tick) {
-        "%02d:%02d".format(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+        "${now.hour.toString().padStart(2, '0')}:${now.minute.toString().padStart(2, '0')}"
     }
 
     var selectedType by remember { mutableStateOf(todayType) }

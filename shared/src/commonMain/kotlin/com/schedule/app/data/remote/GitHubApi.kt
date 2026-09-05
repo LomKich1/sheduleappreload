@@ -2,145 +2,102 @@ package com.schedule.app.data.remote
 
 import com.schedule.app.data.parser.DocParser
 import com.schedule.app.util.IsDebugBuild
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONArray
-import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpHeaders
+import io.ktor.http.isSuccess
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 // ─── GitHub — fallback источник файлов расписания ────────────────────────────
-// Репо: LomKich1/scheduletxt, папка schedule/
-// Contents API: GET /repos/{owner}/{repo}/contents/{path}
-// Скачивание: raw.githubusercontent.com (+ зеркала при недоступности)
-
 object GitHubApi {
 
-    const val OWNER  = "LomKich1"
-    const val REPO   = "scheduletxt"
+    const val OWNER = "LomKich1"
+    const val REPO = "scheduletxt"
     const val BRANCH = "main"
     const val FOLDER = "schedule"
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build()
+    private const val USER_AGENT = "ScheduleApp/1.0"
+    private val client = createPlatformHttpClient(connectTimeoutMs = 12_000, requestTimeoutMs = 60_000)
+    private val json = Json { ignoreUnknownKeys = true }
 
     data class RemoteFile(
-        val name: String,        // "Понедельник 09.06.doc"
-        val downloadUrl: String, // прямой raw URL
+        val name: String,
+        val downloadUrl: String,
         val size: Long,
-        val sha: String,         // git blob SHA1 — для проверки целостности после скачивания
+        val sha: String,
     )
 
-    /**
-     * Получает список .doc-файлов из папки [FOLDER] репозитория.
-     * Бросает исключение при ошибке.
-     */
-    fun listFiles(): List<RemoteFile> {
+    suspend fun listFiles(): List<RemoteFile> {
         val url = "https://api.github.com/repos/$OWNER/$REPO/contents/$FOLDER"
-        val req = Request.Builder().url(url)
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "ScheduleApp/1.0")
-            .build()
-
-        val body = client.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) throw Exception("GitHub API: HTTP ${resp.code}")
-            resp.body!!.string()
+        val response = client.get(url) {
+            header(HttpHeaders.Accept, "application/vnd.github+json")
+            header(HttpHeaders.UserAgent, USER_AGENT)
+        }
+        if (!response.status.isSuccess()) {
+            throw Exception("GitHub API: HTTP ${response.status.value}")
         }
 
-        val arr = JSONArray(body)
-        return buildList {
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val name = obj.optString("name", "")
-                // .json — параллельный debug-only путь (JsonScheduleParser),
-                // см. IsDebugBuild. В релизе игнорируется, даже если случайно
-                // окажется в этой папке репозитория.
-                val isAccepted = name.endsWith(".doc", ignoreCase = true) ||
-                    (IsDebugBuild && name.endsWith(".json", ignoreCase = true))
-                if (!isAccepted) continue
-                add(RemoteFile(
-                    name        = name,
-                    downloadUrl = obj.optString("download_url", ""),
-                    size        = obj.optLong("size", 0L),
-                    sha         = obj.optString("sha", ""),
-                ))
-            }
+        return json.parseToJsonElement(response.bodyAsText()).jsonArray.mapNotNull { element ->
+            val item = element.jsonObject
+            val name = item["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val isAccepted = name.endsWith(".doc", ignoreCase = true) ||
+                (IsDebugBuild && name.endsWith(".json", ignoreCase = true))
+            if (!isAccepted) return@mapNotNull null
+
+            RemoteFile(
+                name = name,
+                downloadUrl = item["download_url"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                size = item["size"]?.jsonPrimitive?.longOrNull ?: 0L,
+                sha = item["sha"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+            )
         }
     }
 
-    /**
-     * git blob SHA1 файла — тот же алгоритм, что использует сам git и что
-     * GitHub API возвращает в поле "sha" для контента репозитория:
-     * sha1("blob " + размер_в_байтах + "\u0000" + содержимое).
-     */
-    private fun gitBlobSha1(bytes: ByteArray): String {
-        val header = "blob ${bytes.size}\u0000".toByteArray(Charsets.UTF_8)
-        val digest = MessageDigest.getInstance("SHA-1")
-        digest.update(header)
-        digest.update(bytes)
-        return digest.digest().joinToString("") { "%02x".format(it) }
-    }
-
-    /**
-     * Скачивает файл. Пробует основной raw URL и зеркала (mirror.ghproxy.com,
-     * ghfast.top — используются, когда raw.githubusercontent.com недоступен
-     * из сети пользователя).
-     *
-     * ВАЖНО: зеркала — сторонние прокси, не под нашим контролем. Владелец
-     * такого домена технически мог бы подменить содержимое файла на лету.
-     * Поэтому после скачивания С ЛЮБОГО источника (включая основной)
-     * содержимое сверяется по SHA1 с тем, что вернул официальный
-     * GitHub Contents API (см. [RemoteFile.sha]) — если хэш не совпал,
-     * файл не тот, что ожидался, пробуем следующее зеркало. Так подмена
-     * содержимого технически невозможна, независимо от того, насколько
-     * можно доверять конкретному зеркалу.
-     */
-    fun downloadBytes(rawUrl: String, expectedSha: String, onProgress: (Float) -> Unit = {}): ByteArray {
+    /** Downloads from GitHub or a mirror, always verifying Git's blob SHA-1. */
+    suspend fun downloadBytes(
+        rawUrl: String,
+        expectedSha: String,
+        onProgress: (Float) -> Unit = {},
+    ): ByteArray {
         val mirrors = listOf(
             rawUrl,
             rawUrl.replace("raw.githubusercontent.com", "mirror.ghproxy.com/raw.githubusercontent.com"),
             rawUrl.replace("raw.githubusercontent.com", "ghfast.top/raw.githubusercontent.com"),
         )
 
-        var lastErr: Exception? = null
-        mirrors.forEachIndexed { idx, url ->
+        var lastError: Exception? = null
+        for ((index, url) in mirrors.withIndex()) {
             try {
-                onProgress(0.1f + idx * 0.15f)
-                val req = Request.Builder().url(url)
-                    .header("User-Agent", "ScheduleApp/1.0")
-                    .build()
-                val bytes = client.newCall(req).execute().use { resp ->
-                    if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
-                    // Рубеж №1: смотрим заявленный размер ДО чтения тела в память —
-                    // если сервер/зеркало прислали Content-Length больше разумного
-                    // для файла расписания, не тратим память и трафик на скачивание.
-                    val declaredSize = resp.body?.contentLength() ?: -1L
-                    if (declaredSize > DocParser.MAX_DOC_SIZE_BYTES) {
-                        throw Exception("Файл слишком большой ($declaredSize байт), пропускаем: $url")
-                    }
-                    onProgress(0.8f)
-                    resp.body!!.bytes()
-                }
+                onProgress(0.1f + index * 0.15f)
+                val response = client.get(url) { header(HttpHeaders.UserAgent, USER_AGENT) }
+                if (!response.status.isSuccess()) throw Exception("HTTP ${response.status.value}")
 
-                // Рубеж №2: на случай chunked-ответа без Content-Length.
+                val declaredSize = response.headers[HttpHeaders.ContentLength]?.toLongOrNull() ?: -1L
+                if (declaredSize > DocParser.MAX_DOC_SIZE_BYTES) {
+                    throw Exception("Файл слишком большой ($declaredSize байт), пропускаем: $url")
+                }
+                onProgress(0.8f)
+                val bytes: ByteArray = response.body()
                 if (bytes.size > DocParser.MAX_DOC_SIZE_BYTES) {
                     throw Exception("Файл слишком большой (${bytes.size} байт) после скачивания: $url")
                 }
-
-                if (expectedSha.isNotEmpty()) {
-                    val actualSha = gitBlobSha1(bytes)
-                    if (!actualSha.equals(expectedSha, ignoreCase = true)) {
-                        throw Exception("Целостность файла нарушена (SHA не совпал, источник: $url)")
-                    }
+                if (expectedSha.isNotEmpty() && !gitBlobSha1(bytes).equals(expectedSha, ignoreCase = true)) {
+                    throw Exception("Целостность файла нарушена (SHA не совпал, источник: $url)")
                 }
 
                 onProgress(1f)
                 return bytes
-            } catch (e: Exception) {
-                lastErr = e
+            } catch (error: Exception) {
+                lastError = error
             }
         }
-        throw Exception("GitHub недоступен: ${lastErr?.message}")
+        throw Exception("GitHub недоступен: ${lastError?.message}")
     }
 }

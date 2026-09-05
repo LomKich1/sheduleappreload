@@ -1,8 +1,6 @@
 package com.schedule.app.util
 
 import com.schedule.app.data.model.ScheduleFile
-import java.time.LocalDate
-import java.util.Locale
 
 // ─── Разбор имени файла "26.06.2026 ПЯТНИЦА.doc" ────────────────────────────
 // Реальный формат файлов с Я.Диска: dd.MM.yyyy ДЕНЬ.doc (точки + пробел)
@@ -31,14 +29,14 @@ fun scheduleFileFromName(name: String, downloadUrl: String, sha: String = ""): S
     val day   = match.groupValues[1].toIntOrNull() ?: return null
     val month = match.groupValues[2].toIntOrNull() ?: return null
     val year  = match.groupValues[3].toIntOrNull() ?: return null
-    val rawDay = match.groupValues[4].uppercase(Locale.ROOT)
+    val rawDay = match.groupValues[4].uppercase()
 
-    val dayLabel  = WEEKDAY_RU[rawDay] ?: rawDay.lowercase(Locale.ROOT)
+    val dayLabel  = WEEKDAY_RU[rawDay] ?: rawDay.lowercase()
         .replaceFirstChar { it.uppercaseChar() }
     val dateLabel = "${day.toString().padStart(2, '0')}.${month.toString().padStart(2, '0')}"
 
-    val today = LocalDate.now()
-    val isToday = day == today.dayOfMonth && month == today.monthValue && year == today.year
+    val today = currentLocalDateTime()
+    val isToday = day == today.dayOfMonth && month == today.monthNumber && year == today.year
 
     return ScheduleFile(
         name        = name,

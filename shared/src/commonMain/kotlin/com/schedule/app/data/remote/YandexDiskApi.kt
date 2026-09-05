@@ -3,19 +3,26 @@ package com.schedule.app.data.remote
 import com.schedule.app.data.parser.DocParser
 import com.schedule.app.util.IsDebugBuild
 import com.schedule.app.util.Logger
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONObject
-import java.util.concurrent.TimeUnit
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpHeaders
+import io.ktor.http.URLBuilder
+import io.ktor.http.isSuccess
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 object YandexDiskApi {
 
     private const val TAG = "YaDisk"
-
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private const val USER_AGENT = "ScheduleApp/1.0"
+    private val client = createPlatformHttpClient(connectTimeoutMs = 12_000, requestTimeoutMs = 30_000)
+    private val json = Json { ignoreUnknownKeys = true }
 
     data class RemoteFile(
         val name: String,
@@ -23,118 +30,85 @@ object YandexDiskApi {
         val size: Long,
     )
 
-    fun listFiles(publicKey: String): List<RemoteFile> {
-        val enc = java.net.URLEncoder.encode(publicKey, "UTF-8")
-        val url = "https://cloud-api.yandex.net/v1/disk/public/resources" +
-                  "?public_key=$enc&limit=100&sort=name"
-
+    suspend fun listFiles(publicKey: String): List<RemoteFile> {
+        val url = apiUrl("resources") {
+            parameters.append("public_key", publicKey)
+            parameters.append("limit", "100")
+            parameters.append("sort", "name")
+        }
         Logger.d(TAG, "listFiles() → GET $url")
 
-        val req = Request.Builder().url(url)
-            .header("User-Agent", "ScheduleApp/1.0")
-            .build()
-
-        val (code, body) = client.newCall(req).execute().use { resp ->
-            val b = resp.body?.string() ?: ""
-            Logger.d(TAG, "listFiles() ← HTTP ${resp.code}, body[${b.length}]: ${b.take(400)}")
-            resp.code to b
-        }
-
-        if (code !in 200..299) {
-            val msg = runCatching { JSONObject(body).optString("message") }.getOrNull()
-                ?: "HTTP $code"
-            Logger.e(TAG, "listFiles() ОШИБКА: $msg")
-            throw Exception("Яндекс.Диск: $msg")
+        val response = client.get(url) { header(HttpHeaders.UserAgent, USER_AGENT) }
+        val body = response.bodyAsText()
+        Logger.d(TAG, "listFiles() ← HTTP ${response.status.value}, body[${body.length}]: ${body.take(400)}")
+        if (!response.status.isSuccess()) {
+            val message = runCatching {
+                json.parseToJsonElement(body).jsonObject["message"]?.jsonPrimitive?.contentOrNull
+            }.getOrNull() ?: "HTTP ${response.status.value}"
+            Logger.e(TAG, "listFiles() ОШИБКА: $message")
+            throw Exception("Яндекс.Диск: $message")
         }
 
         val items = try {
-            JSONObject(body).getJSONObject("_embedded").getJSONArray("items")
-        } catch (e: Exception) {
-            Logger.e(TAG, "listFiles() не удалось распарсить JSON: ${e.message}\nbody=$body")
-            throw Exception("Яндекс.Диск: неверный формат ответа — ${e.message}")
+            json.parseToJsonElement(body).jsonObject["_embedded"]
+                ?.jsonObject?.get("items")?.jsonArray
+                ?: error("items не найдены")
+        } catch (error: Exception) {
+            Logger.e(TAG, "listFiles() не удалось распарсить JSON: ${error.message}")
+            throw Exception("Яндекс.Диск: неверный формат ответа — ${error.message}")
         }
 
-        Logger.d(TAG, "listFiles() всего items в ответе: ${items.length()}")
+        return items.mapNotNull { element ->
+            val item = element.jsonObject
+            val name = item["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val isAccepted = name.endsWith(".doc", ignoreCase = true) ||
+                (IsDebugBuild && name.endsWith(".json", ignoreCase = true))
+            if (!isAccepted) return@mapNotNull null
 
-        return buildList {
-            for (i in 0 until items.length()) {
-                val obj  = items.getJSONObject(i)
-                val name = obj.optString("name", "")
-                val type = obj.optString("type", "")
-                Logger.d(TAG, "  item[$i]: name='$name' type='$type'")
-                // .json — параллельный debug-only путь (JsonScheduleParser),
-                // см. IsDebugBuild. В релизе такие файлы по-прежнему игнорируются,
-                // даже если по ошибке окажутся в папке на Я.Диске.
-                val isAccepted = name.endsWith(".doc", ignoreCase = true) ||
-                    (IsDebugBuild && name.endsWith(".json", ignoreCase = true))
-                if (!isAccepted) {
-                    Logger.d(TAG, "  ↳ пропущен (не .doc${if (IsDebugBuild) "/.json" else ""})")
-                    continue
-                }
-                val remote = RemoteFile(
-                    name = name,
-                    path = obj.optString("path", ""),
-                    size = obj.optLong("size", 0L),
-                )
-                Logger.d(TAG, "  ↳ добавлен: path='${remote.path}' size=${remote.size}")
-                add(remote)
-            }
+            RemoteFile(
+                name = name,
+                path = item["path"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                size = item["size"]?.jsonPrimitive?.longOrNull ?: 0L,
+            )
         }.also { Logger.d(TAG, "listFiles() итого файлов: ${it.size}") }
     }
 
-    fun getDownloadUrl(publicKey: String, path: String): String {
-        val enc     = java.net.URLEncoder.encode(publicKey, "UTF-8")
-        val pathEnc = java.net.URLEncoder.encode(path, "UTF-8")
-        val url = "https://cloud-api.yandex.net/v1/disk/public/resources/download" +
-                  "?public_key=$enc&path=$pathEnc"
-
-        Logger.d(TAG, "getDownloadUrl() → GET $url")
-
-        val req = Request.Builder().url(url)
-            .header("User-Agent", "ScheduleApp/1.0")
-            .build()
-
-        val body = client.newCall(req).execute().use { resp ->
-            val b = resp.body?.string() ?: ""
-            Logger.d(TAG, "getDownloadUrl() ← HTTP ${resp.code}, body: ${b.take(200)}")
-            if (!resp.isSuccessful) throw Exception("Яндекс.Диск download: HTTP ${resp.code}")
-            b
+    suspend fun getDownloadUrl(publicKey: String, path: String): String {
+        val url = apiUrl("resources/download") {
+            parameters.append("public_key", publicKey)
+            parameters.append("path", path)
         }
-
-        return (JSONObject(body).optString("href").takeIf { it.isNotEmpty() }
-            ?: throw Exception("Яндекс.Диск не вернул href"))
-            .also { Logger.d(TAG, "getDownloadUrl() href получен (${it.length} символов)") }
+        Logger.d(TAG, "getDownloadUrl() → GET $url")
+        val response = client.get(url) { header(HttpHeaders.UserAgent, USER_AGENT) }
+        val body = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            throw Exception("Яндекс.Диск download: HTTP ${response.status.value}")
+        }
+        return json.parseToJsonElement(body).jsonObject["href"]?.jsonPrimitive?.contentOrNull
+            ?.takeIf { it.isNotEmpty() }
+            ?: throw Exception("Яндекс.Диск не вернул href")
     }
 
-    fun downloadBytes(href: String, onProgress: (Float) -> Unit = {}): ByteArray {
+    suspend fun downloadBytes(href: String, onProgress: (Float) -> Unit = {}): ByteArray {
         Logger.d(TAG, "downloadBytes() → ${href.take(80)}...")
         onProgress(0.1f)
-        val req = Request.Builder().url(href)
-            .header("User-Agent", "ScheduleApp/1.0")
-            .build()
+        val response = client.get(href) { header(HttpHeaders.UserAgent, USER_AGENT) }
+        if (!response.status.isSuccess()) throw Exception("Скачивание: HTTP ${response.status.value}")
 
-        return client.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) throw Exception("Скачивание: HTTP ${resp.code}")
-
-            // Рубеж №1: заявленный размер ДО чтения тела в память.
-            val declaredSize = resp.body?.contentLength() ?: -1L
-            if (declaredSize > DocParser.MAX_DOC_SIZE_BYTES) {
-                Logger.e(TAG, "downloadBytes() файл слишком большой: $declaredSize байт")
-                throw Exception("Файл слишком большой ($declaredSize байт)")
-            }
-
-            onProgress(0.5f)
-            val bytes = resp.body!!.bytes()
-
-            // Рубеж №2: на случай chunked-ответа без Content-Length.
-            if (bytes.size > DocParser.MAX_DOC_SIZE_BYTES) {
-                Logger.e(TAG, "downloadBytes() файл слишком большой после скачивания: ${bytes.size} байт")
-                throw Exception("Файл слишком большой (${bytes.size} байт)")
-            }
-
-            onProgress(1f)
-            Logger.d(TAG, "downloadBytes() скачано ${bytes.size} байт")
-            bytes
+        val declaredSize = response.headers[HttpHeaders.ContentLength]?.toLongOrNull() ?: -1L
+        if (declaredSize > DocParser.MAX_DOC_SIZE_BYTES) {
+            throw Exception("Файл слишком большой ($declaredSize байт)")
         }
+        onProgress(0.5f)
+        val bytes: ByteArray = response.body()
+        if (bytes.size > DocParser.MAX_DOC_SIZE_BYTES) {
+            throw Exception("Файл слишком большой (${bytes.size} байт)")
+        }
+        onProgress(1f)
+        Logger.d(TAG, "downloadBytes() скачано ${bytes.size} байт")
+        return bytes
     }
+
+    private fun apiUrl(path: String, configure: URLBuilder.() -> Unit): String =
+        URLBuilder("https://cloud-api.yandex.net/v1/disk/public/$path").apply(configure).buildString()
 }

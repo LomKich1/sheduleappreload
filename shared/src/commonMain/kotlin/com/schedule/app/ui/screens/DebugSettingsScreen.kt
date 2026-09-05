@@ -32,6 +32,7 @@ import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
 import com.schedule.app.util.PickedTextFile
 import com.schedule.app.util.rememberJsonFilePicker
+import kotlin.math.roundToInt
 
 // ─── DebugSettingsScreen ──────────────────────────────────────────────────────
 // Отдельный экран для всех debug-only настроек (раньше жили инлайном прямо в
@@ -164,7 +165,7 @@ private fun AnimDebugSection() {
             Column {
                 LabeledSlider(
                     label     = "Damping (упругость)",
-                    valueText = "%.2f".format(damping),
+                    valueText = fixed(damping, 2),
                     value     = damping,
                     range     = 0.3f..1.5f,
                     onChange  = { AnimPrefs.setSpringDamping(it) },
@@ -172,7 +173,7 @@ private fun AnimDebugSection() {
                 Spacer(Modifier.height(10.dp))
                 LabeledSlider(
                     label     = "Stiffness (жёсткость)",
-                    valueText = "%.0f".format(stiffness),
+                    valueText = fixed(stiffness, 0),
                     value     = stiffness,
                     range     = 50f..1500f,
                     onChange  = { AnimPrefs.setSpringStiffness(it) },
@@ -181,7 +182,7 @@ private fun AnimDebugSection() {
                     Spacer(Modifier.height(10.dp))
                     LabeledSlider(
                         label     = "Parallax power",
-                        valueText = "%.2f".format(parallaxPow),
+                        valueText = fixed(parallaxPow, 2),
                         value     = parallaxPow,
                         range     = 1f..3f,
                         onChange  = { AnimPrefs.setParallaxPower(it) },
@@ -457,6 +458,18 @@ private fun JsonTestSection() {
             }
         }
     }
+}
+
+private fun fixed(value: Float, decimals: Int): String {
+    val factor = when (decimals) {
+        0 -> 1
+        1 -> 10
+        2 -> 100
+        else -> error("Unsupported precision: $decimals")
+    }
+    val rounded = (value * factor).roundToInt()
+    if (decimals == 0) return rounded.toString()
+    return "${rounded / factor}.${(rounded % factor).toString().padStart(decimals, '0')}"
 }
 
 // ─── Preview ────────────────────────────────────────────────────────────────
