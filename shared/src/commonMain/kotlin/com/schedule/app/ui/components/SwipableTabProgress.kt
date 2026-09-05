@@ -9,8 +9,10 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -54,6 +56,13 @@ fun rememberSwipableProgress(
     val animatable = remember { Animatable(targetProgress) }
     val scope = rememberCoroutineScope()
 
+    // Скорость флика, "отложенная" до следующего срабатывания LaunchedEffect
+    // ниже — нужна, когда доезд до соседней страницы запускается НЕ прямым
+    // animateTo из жеста, а реакцией на смену activeIndex (через onSwitch).
+    // Обнуляется сразу после чтения — тап по кнопке/пиллу не должен получать
+    // чужую скорость от предыдущего свайпа.
+    var pendingVelocity by remember { mutableStateOf(0f) }
+
     val animSpec: AnimationSpec<Float> = when (animMode) {
         TabAnimMode.DEFAULT -> tween(tweenDurationMs, easing = FastOutSlowInEasing)
         TabAnimMode.SPRING,
@@ -61,9 +70,12 @@ fun rememberSwipableProgress(
     }
 
     // Тап-триггер — тот же контракт, что был у animateFloatAsState: изменился
-    // activeIndex (или сами параметры кривой в debug-панели) — едем к цели.
+    // activeIndex (или сами параметры кривой в debug-панели) — едем к цели,
+    // подхватывая скорость флика, если она есть (см. pendingVelocity).
     LaunchedEffect(activeIndex, animMode, tweenDurationMs, springDamping, springStiffness) {
-        animatable.animateTo(targetProgress, animSpec)
+        val v = pendingVelocity
+        pendingVelocity = 0f
+        animatable.animateTo(targetProgress, animSpec, initialVelocity = v)
     }
 
     val dragModifier =
@@ -90,6 +102,12 @@ fun rememberSwipableProgress(
                     },
                     onDragEnd = {
                         val velocityPxPerSec = velocityTracker.calculateVelocity().x
+                        // Скорость в единицах прогресса/сек (а не px/сек) — чтобы
+                        // передать её как initialVelocity в animateTo ниже. Знак
+                        // инвертирован по той же причине, что и delta выше: палец
+                        // влево (velocity < 0) должен ДОБАВЛЯТЬ к прогрессу.
+                        val velocityProgressPerSec = -velocityPxPerSec / widthPx
+
                         val current = animatable.value
                         val movedFromActive = current - activeIndex.toFloat()
 
@@ -104,10 +122,21 @@ fun rememberSwipableProgress(
                         val shouldRetreat = activeIndex == 1 &&
                             (movedFromActive < -distanceThreshold || velocityPxPerSec > flickThresholdPxPerSec)
 
+                        // Доезд/откат — В ЛЮБОМ случае с реальной скоростью пальца
+                        // на выходе, а не с нуля: раньше animateTo стартовал так,
+                        // будто отпустили неподвижно, даже после резкого флика.
                         when {
-                            shouldAdvance -> onSwitch(1)
-                            shouldRetreat -> onSwitch(0)
-                            else -> scope.launch { animatable.animateTo(targetProgress, animSpec) }
+                            shouldAdvance -> {
+                                pendingVelocity = velocityProgressPerSec
+                                onSwitch(1)
+                            }
+                            shouldRetreat -> {
+                                pendingVelocity = velocityProgressPerSec
+                                onSwitch(0)
+                            }
+                            else -> scope.launch {
+                                animatable.animateTo(targetProgress, animSpec, initialVelocity = velocityProgressPerSec)
+                            }
                         }
                     },
                 )

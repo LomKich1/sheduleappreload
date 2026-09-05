@@ -100,13 +100,47 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
     var toggleTrigger by remember { mutableStateOf(0) }
     var toggleEdge by remember { mutableStateOf(CascadeEdge.LEFT) }
 
-    val onModeSelect: (ScheduleMode) -> Unit = { newMode ->
-        if (newMode != mode) {
+    // animateReveal=false — для свайпа: пикер уже был виден на экране всё
+    // время перетаскивания, повторный каскадный "влёт" карточек в конце
+    // будет лишним (тот же принцип, что и filesEntranceTrigger в AppScaffold
+    // при свайпе Files↔Bells — см. комментарий там).
+    fun switchMode(newMode: ScheduleMode, animateReveal: Boolean) {
+        if (newMode == mode) return
+        if (animateReveal) {
             toggleEdge = if (newMode == ScheduleMode.TEACHER) CascadeEdge.RIGHT else CascadeEdge.LEFT
             toggleTrigger++
         }
         mode = newMode
     }
+
+    val onModeSelect: (ScheduleMode) -> Unit = { newMode -> switchMode(newMode, animateReveal = true) }
+
+    // Прогресс Ученики↔Преподаватели поднят сюда (а не внутрь Box с
+    // контентом ниже) — он нужен ещё и ScheduleModeToggle, чтобы индикатор
+    // тумблера синхронно ехал за пальцем во время свайпа (та же причина, что
+    // и с swipable/FloatingPillNav в AppScaffold — см. комментарий там).
+    var widthPx by remember { mutableStateOf(0f) }
+
+    val animMode by AnimPrefs.mode.collectAsState()
+    val tweenDurationMs by AnimPrefs.durationMs.collectAsState()
+    val springDamping by AnimPrefs.springDamping.collectAsState()
+    val springStiffness by AnimPrefs.springStiffness.collectAsState()
+    val parallaxPower by AnimPrefs.parallaxPower.collectAsState()
+
+    // STUDENT — фоновый слой (индекс 0), TEACHER — передний (индекс 1),
+    // 1:1 та же схема, что у Files (0) / Bells (1) в AppScaffold — включая
+    // свайп в обе стороны через тот же rememberSwipableProgress.
+    val activeIndex = if (mode == ScheduleMode.STUDENT) 0 else 1
+
+    val swipable = rememberSwipableProgress(
+        activeIndex = activeIndex,
+        onSwitch = { idx -> switchMode(if (idx == 0) ScheduleMode.STUDENT else ScheduleMode.TEACHER, animateReveal = false) },
+        widthPx = widthPx,
+        animMode = animMode,
+        tweenDurationMs = tweenDurationMs,
+        springDamping = springDamping,
+        springStiffness = springStiffness,
+    )
 
     // Состояние шапки для каждого из двух видов — оба смонтированы всегда и
     // независимо сообщают о себе, а рисуется только то, что относится к
@@ -182,6 +216,7 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
             ScheduleModeToggle(
                 selected = mode,
                 onSelect = onModeSelect,
+                progress = swipable.progress,
                 modifier = Modifier.padding(horizontal = 18.dp),
             )
             Spacer(Modifier.height(4.dp))
@@ -200,30 +235,8 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         // Раньше здесь стоял BoxWithConstraints ради maxWidth — теперь ширина
         // нужна ДО входа в scope (для rememberSwipableProgress и dragModifier
         // на самом контейнере), поэтому обычный Box + onSizeChanged, как и в
-        // AppScaffold (см. комментарий там).
-        var widthPx by remember { mutableStateOf(0f) }
-
-        val animMode by AnimPrefs.mode.collectAsState()
-        val tweenDurationMs by AnimPrefs.durationMs.collectAsState()
-        val springDamping by AnimPrefs.springDamping.collectAsState()
-        val springStiffness by AnimPrefs.springStiffness.collectAsState()
-        val parallaxPower by AnimPrefs.parallaxPower.collectAsState()
-
-        // STUDENT — фоновый слой (индекс 0), TEACHER — передний (индекс 1),
-        // 1:1 та же схема, что у Files (0) / Bells (1) в AppScaffold — включая
-        // свайп в обе стороны через тот же rememberSwipableProgress.
-        val activeIndex = if (mode == ScheduleMode.STUDENT) 0 else 1
-
-        val swipable = rememberSwipableProgress(
-            activeIndex = activeIndex,
-            onSwitch = { idx -> onModeSelect(if (idx == 0) ScheduleMode.STUDENT else ScheduleMode.TEACHER) },
-            widthPx = widthPx,
-            animMode = animMode,
-            tweenDurationMs = tweenDurationMs,
-            springDamping = springDamping,
-            springStiffness = springStiffness,
-        )
-
+        // AppScaffold (см. комментарий там). Сам swipable объявлен выше —
+        // нужен ещё и тумблеру, см. комментарий там же.
         Box(
             modifier = Modifier
                 .fillMaxSize()
