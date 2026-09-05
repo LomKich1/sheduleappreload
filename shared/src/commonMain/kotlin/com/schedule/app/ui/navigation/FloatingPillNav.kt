@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import com.schedule.app.ui.theme.LocalAppColors
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -68,6 +69,14 @@ fun FloatingPillNav(
     currentRoute: String,
     onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier,
+    // null — обычная тап-навигация, t едет своей внутренней пружиной (как
+    // было). 0f..1f — живой прогресс свайпа Files↔Bells: t читается ПРЯМО
+    // из него (без своей анимации — она уже сделана один раз в
+    // rememberSwipableProgress выше по дереву), а скользящий индикатор
+    // интерполируется линейно между позициями вкладок, 1:1 за пальцем, без
+    // отдельной "живой" пружины — иначе будет два независимых источника
+    // движения и рассинхрон с реальным положением пальца во время драга.
+    progress: Float? = null,
 ) {
     val c = LocalAppColors.current
     val density = LocalDensity.current
@@ -134,11 +143,14 @@ fun FloatingPillNav(
         stiffness = Spring.StiffnessMediumLow,
         dampingRatio = Spring.DampingRatioNoBouncy,
     )
-    val t by animateFloatAsState(
-        targetValue = selectedIndex.toFloat(),
-        animationSpec = labelSpring,
-        label = "pillReveal",
-    )
+    val t: Float = progress ?: run {
+        val animated by animateFloatAsState(
+            targetValue = selectedIndex.toFloat(),
+            animationSpec = labelSpring,
+            label = "pillReveal",
+        )
+        animated
+    }
 
     // reveal(idx) = насколько близко t к этому индексу: 1 — вкладка полностью раскрыта,
     // 0 — полностью схлопнута. Для соседних индексов сумма долей всегда согласована,
@@ -161,29 +173,55 @@ fun FloatingPillNav(
         xs
     }
 
-    // ── 3. Скользящий индикатор — отдельная пружина с отскоком ──────────────────
-    // Цель считаем по ФИНАЛЬНЫМ (устоявшимся) ширинам выбранной вкладки, а не по
-    // itemWidthsPx (которые ещё анимируются) — индикатор не участвует в расчёте
-    // размера контейнера, только рисуется поверх него.
-    val indicatorSpring = spring<Float>(
-        stiffness = Spring.StiffnessMediumLow,
-        dampingRatio = Spring.DampingRatioMediumBouncy,
-    )
-
-    val restX = run {
+    // ── 3. Скользящий индикатор ───────────────────────────────────────────────
+    // Тап (progress == null): своя, более "живая" пружина с отскоком — цель
+    // считаем по ФИНАЛЬНЫМ (устоявшимся) ширинам выбранной вкладки, а не по
+    // itemWidthsPx (которые ещё анимируются) — индикатор не участвует в
+    // расчёте размера контейнера, только рисуется поверх него.
+    //
+    // Свайп (progress != null): БЕЗ своей пружины — прямая линейная
+    // интерполяция между позициями соседних вкладок по тому же t, что и выше.
+    // Индикатор идёт ровно там же, где палец, кадр в кадр; "отскок" при
+    // доезде до конца уже даёт кривая из AnimPrefs, которой управляется сам
+    // rememberSwipableProgress — второй, независимый источник пружинности
+    // тут дал бы рассинхрон с реальным положением пальца во время драга.
+    fun restXOfIndex(idx: Int): Float {
         var acc = 0f
-        for (idx in 0 until selectedIndex) {
-            acc += compactWidths.getOrElse(idx) { 0f } + spacingPx
-        }
-        acc
+        for (i in 0 until idx) acc += compactWidths.getOrElse(i) { 0f } + spacingPx
+        return acc
     }
-    val restWidth = fullWidths.getOrElse(selectedIndex) { 0f }
 
-    val targetIndicatorXPx = (restX - extraPaddingPx).coerceAtLeast(0f)
-    val targetIndicatorWPx = restWidth + extraPaddingPx * 2
+    val indicatorXPx: Float
+    val indicatorWPx: Float
 
-    val indicatorXPx by animateFloatAsState(targetIndicatorXPx, indicatorSpring, label = "pillX")
-    val indicatorWPx by animateFloatAsState(targetIndicatorWPx, indicatorSpring, label = "pillW")
+    if (progress != null) {
+        val lo = t.toInt().coerceIn(0, items.size - 1)
+        val hi = (lo + 1).coerceAtMost(items.size - 1)
+        val frac = (t - lo).coerceIn(0f, 1f)
+
+        indicatorXPx = (lerp(restXOfIndex(lo), restXOfIndex(hi), frac) - extraPaddingPx).coerceAtLeast(0f)
+        indicatorWPx = lerp(
+            fullWidths.getOrElse(lo) { 0f },
+            fullWidths.getOrElse(hi) { 0f },
+            frac,
+        ) + extraPaddingPx * 2
+    } else {
+        val indicatorSpring = spring<Float>(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+        )
+
+        val restX = restXOfIndex(selectedIndex)
+        val restWidth = fullWidths.getOrElse(selectedIndex) { 0f }
+
+        val targetIndicatorXPx = (restX - extraPaddingPx).coerceAtLeast(0f)
+        val targetIndicatorWPx = restWidth + extraPaddingPx * 2
+
+        val animatedX by animateFloatAsState(targetIndicatorXPx, indicatorSpring, label = "pillX")
+        val animatedW by animateFloatAsState(targetIndicatorWPx, indicatorSpring, label = "pillW")
+        indicatorXPx = animatedX
+        indicatorWPx = animatedW
+    }
 
     Box(
         modifier = modifier

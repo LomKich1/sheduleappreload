@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.schedule.app.ui.theme.AppRadius
@@ -59,6 +60,12 @@ fun ScheduleModeToggle(
     selected: ScheduleMode,
     onSelect: (ScheduleMode) -> Unit,
     modifier: Modifier = Modifier,
+    // null — обычный тумблер (используется в Settings как выбор дефолтного
+    // режима) — своя пружина с отскоком, как раньше. 0f..1f — живой прогресс
+    // свайпа Ученики↔Преподаватели: индикатор 1:1 следует за пальцем без
+    // своей пружины (та же логика, что и в FloatingPillNav — см. комментарий
+    // там про рассинхрон от двух независимых источников движения).
+    progress: Float? = null,
 ) {
     val c = LocalAppColors.current
 
@@ -73,14 +80,19 @@ fun ScheduleModeToggle(
     ) {
         val halfWidth = maxWidth / 2
 
-        val indicatorOffset by animateDpAsState(
-            targetValue   = if (selected == ScheduleMode.STUDENT) 0.dp else halfWidth,
-            animationSpec = spring(
-                stiffness    = Spring.StiffnessMediumLow,
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-            ),
-            label = "modeIndicator",
-        )
+        val indicatorOffset: Dp = if (progress != null) {
+            halfWidth * progress
+        } else {
+            val animated by animateDpAsState(
+                targetValue   = if (selected == ScheduleMode.STUDENT) 0.dp else halfWidth,
+                animationSpec = spring(
+                    stiffness    = Spring.StiffnessMediumLow,
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                ),
+                label = "modeIndicator",
+            )
+            animated
+        }
 
         // Скользящий индикатор — слой ПОД текстом, как синяя пилюля в FloatingPillNav.
         // offset(), а НЕ padding(): у пружины dampingRatio = MediumBouncy есть

@@ -72,8 +72,18 @@ fun AppScaffold() {
     var filesEntranceTrigger by rememberSaveable { mutableStateOf(0) }
     var bellsEntranceTrigger by rememberSaveable { mutableStateOf(0) }
 
-    LaunchedEffect(activeTab) {
-        if (activeTab == Screen.Files.route) filesEntranceTrigger++ else bellsEntranceTrigger++
+    // Переключение вкладки. animateEntrance=false — для свайпа: контент и так
+    // уже был виден на экране всё время перетаскивания пальцем, повторный
+    // каскадный "влёт" элементов в конце будет лишним и будет читаться как
+    // глюк. Каскад нужен только когда вкладка появляется "внезапно" — по
+    // тапу на пилл-навигацию/кнопку назад, или после закрытия глубокого
+    // экрана (см. LaunchedEffect(deepScreenOpen) ниже — не трогали).
+    fun switchTab(route: String, animateEntrance: Boolean) {
+        if (route == activeTab) return
+        activeTab = route
+        if (animateEntrance) {
+            if (route == Screen.Files.route) filesEntranceTrigger++ else bellsEntranceTrigger++
+        }
     }
 
     // Тот же каскад должен проигрываться и когда мы ЗАКРЫВАЕМ глубокий экран
@@ -92,8 +102,32 @@ fun AppScaffold() {
     // Системная кнопка «назад»: если открыта вкладка Bells и нет глубокого
     // экрана сверху — возвращаем на Files, а не выходим из приложения.
     BackHandler(enabled = !deepScreenOpen && activeTab == Screen.Bells.route) {
-        activeTab = Screen.Files.route
+        switchTab(Screen.Files.route, animateEntrance = true)
     }
+
+    // Прогресс Files↔Bells поднят на уровень всей функции (а не внутрь
+    // Box с вкладками) — он нужен ещё и FloatingPillNav ниже, чтобы
+    // индикатор в пилюле синхронно ехал за пальцем во время свайпа, а не
+    // просто дожидался финального переключения activeTab.
+    var widthPx by remember { mutableStateOf(0f) }
+
+    val animMode by AnimPrefs.mode.collectAsState()
+    val tweenDurationMs by AnimPrefs.durationMs.collectAsState()
+    val springDamping by AnimPrefs.springDamping.collectAsState()
+    val springStiffness by AnimPrefs.springStiffness.collectAsState()
+    val parallaxPower by AnimPrefs.parallaxPower.collectAsState()
+
+    val activeIndex = if (activeTab == Screen.Files.route) 0 else 1
+
+    val swipable = rememberSwipableProgress(
+        activeIndex = activeIndex,
+        onSwitch = { idx -> switchTab(if (idx == 0) Screen.Files.route else Screen.Bells.route, animateEntrance = false) },
+        widthPx = widthPx,
+        animMode = animMode,
+        tweenDurationMs = tweenDurationMs,
+        springDamping = springDamping,
+        springStiffness = springStiffness,
+    )
 
     Box(
         modifier = Modifier
@@ -114,27 +148,7 @@ fun AppScaffold() {
             // maxWidth. Теперь ширина нужна ДО входа в scope (чтобы передать
             // её в rememberSwipableProgress и повесить dragModifier на сам
             // контейнер), поэтому вместо BoxWithConstraints — обычный Box с
-            // onSizeChanged, а ширина живёт в состоянии.
-            var widthPx by remember { mutableStateOf(0f) }
-
-            val animMode by AnimPrefs.mode.collectAsState()
-            val tweenDurationMs by AnimPrefs.durationMs.collectAsState()
-            val springDamping by AnimPrefs.springDamping.collectAsState()
-            val springStiffness by AnimPrefs.springStiffness.collectAsState()
-            val parallaxPower by AnimPrefs.parallaxPower.collectAsState()
-
-            val activeIndex = if (activeTab == Screen.Files.route) 0 else 1
-
-            val swipable = rememberSwipableProgress(
-                activeIndex = activeIndex,
-                onSwitch = { idx -> activeTab = if (idx == 0) Screen.Files.route else Screen.Bells.route },
-                widthPx = widthPx,
-                animMode = animMode,
-                tweenDurationMs = tweenDurationMs,
-                springDamping = springDamping,
-                springStiffness = springStiffness,
-            )
-
+            // onSizeChanged, а ширина живёт в состоянии (объявлено выше).
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -296,7 +310,8 @@ fun AppScaffold() {
         if (showPill) {
             FloatingPillNav(
                 currentRoute = activeTab,
-                onNavigate = { route -> activeTab = route },
+                onNavigate = { route -> switchTab(route, animateEntrance = true) },
+                progress = swipable.progress,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 20.dp),
