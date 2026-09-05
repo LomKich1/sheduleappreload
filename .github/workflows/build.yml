@@ -3,16 +3,14 @@ name: Build & Release
 # Заголовок запуска в списке Actions. У push-события GitHub и так сам
 # подставляет туда текст коммита — оставляем это поведение как есть.
 # У workflow_dispatch (ручной "gh workflow run" / кнопка Run workflow)
-# коммит-сообщения в контексте нет вообще, поэтому без этой строки GitHub
-# просто пишет название воркфлоу ("Build & Release") без единой зацепки,
-# на каком коммите и кем запущено — что и было исходным вопросом. Полного
-# текста коммита для ручного запуска взять неоткуда (run-name считается ДО
-# старта джоб, обращаться к API коммита тут нельзя) — ветка/номер запуска/
-# автор это максимум, что доступно на этом этапе.
+# коммит-сообщения в контексте нет вообще — run-name считается ДО старта
+# джоб, доступа к git-истории или API тут нет. Поэтому вместо этого читаем
+# input "message" (см. описание при workflow_dispatch ниже): если передан —
+# используем его, иначе — запасной вариант из номера/ветки/автора.
 run-name: >-
   ${{
     github.event_name == 'workflow_dispatch'
-      && format('🔧 Ручной запуск #{0}: {1} — {2}', github.run_number, github.ref_name, github.actor)
+      && (inputs.message != '' && inputs.message || format('🔧 Ручной запуск #{0}: {1} — {2}', github.run_number, github.ref_name, github.actor))
       || github.event.head_commit.message
   }}
 
@@ -24,6 +22,18 @@ on:
   push:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      message:
+        description: >-
+          Необязательно: текст для заголовка запуска в списке Actions.
+          Через gh CLI удобнее не печатать его руками, а сразу подставлять
+          текст последнего коммита:
+            gh workflow run build.yml --ref dev -f message="$(git log -1 --pretty=%s)"
+          Через веб-интерфейс (Actions → Run workflow) просто впиши что-нибудь
+          своими словами. Если оставить пустым — заголовком станет номер
+          запуска + ветка + кто запустил.
+        required: false
+        default: ''
 
 # Нужно для создания/обновления GitHub Release
 permissions:
