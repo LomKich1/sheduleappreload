@@ -127,6 +127,14 @@ fun AppScaffold() {
         tweenDurationMs = tweenDurationMs,
         springDamping = springDamping,
         springStiffness = springStiffness,
+        // Сброс каскада — на СТАРТЕ направления жеста, не на завершении
+        // свайпа (см. подробный комментарий в rememberSwipableProgress).
+        // Тут именно инкремент триггера напрямую, а не switchTab(..., true) —
+        // activeTab (и сам факт переключения) должен поменяться только по
+        // факту завершённого свайпа/тапа, а не по одному лишь намерению.
+        onDragTowardPage = { idx ->
+            if (idx == 0) filesEntranceTrigger++ else bellsEntranceTrigger++
+        },
     )
 
     Box(
