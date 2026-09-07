@@ -140,6 +140,13 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         tweenDurationMs = tweenDurationMs,
         springDamping = springDamping,
         springStiffness = springStiffness,
+        // Сброс каскада карточек пикера — на старте направления жеста, не на
+        // завершении свайпа (см. подробный комментарий в rememberSwipableProgress
+        // и аналогичное подключение в AppScaffold для Files/Bells).
+        onDragTowardPage = { idx ->
+            toggleEdge = if (idx == 1) CascadeEdge.RIGHT else CascadeEdge.LEFT
+            toggleTrigger++
+        },
     )
 
     // Состояние шапки для каждого из двух видов — оба смонтированы всегда и

@@ -40,6 +40,18 @@ import kotlinx.coroutines.launch
  *
  * Направление специально совпадает с "контент едет за пальцем": палец влево
  * (dragAmount < 0) → progress растёт (0→1), палец вправо → progress падает.
+ *
+ * onDragTowardPage — стреляет РОВНО ОДИН раз за весь жест, в момент когда
+ * направление драга определилось (первое движение пальца за микро-порог),
+ * а не когда свайп уже завершился. Раньше каскадная анимация элементов
+ * (см. CascadeEntranceItem) перезапускалась либо никогда (чтобы не мигало),
+ * либо в момент завершения свайпа — а раз оба экрана всегда смонтированы,
+ * в момент завершения свайпа контент уже был виден в готовом виде (проехал
+ * весь путь пальцем), и сброс в скрытое состояние читался как "мигание":
+ * появилось → резко пропало → появилась анимация. Тригеря сброс на СТАРТЕ
+ * направления, а не на финише — элементы уже скрыты и анимируются START_OFFSET
+ * → 0 задолго до того, как физически доедут до видимой части экрана (сам
+ * драг обычно занимает сотни миллисекунд — этого с запасом хватает).
  */
 @Composable
 fun rememberSwipableProgress(
@@ -51,6 +63,7 @@ fun rememberSwipableProgress(
     springDamping: Float,
     springStiffness: Float,
     dragEnabled: Boolean = true,
+    onDragTowardPage: ((Int) -> Unit)? = null,
 ): SwipableProgressState {
     val targetProgress = activeIndex.toFloat()
     val animatable = remember { Animatable(targetProgress) }
@@ -84,10 +97,15 @@ fun rememberSwipableProgress(
         } else {
             Modifier.pointerInput(widthPx, activeIndex) {
                 val velocityTracker = VelocityTracker()
+                // Сброс на каждый новый жест (onDragStart) — направление
+                // сигналим не больше одного раза за один непрерывный драг,
+                // даже если палец подёргался туда-сюда до фактического порога.
+                var directionSignaled = false
 
                 detectHorizontalDragGestures(
                     onDragStart = {
                         velocityTracker.resetTracking()
+                        directionSignaled = false
                         scope.launch { animatable.stop() }
                     },
                     onDragCancel = {
@@ -96,6 +114,26 @@ fun rememberSwipableProgress(
                     onHorizontalDrag = { change, dragAmount ->
                         change.consume()
                         velocityTracker.addPosition(change.uptimeMillis, change.position)
+
+                        // Микро-порог — не сигналим на дрожание пальца на месте,
+                        // но и не ждём сколько-нибудь заметного смещения: цель —
+                        // поймать направление максимально рано, задолго до того
+                        // как соседняя страница физически появится в кадре.
+                        //
+                        // towardPage считается ЧИСТО по знаку — если дёрнули в
+                        // сторону, где и так уже progress=0/1 (упирается в
+                        // coerceIn и никуда реально не двигает), towardPage
+                        // совпадёт с самим activeIndex. Проверка ниже отсекает
+                        // именно этот случай — иначе дрожание пальца на месте
+                        // сбрасывало бы каскад у уже видимого, активного экрана.
+                        if (!directionSignaled && kotlin.math.abs(dragAmount) > 0.5f) {
+                            directionSignaled = true
+                            val towardPage = if (dragAmount < 0) 1 else 0
+                            if (towardPage != activeIndex) {
+                                onDragTowardPage?.invoke(towardPage)
+                            }
+                        }
+
                         val delta = dragAmount / widthPx
                         val newValue = (animatable.value - delta).coerceIn(0f, 1f)
                         scope.launch { animatable.snapTo(newValue) }
