@@ -16,7 +16,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -45,7 +46,6 @@ import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
-import com.schedule.app.ui.components.rememberScrollCascadeState
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
 
@@ -264,7 +264,16 @@ fun ScheduleScreen(
             onHeaderInfo(
                 ScheduleHeaderInfo(
                     title          = headerGroupName,
-                    placeholder    = "Выберите группу",
+                    // Раньше тут был константный "Выберите группу", видимый
+                    // и во время Loading, и на самом пикере — при этом внутри
+                    // тела экрана (см. GroupPickerLoading) уже отдельно шло
+                    // "Загружаем список групп…". Теперь шапка синхронизирована
+                    // с тем же текстом, что и тело — не два разных сообщения
+                    // о состоянии, а одно.
+                    placeholder    = if (uiState is ScheduleUiState.Loading)
+                        "Загружаем список групп…"
+                    else
+                        "Выберите группу",
                     dateText       = file.dateLabel,
                     isPairsScreen  = isPairsScreen,
                     isLoading      = uiState is ScheduleUiState.Loading,
@@ -415,33 +424,39 @@ private fun GroupPickerScreen(
         // вместо прилипания к верху с пустым "хвостом".
         val isShort = orderedGroups.size <= 3
 
-        val listState = rememberLazyListState()
-        // Раньше при прокрутке элементы, ушедшие за пределы экрана и
-        // вернувшиеся обратно, "случайно" заново проигрывали анимацию входа
-        // на экран (включая LEFT после возврата с расписания пары — что
-        // выглядело нелогично). Теперь это разделено осознанно —
-        // см. комментарий у ScrollCascadeState.
-        val scrollCascade = rememberScrollCascadeState(listState, entranceTrigger)
-
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 14.dp, end = 14.dp,
-                bottom = 80.dp, top = 2.dp,
-            ),
+        // Раньше тут стоял LazyColumn — виртуализация, при которой карточки,
+        // ушедшие за пределы экрана, полностью уничтожаются и пересоздаются
+        // при возврате в вьюпорт. Список групп конечен и небольшой (обычно
+        // до полусотни строк в самом крупном файле), поэтому цена
+        // виртуализации (постоянная композиция/декомпозиция карточек при
+        // каждом скролле) оказалась дороже, чем просто держать все карточки
+        // в памяти сразу — LazyColumn и вызывал ощутимые подтормаживания при
+        // прокрутке, о которых просили разобраться. Обычный Column с
+        // verticalScroll строит вообще ВСЕ карточки один раз при первом
+        // появлении экрана и просто скроллит уже готовое дерево — скроллинг
+        // становится чисто графической операцией без перекомпозиции.
+        //
+        // Вместе с этим ScrollCascadeState (см. CascadeEntrance.kt) тут
+        // больше не нужен и убран: он существовал ИМЕННО для того, чтобы
+        // отличать "первое появление карточки" от "пересоздания при
+        // скролле" — раз пересоздания при скролле больше физически не
+        // происходит, разделять эти случаи незачем.
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 14.dp, end = 14.dp, bottom = 80.dp, top = 2.dp),
             verticalArrangement = if (isShort)
                 Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
             else
                 Arrangement.spacedBy(8.dp),
         ) {
-            itemsIndexed(orderedGroups, key = { _, g -> "g_$g" }) { idx, group ->
-                val mount = scrollCascade.resolve("g_$group", idx, entranceEdge)
+            orderedGroups.forEachIndexed { idx, group ->
                 CascadeEntranceItem(
-                    index      = mount.index,
+                    index      = idx,
                     triggerKey = entranceTrigger,
                     enabled    = entranceEnabled,
-                    edge       = mount.edge,
+                    edge       = entranceEdge,
                 ) {
                     GroupCard(name = group, isPinned = group == pinnedInFile) { onSelect(group) }
                 }
