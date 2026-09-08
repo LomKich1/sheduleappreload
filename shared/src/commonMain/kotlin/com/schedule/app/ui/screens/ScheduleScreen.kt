@@ -216,6 +216,7 @@ fun ScheduleScreen(
     // срабатывания триггера ловил не тот экран — см. подробности в
     // ScheduleHostScreen.kt). С раздельным триггером сюда в принципе не
     // прилетает ничего лишнего, поэтому гейта по active больше нет.
+    var pickerRevealEdgeOverride by remember { mutableStateOf<CascadeEdge?>(null) }
 
     // Системный жест "назад" перехватываем ТОЛЬКО пока показано расписание —
     // NavHost в AppScaffold обрабатывает системный back сам, минуя параметр
