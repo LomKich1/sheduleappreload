@@ -189,24 +189,16 @@ fun TeacherScheduleScreen(
 
     // Одноразовая подмена направления каскада пикера преподавателя — см.
     // подробный комментарий у pickerRevealEdgeOverride в ScheduleScreen.kt.
+    //
+    // revealTrigger теперь per-screen (раньше был общий на оба режима, и тут
+    // стоял доп. гейт "if (active)" — убран, см. комментарий в
+    // ScheduleHostScreen.kt про гонку active vs момент срабатывания триггера).
     var pickerRevealEdgeOverride by remember { mutableStateOf<CascadeEdge?>(null) }
     var lastRevealApplied by remember { mutableStateOf(revealTrigger) }
     LaunchedEffect(revealTrigger) {
         if (revealTrigger != lastRevealApplied) {
-            // Триггер общий на оба экрана (ученики/преподы) — сюда прилетает
-            // ЛЮБОЕ переключение тумблера, не только "вход" в этот режим.
-            // Без "&& active" каскад карточек пикера переигрывался и у
-            // экрана, который в этот момент как раз УХОДИТ (становится
-            // неактивным) — визуально выглядело так, будто статичные
-            // элементы того же вида, что остаётся на экране, вдруг заново
-            // "влетают". Реплеим только когда именно ЭТОТ режим становится
-            // активным, но lastRevealApplied всё равно обновляем всегда —
-            // иначе при следующем реальном переключении сюда старое
-            // значение триггера будет считаться "новым".
-            if (active) {
-                pickerRevealEdgeOverride = revealEdge
-                transitionSeq++
-            }
+            pickerRevealEdgeOverride = revealEdge
+            transitionSeq++
             lastRevealApplied = revealTrigger
         }
     }

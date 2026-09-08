@@ -209,7 +209,13 @@ fun ScheduleScreen(
     // когда пикер раскрыт тумблером без перезагрузки (см. lastRevealApplied
     // ниже); во всех остальных случаях действует обычная goingBack-логика
     // (LEFT назад / BOTTOM вперёд, см. GroupPickerScreen(...) ниже).
-    var pickerRevealEdgeOverride by remember { mutableStateOf<CascadeEdge?>(null) }
+    //
+    // ВАЖНО: revealTrigger, приходящий сюда из ScheduleHostScreen, — теперь
+    // per-screen (раньше был один общий на оба режима, ученики/преподы, и тут
+    // стоял доп. гейт "if (active)", который из-за гонки active vs момент
+    // срабатывания триггера ловил не тот экран — см. подробности в
+    // ScheduleHostScreen.kt). С раздельным триггером сюда в принципе не
+    // прилетает ничего лишнего, поэтому гейта по active больше нет.
 
     // Системный жест "назад" перехватываем ТОЛЬКО пока показано расписание —
     // NavHost в AppScaffold обрабатывает системный back сам, минуя параметр
@@ -227,14 +233,8 @@ fun ScheduleScreen(
     var lastRevealApplied by remember { mutableStateOf(revealTrigger) }
     LaunchedEffect(revealTrigger) {
         if (revealTrigger != lastRevealApplied) {
-            // Триггер общий на оба экрана (ученики/преподы) — см. подробный
-            // комментарий у идентичного блока в TeacherScheduleScreen.kt.
-            // Реплеим каскад пикера только когда именно этот режим становится
-            // активным, иначе он лишний раз переигрывался и у уходящего вида.
-            if (active) {
-                pickerRevealEdgeOverride = revealEdge
-                transitionSeq++
-            }
+            pickerRevealEdgeOverride = revealEdge
+            transitionSeq++
             lastRevealApplied = revealTrigger
         }
     }

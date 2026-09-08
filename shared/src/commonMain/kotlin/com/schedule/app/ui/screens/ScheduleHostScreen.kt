@@ -95,10 +95,30 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
     var mode by rememberSaveable(file.name) { mutableStateOf(defaultMode) }
 
     // Каскадная анимация карточек пикера при переключении тумблером — тот же
-    // приём, что и раньше, просто по-прежнему управляет карточками
-    // группы/преподавателя внутри активного вида.
-    var toggleTrigger by remember { mutableStateOf(0) }
-    var toggleEdge by remember { mutableStateOf(CascadeEdge.LEFT) }
+    // приём, что и раньше, но теперь триггер РАЗДЕЛЁН на два независимых —
+    // отдельно для student-пикера, отдельно для teacher-пикера.
+    //
+    // Было — один общий toggleTrigger/toggleEdge на оба экрана, а реплей
+    // внутри ScheduleScreen/TeacherScheduleScreen гейтился через "if (active)"
+    // (см. историю). Баг: onDragTowardPage стреляет в САМОМ НАЧАЛЕ жеста
+    // (направление определилось), а mode (и, соответственно, active у обоих
+    // под-экранов) переключается только на ЗАВЕРШЕНИИ свайпа — через onSwitch
+    // ниже. То есть в момент срабатывания триггера active ещё указывает на
+    // СТАРЫЙ (source) экран. С общим триггером "if (active)" ловил именно
+    // source — он и переигрывал каскад, а не destination, куда пользователь
+    // реально свайпает (ровно наоборот тому, что нужно). Плюс у destination
+    // анимация вообще терялась: его LaunchedEffect(revealTrigger) отрабатывал
+    // с active=false, lastRevealApplied обновлялся, и когда active чуть позже
+    // всё-таки становился true — переигрывать уже было нечему, revealTrigger
+    // с тех пор не менялся.
+    //
+    // Раздельные триггеры убирают саму эту гонку: сюда прилетает НАПРЯМУЮ,
+    // какой экран является destination (idx/newMode уже это несут), без
+    // необходимости сверяться с ещё не обновившимся active.
+    var studentRevealTrigger by remember { mutableStateOf(0) }
+    var teacherRevealTrigger by remember { mutableStateOf(0) }
+    var studentRevealEdge by remember { mutableStateOf(CascadeEdge.LEFT) }
+    var teacherRevealEdge by remember { mutableStateOf(CascadeEdge.RIGHT) }
 
     // animateReveal=false — для свайпа: пикер уже был виден на экране всё
     // время перетаскивания, повторный каскадный "влёт" карточек в конце
@@ -107,8 +127,13 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
     fun switchMode(newMode: ScheduleMode, animateReveal: Boolean) {
         if (newMode == mode) return
         if (animateReveal) {
-            toggleEdge = if (newMode == ScheduleMode.TEACHER) CascadeEdge.RIGHT else CascadeEdge.LEFT
-            toggleTrigger++
+            if (newMode == ScheduleMode.TEACHER) {
+                teacherRevealEdge = CascadeEdge.RIGHT
+                teacherRevealTrigger++
+            } else {
+                studentRevealEdge = CascadeEdge.LEFT
+                studentRevealTrigger++
+            }
         }
         mode = newMode
     }
@@ -142,10 +167,17 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         springStiffness = springStiffness,
         // Сброс каскада карточек пикера — на старте направления жеста, не на
         // завершении свайпа (см. подробный комментарий в rememberSwipableProgress
-        // и аналогичное подключение в AppScaffold для Files/Bells).
+        // и аналогичное подключение в AppScaffold для Files/Bells). idx здесь —
+        // именно destination (страница, КУДА ведёт жест), поэтому просто бьём
+        // в триггер нужного экрана напрямую, без гадания через active.
         onDragTowardPage = { idx ->
-            toggleEdge = if (idx == 1) CascadeEdge.RIGHT else CascadeEdge.LEFT
-            toggleTrigger++
+            if (idx == 1) {
+                teacherRevealEdge = CascadeEdge.RIGHT
+                teacherRevealTrigger++
+            } else {
+                studentRevealEdge = CascadeEdge.LEFT
+                studentRevealTrigger++
+            }
         },
     )
 
@@ -283,8 +315,8 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     file          = file,
                     onBack        = onBack,
                     active        = studentActive,
-                    revealTrigger = toggleTrigger,
-                    revealEdge    = toggleEdge,
+                    revealTrigger = studentRevealTrigger,
+                    revealEdge    = studentRevealEdge,
                     onHeaderInfo  = { studentHeader = it },
                 )
             }
@@ -305,8 +337,8 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     file          = file,
                     onBack        = onBack,
                     active        = !studentActive,
-                    revealTrigger = toggleTrigger,
-                    revealEdge    = toggleEdge,
+                    revealTrigger = teacherRevealTrigger,
+                    revealEdge    = teacherRevealEdge,
                     onHeaderInfo  = { teacherHeader = it },
                 )
             }
