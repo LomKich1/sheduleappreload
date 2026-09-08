@@ -16,7 +16,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -43,7 +44,6 @@ import com.schedule.app.data.model.TeacherLessonEntry
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
-import com.schedule.app.ui.components.rememberScrollCascadeState
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
 
@@ -223,7 +223,14 @@ fun TeacherScheduleScreen(
             onHeaderInfo(
                 ScheduleHeaderInfo(
                     title          = headerTeacherName,
-                    placeholder    = "Выберите преподавателя",
+                    // См. подробный комментарий у аналогичной правки в
+                    // ScheduleScreen.kt — синхронизация с "Загружаем..." из
+                    // TeacherPickerLoading вместо отдельного "Выберите..."
+                    // одновременно с ним.
+                    placeholder    = if (uiState is TeacherUiState.Loading)
+                        "Загружаем список преподавателей…"
+                    else
+                        "Выберите преподавателя",
                     dateText       = file.dateLabel,
                     isPairsScreen  = isPairsScreen,
                     isLoading      = uiState is TeacherUiState.Loading,
@@ -353,28 +360,28 @@ private fun TeacherPickerScreen(
         // центрируем по вертикали вместо прилипания к верху.
         val isShort = teachers.size <= 3
 
-        val listState = rememberLazyListState()
-        val scrollCascade = rememberScrollCascadeState(listState, entranceTrigger)
-
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 14.dp, end = 14.dp,
-                bottom = 80.dp, top = 2.dp,
-            ),
+        // См. подробный комментарий у аналогичной правки в GroupPickerScreen
+        // (ScheduleScreen.kt) — та же замена LazyColumn → Column+verticalScroll
+        // по той же причине (список конечный, до ~52 преподавателей по
+        // ростеру колледжа, виртуализация была дороже, чем просто держать всё
+        // в памяти), и по той же причине ScrollCascadeState тут больше не
+        // нужен.
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 14.dp, end = 14.dp, bottom = 80.dp, top = 2.dp),
             verticalArrangement = if (isShort)
                 Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
             else
                 Arrangement.spacedBy(8.dp),
         ) {
-            itemsIndexed(teachers, key = { _, t -> "t_$t" }) { idx, teacher ->
-                val mount = scrollCascade.resolve("t_$teacher", idx, entranceEdge)
+            teachers.forEachIndexed { idx, teacher ->
                 CascadeEntranceItem(
-                    index      = mount.index,
+                    index      = idx,
                     triggerKey = entranceTrigger,
                     enabled    = entranceEnabled,
-                    edge       = mount.edge,
+                    edge       = entranceEdge,
                 ) {
                     TeacherCard(name = teacher) { onSelect(teacher) }
                 }

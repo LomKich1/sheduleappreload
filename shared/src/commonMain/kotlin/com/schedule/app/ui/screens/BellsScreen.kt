@@ -271,6 +271,11 @@ private fun BellDayTabs(
             .padding(horizontal = 18.dp)
             .clip(AppRadius.capsule)
             .background(c.surface2)
+            // Раньше контура тут не было — визуально капсула сливалась с фоном
+            // экрана сильнее, чем у ScheduleModeToggle (Ученики/Преподаватели),
+            // где точно такой же 1.dp border(c.border) уже был. Добавлено для
+            // единообразия, толщина и цвет 1:1 скопированы оттуда.
+            .border(1.dp, c.border, AppRadius.capsule)
             .padding(4.dp),
     ) {
         // ── Скользящий индикатор (слой ПОД табами) ─────────────────────────

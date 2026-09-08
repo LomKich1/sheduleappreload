@@ -5,14 +5,9 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.delay
@@ -70,12 +65,17 @@ fun CascadeEntranceItem(
 
     // remember(triggerKey) — при смене triggerKey создаются новые Animatable,
     // то есть элемент откатывается за край/вниз и проигрывает анимацию заново.
-    // Важно: то же самое происходит и БЕЗ смены triggerKey, если сам элемент
-    // целиком пересоздаётся — например, вышёл из зоны композиции LazyColumn
-    // при прокрутке и вернулся обратно. Раньше это выглядело как "случайный"
-    // повторный вход элементов при скролле; теперь это осознанная фича —
-    // см. ScrollCascadeState ниже, который подбирает edge/index для такого
-    // случая отдельно от первого появления после навигации.
+    // То же самое происходит и БЕЗ смены triggerKey, если сам элемент целиком
+    // пересоздаётся — например, вышёл из зоны композиции LazyColumn при
+    // прокрутке и вернулся обратно. Раньше от этого "случайно" переигрывался
+    // повторный вход при скролле у пикеров группы/преподавателя — решалось
+    // отдельным ScrollCascadeState (см. историю ниже), но с переходом этих
+    // пикеров на обычный Column+verticalScroll пересоздания при скролле
+    // физически больше не происходит, так что для НИХ проблема снята сама
+    // собой. Если где-то ещё в будущем понадобится CascadeEntranceItem внутри
+    // настоящего LazyColumn — этот сценарий (повторный вход при скролле)
+    // снова станет актуален, и придётся либо восстановить похожий механизм,
+    // либо сознательно с ним смириться.
     val offsetX = remember(triggerKey) { Animatable(startX) }
     val offsetY = remember(triggerKey) { Animatable(startY) }
     val alpha   = remember(triggerKey) { Animatable(0f) }
@@ -118,66 +118,17 @@ fun CascadeEntranceItem(
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  ScrollCascadeState — та же каскадная анимация, но для прокрутки списка.
+//  История: раньше тут жил ScrollCascadeState — костыль под LazyColumn в
+//  пикерах группы/преподавателя (ScheduleScreen.kt/TeacherScheduleScreen.kt).
+//  Он различал "первое появление карточки" (вход на экран) от "пересоздания
+//  при прокрутке" (LazyColumn уничтожает и заново создаёт композицию
+//  элементов, ушедших за пределы экрана), чтобы карточка не переигрывала
+//  анимацию входа заново каждый раз, когда снова попадала в вьюпорт.
 //
-//  LazyColumn полностью уничтожает композицию элементов, ушедших далеко за
-//  пределы экрана, и создаёт её заново, когда они возвращаются в видимую
-//  область — из-за этого CascadeEntranceItem выше "случайно" проигрывал
-//  анимацию входа повторно при прокрутке, используя тот же edge, что и вход
-//  на экран (включая LEFT после возврата с расписания пары/преподавателя —
-//  выглядело нелогично, эффект навигации назад никак не должен быть связан
-//  с прокруткой списка).
-//
-//  Здесь это осознанно разделено на два разных случая:
-//   - первое появление ключа в рамках текущего triggerKey — это часть
-//     перехода на экран, используется переданный navigationEdge как раньше;
-//   - повторное появление того же ключа (пересоздание при прокрутке) —
-//     всегда тот же "язык", что и у появления после открытия файла (BOTTOM),
-//     инвертированный на TOP при прокрутке вверх, и БЕЗ стаггер-задержки по
-//     абсолютному индексу в списке (задержка расчитана на пачку из ~10
-//     элементов, а тут за раз обычно возвращается один — с полной задержкой
-//     по индексу это выглядело как "почему-то медленно").
+//  Удалено вместе с самим переходом этих двух пикеров с LazyColumn на
+//  обычный Column+verticalScroll (список групп/преподавателей конечный и
+//  небольшой — виртуализация обходилась дороже, чем просто держать все
+//  карточки в памяти, и была прямой причиной подтормаживаний при скролле).
+//  Без пересоздания композиции при скролле сам класс не нужен — все
+//  использования были только в этих двух местах.
 // ══════════════════════════════════════════════════════════════════════════════
-
-class ScrollCascadeState internal constructor(
-    private val seenKeys: MutableSet<Any>,
-    private val scrollingDown: Boolean,
-) {
-    /** index — 0, если это повторный вход при прокрутке (без стаггера). */
-    data class Mount(val edge: CascadeEdge, val index: Int)
-
-    @Composable
-    fun resolve(key: Any, index: Int, navigationEdge: CascadeEdge): Mount {
-        val isFirstMount = key !in seenKeys
-        LaunchedEffect(key) { seenKeys.add(key) }
-        return if (isFirstMount) {
-            Mount(navigationEdge, index)
-        } else {
-            Mount(if (scrollingDown) CascadeEdge.BOTTOM else CascadeEdge.TOP, 0)
-        }
-    }
-}
-
-@Composable
-fun rememberScrollCascadeState(listState: LazyListState, triggerKey: Any): ScrollCascadeState {
-    // Обычный (не-snapshot) MutableSet — реактивность тут не нужна, каждый
-    // элемент читает его один раз при своей собственной композиции, которая
-    // и так происходит из-за скролла/навигации, а не из-за изменений в сете.
-    val seenKeys = remember(triggerKey) { mutableSetOf<Any>() }
-    var scrollingDown by remember(triggerKey) { mutableStateOf(true) }
-
-    LaunchedEffect(listState, triggerKey) {
-        var lastIndex  = listState.firstVisibleItemIndex
-        var lastOffset = listState.firstVisibleItemScrollOffset
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-            .collect { (index, offset) ->
-                if (index != lastIndex || offset != lastOffset) {
-                    scrollingDown = index > lastIndex || (index == lastIndex && offset > lastOffset)
-                    lastIndex = index
-                    lastOffset = offset
-                }
-            }
-    }
-
-    return ScrollCascadeState(seenKeys, scrollingDown)
-}
