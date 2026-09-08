@@ -68,6 +68,30 @@ fun FilesScreen(
         if (uiState !is FilesUiState.Loading) pullRefreshing = false
     }
 
+    // Каскад снизу вверх (BOTTOM) — только когда список ФИЗИЧЕСКИ только что
+    // подгрузился (холодный старт ИЛИ pull-to-refresh — оба случая реально
+    // проходят через FilesUiState.Loading, см. FilesViewModel.refresh()).
+    // Каскад слева направо (LEFT) — обычное переключение вкладки/свайп, когда
+    // данные уже на месте и никто никуда не грузился.
+    //
+    // Решение считается СИНХРОННО в теле композиции (а не в LaunchedEffect),
+    // чтобы не словить гонку в один кадр: если бы edge выставлялся эффектом,
+    // самый первый рендер списка после реальной подгрузки данных мог бы
+    // получить ещё старое значение edge и полететь не с той стороны, а
+    // перерисовка с правильным edge случилась бы кадром позже — на глаз это
+    // читалось бы как "дёрнулось не туда и поправилось".
+    val loadingNow = uiState is FilesUiState.Loading
+    var wasLoading by remember { mutableStateOf(true) }
+    var lastEntranceTrigger by remember { mutableStateOf(entranceTrigger) }
+    var filesEntranceEdge by remember { mutableStateOf(CascadeEdge.BOTTOM) }
+    if (wasLoading && !loadingNow) {
+        filesEntranceEdge = CascadeEdge.BOTTOM
+    } else if (entranceTrigger != lastEntranceTrigger) {
+        filesEntranceEdge = CascadeEdge.LEFT
+    }
+    wasLoading = loadingNow
+    lastEntranceTrigger = entranceTrigger
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -108,7 +132,7 @@ fun FilesScreen(
                     files     = state.files,
                     onClick   = onFileClick,
                     entranceTrigger = entranceTrigger,
-                    entranceEdge = CascadeEdge.LEFT,
+                    entranceEdge = filesEntranceEdge,
                 )
                 is FilesUiState.Error   -> FilesError(
                     message  = state.message,
