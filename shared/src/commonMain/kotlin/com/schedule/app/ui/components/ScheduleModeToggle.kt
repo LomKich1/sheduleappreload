@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -109,17 +110,26 @@ fun ScheduleModeToggle(
         )
 
         Row(modifier = Modifier.fillMaxSize()) {
+            // п.8: continuous-выделение вместо бинарного — activeness читается
+            // из ТОГО ЖЕ progress, что двигает indicatorOffset выше, а не
+            // из своей отдельной пружины на isActive. null (обычный тумблер
+            // без живого свайпа) — поведение как раньше, см. ModeSegment.
+            val studentActiveness = progress?.let { 1f - it }
+            val teacherActiveness = progress
+
             ModeSegment(
-                text     = "Ученики",
-                isActive = selected == ScheduleMode.STUDENT,
-                modifier = Modifier.weight(1f),
-                onClick  = { onSelect(ScheduleMode.STUDENT) },
+                text       = "Ученики",
+                isActive   = selected == ScheduleMode.STUDENT,
+                activeness = studentActiveness,
+                modifier   = Modifier.weight(1f),
+                onClick    = { onSelect(ScheduleMode.STUDENT) },
             )
             ModeSegment(
-                text     = "Преподаватели",
-                isActive = selected == ScheduleMode.TEACHER,
-                modifier = Modifier.weight(1f),
-                onClick  = { onSelect(ScheduleMode.TEACHER) },
+                text       = "Преподаватели",
+                isActive   = selected == ScheduleMode.TEACHER,
+                activeness = teacherActiveness,
+                modifier   = Modifier.weight(1f),
+                onClick    = { onSelect(ScheduleMode.TEACHER) },
             )
         }
     }
@@ -129,15 +139,27 @@ fun ScheduleModeToggle(
 private fun ModeSegment(
     text: String,
     isActive: Boolean,
+    // п.8: 0f..1f — живой прогресс свайпа, тот же что двигает индикатор —
+    // цвет интерполируется НАПРЯМУЮ им, без своей пружины (иначе, как и с
+    // indicatorOffset выше, получим два независимых источника движения и
+    // рассинхрон — капсула уже наполовину переехала, а текст ещё красится
+    // по факту завершения жеста). null — обычный тумблер (Settings): своя
+    // пружина на isActive, как было раньше.
+    activeness: Float?,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
     val c = LocalAppColors.current
-    val textColor by animateColorAsState(
-        targetValue   = if (isActive) c.pillActiveText else c.pillInactiveText,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label         = "modeSegmentText",
-    )
+    val textColor = if (activeness != null) {
+        lerp(c.pillInactiveText, c.pillActiveText, activeness)
+    } else {
+        val animated by animateColorAsState(
+            targetValue   = if (isActive) c.pillActiveText else c.pillInactiveText,
+            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+            label         = "modeSegmentText",
+        )
+        animated
+    }
 
     Box(
         modifier = modifier

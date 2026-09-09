@@ -32,7 +32,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -235,7 +238,11 @@ fun TeacherScheduleScreen(
                     isPairsScreen  = isPairsScreen,
                     isLoading      = uiState is TeacherUiState.Loading,
                     progress       = progress,
-                    filledFontSize = 20.sp,
+                    // Размер больше не переопределяем — единый filledFontSize
+                    // (17.sp, как в AppHeader) задан дефолтом в самой
+                    // ScheduleHeaderInfo (см. комментарий там; раньше здесь
+                    // стояло 20.sp, а у ScheduleScreen — своё 22.sp, из-за
+                    // чего шапка ещё и "прыгала" между режимами).
                     // Со экрана пар стрелка ведёт к пикеру преподавателя; с
                     // любого другого под-экрана — как раньше, наружу из
                     // TeacherScheduleScreen.
@@ -365,10 +372,14 @@ private fun TeacherPickerScreen(
         // по той же причине (список конечный, до ~52 преподавателей по
         // ростеру колледжа, виртуализация была дороже, чем просто держать всё
         // в памяти), и по той же причине ScrollCascadeState тут больше не
-        // нужен.
+        // нужен. viewportBoundsPx — тоже см. там же и в CascadeEntrance.kt:
+        // гейтит старт анимации входа реальной видимостью карточки при
+        // скролле, а не фактом загрузки списка.
+        var viewportBoundsPx by remember { mutableStateOf<Rect?>(null) }
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .onGloballyPositioned { viewportBoundsPx = it.boundsInWindow() }
                 .verticalScroll(rememberScrollState())
                 .padding(start = 14.dp, end = 14.dp, bottom = 80.dp, top = 2.dp),
             verticalArrangement = if (isShort)
@@ -382,6 +393,7 @@ private fun TeacherPickerScreen(
                     triggerKey = entranceTrigger,
                     enabled    = entranceEnabled,
                     edge       = entranceEdge,
+                    viewportBoundsPx = { viewportBoundsPx },
                 ) {
                     TeacherCard(name = teacher) { onSelect(teacher) }
                 }

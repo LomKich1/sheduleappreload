@@ -1,6 +1,5 @@
 package com.schedule.app.ui.navigation
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -21,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.lerp as lerpColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
@@ -252,11 +252,15 @@ fun FloatingPillNav(
                 val isActive = currentRoute == item.route
                 val reveal = revealOf(idx)
 
-                val contentColor by animateColorAsState(
-                    targetValue = if (isActive) c.pillActiveText else c.pillInactiveText,
-                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                    label = "pillContent$idx",
-                )
+                // п.8: цвет иконки/подписи раньше красился по своей отдельной
+                // пружине на бинарном isActive — независимо от reveal, который
+                // уже плавно едет вместе с t (тапом ИЛИ живым свайпом). Из-за
+                // этого при свайпе пилюля и ширина вкладки уже наполовину
+                // переехали, а цвет ещё был "неактивным" до самого конца
+                // жеста. Теперь цвет — прямая интерполяция ТЕМ ЖЕ reveal, без
+                // своей пружины: reveal и так уже анимирован (через t выше,
+                // либо тапом через animateFloatAsState, либо 1:1 свайпом).
+                val contentColor = lerpColor(c.pillInactiveText, c.pillActiveText, reveal)
 
                 if (hasSizes) {
                     // Контролируемая ширина: контейнер жёстко зафиксирован в

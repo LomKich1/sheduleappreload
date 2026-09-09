@@ -58,7 +58,18 @@ data class ScheduleHeaderInfo(
     val isPairsScreen: Boolean = false,
     val isLoading: Boolean = false,
     val progress: Float = 0f,
-    val filledFontSize: TextUnit = 22.sp,
+    // Раньше тут было 22.sp (студент) / 20.sp (препод, свой override) —
+    // разные размеры для двух режимов ПЛЮС ещё 16.sp у самой шапки для
+    // плейсхолдера (см. ниже) — итого три разных высоты строки заголовка
+    // в одной и той же фиксированной шапке. Из-за этого шапка визуально
+    // "прыгала" по высоте между пикером и открытым расписанием, и ещё
+    // отличалась сама между Ученики/Преподаватели.
+    //
+    // Единый размер, взятый от AppHeader (см. AppHeader.kt — 17.sp, шапка
+    // Files/Bells) — контур и цвет шапки не трогаем, выравниваем только
+    // размер текста, чтобы высота строки была одинаковой всегда и
+    // совпадала с остальным приложением.
+    val filledFontSize: TextUnit = 17.sp,
     val onBack: () -> Unit = {},
 )
 
@@ -157,6 +168,23 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
     // свайп в обе стороны через тот же rememberSwipableProgress.
     val activeIndex = if (mode == ScheduleMode.STUDENT) 0 else 1
 
+    // Состояние шапки для каждого из двух видов — оба смонтированы всегда и
+    // независимо сообщают о себе, а рисуется только то, что относится к
+    // активному в данный момент mode.
+    //
+    // Поднято ВЫШЕ swipable (а не осталось на прежнем месте ниже) — теперь
+    // нужно ДО вызова rememberSwipableProgress: сам жест свайпа между
+    // Ученики/Преподаватели должен быть доступен только там же, где виден
+    // тумблер (пикер группы/препода), а не поверх уже открытого расписания
+    // пар конкретной группы/препода. Баг: раньше dragEnabled вообще не
+    // передавался (дефолт true) — из экрана расписания пар можно было
+    // случайно смахнуть на расписание другого режима, хотя тумблер там уже
+    // скрыт (см. "if (!activeHeader.isPairsScreen)" ниже, на сам тумблер) —
+    // жест и видимый UI были рассинхронизированы.
+    var studentHeader by remember { mutableStateOf(ScheduleHeaderInfo(placeholder = "Выберите группу")) }
+    var teacherHeader by remember { mutableStateOf(ScheduleHeaderInfo(placeholder = "Выберите преподавателя")) }
+    val activeHeader = if (mode == ScheduleMode.STUDENT) studentHeader else teacherHeader
+
     val swipable = rememberSwipableProgress(
         activeIndex = activeIndex,
         onSwitch = { idx -> switchMode(if (idx == 0) ScheduleMode.STUDENT else ScheduleMode.TEACHER, animateReveal = false) },
@@ -165,6 +193,7 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         tweenDurationMs = tweenDurationMs,
         springDamping = springDamping,
         springStiffness = springStiffness,
+        dragEnabled = !activeHeader.isPairsScreen,
         // Сброс каскада карточек пикера — на старте направления жеста, не на
         // завершении свайпа (см. подробный комментарий в rememberSwipableProgress
         // и аналогичное подключение в AppScaffold для Files/Bells). idx здесь —
@@ -181,13 +210,6 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         },
     )
 
-    // Состояние шапки для каждого из двух видов — оба смонтированы всегда и
-    // независимо сообщают о себе, а рисуется только то, что относится к
-    // активному в данный момент mode.
-    var studentHeader by remember { mutableStateOf(ScheduleHeaderInfo(placeholder = "Выберите группу")) }
-    var teacherHeader by remember { mutableStateOf(ScheduleHeaderInfo(placeholder = "Выберите преподавателя")) }
-    val activeHeader = if (mode == ScheduleMode.STUDENT) studentHeader else teacherHeader
-
     Column(modifier = Modifier.fillMaxSize().background(c.bg)) {
 
         // ── Единая фиксированная шапка ──────────────────────────────────────
@@ -195,7 +217,11 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                    // vertical = 12.dp — как в AppHeader (было 14.dp): вместе
+                    // с фикс. размером шрифта ниже это выравнивает высоту
+                    // "чистой" шапки (без подстрочника даты) с шапкой
+                    // Files/Bells. Сам контур/цвет не меняем — только отступ.
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -220,7 +246,11 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     FlipTransitionText(
                         text     = displayTitle,
                         color    = if (activeHeader.title.isBlank()) c.textSub else c.accent,
-                        fontSize = if (activeHeader.title.isBlank()) 16.sp else activeHeader.filledFontSize,
+                        // Раньше размер тоже прыгал вместе с цветом
+                        // (16.sp плейсхолдер / filledFontSize факт) — теперь
+                        // меняется только цвет, размер единый на все
+                        // состояния (см. комментарий у filledFontSize выше).
+                        fontSize = activeHeader.filledFontSize,
                     )
                     Text(
                         text = activeHeader.dateText,
