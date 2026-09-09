@@ -19,6 +19,8 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeSource
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  CascadeEntrance — каскадное появление элементов списка с пружинным отскоком.
@@ -45,6 +47,11 @@ private const val STAGGER_MS        = 60L  // 50-100мс — практика р
                                             // Design рекомендует ≤20мс, но это правило про рутинные
                                             // обновления списков, а не про момент "контент загрузился")
 private const val MAX_STAGGER_ITEMS = 10 // дальше 10-го элемента задержка не растёт — иначе долго ждать
+
+// Окно после открытия экрана, в течение которого попадание карточки в кадр
+// считается "первым экраном" (видна сразу, без скролла) и получает
+// стаггер-задержку по index — см. подробный комментарий у mountMark ниже.
+private val MOUNT_WINDOW = 300.milliseconds
 
 // Общий спринг-спек для offsetX/offsetY — раньше дублировался в двух местах
 // (обычный въезд и повторный при возврате в кадр), вынесен один раз.
@@ -137,23 +144,36 @@ fun CascadeEntranceItem(
         // анимировать нечего). Вернулся в кадр (хоть сверху, хоть снизу) —
         // снова проигрываем въезд, как в самый первый раз.
         //
-        // hasAnimatedOnce — стаггер-задержка (STAGGER_MS * index) нужна
-        // только для самого первого появления, когда карточки первого
-        // экрана въезжают "волной" одна за другой. При повторном входе
-        // (проскроллил туда-обратно) элементы и так появляются по одному —
-        // сама прокрутка уже даёт нужный тайминг, а добавочная задержка
-        // тут же читалась бы как лишний лаг перед появлением.
+        // mountMark/MOUNT_WINDOW — БАГ, который был здесь раньше: стаггер-
+        // задержка (STAGGER_MS * index) должна работать только для "волны"
+        // первого экрана (карточки, видимые сразу при открытии, БЕЗ
+        // скролла) — они действительно должны въезжать одна за другой. Но
+        // условие "hasAnimatedOnce" защищало только от ПОВТОРНОГО триггера
+        // (ушёл скроллом — вернулся), а не от ПЕРВОГО — то есть у карточки
+        // с, скажем, index=30 задержка всё равно считалась как
+        // STAGGER_MS * index.coerceAtMost(MAX_STAGGER_ITEMS) = 60×10 = 600мс
+        // — и это ПОСЛЕ того, как она уже реально попала в кадр при
+        // скролле. Результат — карточка визуально появляется с заметным
+        // лагом относительно самого скролла, а не сразу.
+        //
+        // Фикс — стаггер применяется только если карточка попала в кадр в
+        // первые MOUNT_WINDOW после открытия экрана (это и есть "первый
+        // экран", виден без скролла). Всё, что показалось в кадре позже —
+        // хоть при первом скролле, хоть при повторном — появляется СРАЗУ,
+        // без искусственной задержки: сам жест скролла уже раскрывает
+        // карточки по одной, добавочная задержка тут читалась бы только
+        // как лишний лаг.
+        val mountMark = TimeSource.Monotonic.markNow()
         var wasVisible = false
-        var hasAnimatedOnce = false
         snapshotFlow { itemBoundsPx to getViewportBounds.invoke() }
             .collect { (item, viewport) ->
                 val isVisible = item != null && viewport != null &&
                     item.top < viewport.bottom && item.bottom > viewport.top
 
                 if (isVisible && !wasVisible) {
+                    val isInitialWave = mountMark.elapsedNow() < MOUNT_WINDOW
                     launch {
-                        if (!hasAnimatedOnce) {
-                            hasAnimatedOnce = true
+                        if (isInitialWave) {
                             delay(STAGGER_MS * index.coerceAtMost(MAX_STAGGER_ITEMS))
                         }
                         launch { offsetX.animateTo(0f, entranceSpringSpec) }
