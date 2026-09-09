@@ -33,7 +33,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -279,7 +282,9 @@ fun ScheduleScreen(
                     isPairsScreen  = isPairsScreen,
                     isLoading      = uiState is ScheduleUiState.Loading,
                     progress       = progress,
-                    filledFontSize = 22.sp,
+                    // Размер больше не переопределяем — единый filledFontSize
+                    // (17.sp, как в AppHeader) задан дефолтом в самой
+                    // ScheduleHeaderInfo, см. комментарий там.
                     // Со экрана пар стрелка ведёт к пикеру группы; с любого
                     // другого под-экрана (пикер, загрузка, ошибка) — как
                     // раньше, наружу из ScheduleScreen.
@@ -442,9 +447,20 @@ private fun GroupPickerScreen(
         // отличать "первое появление карточки" от "пересоздания при
         // скролле" — раз пересоздания при скролле больше физически не
         // происходит, разделять эти случаи незачем.
+        //
+        // viewportBoundsPx — компенсирует ДРУГОЙ побочный эффект того же
+        // перехода: раз все карточки строятся сразу, без него анимация
+        // входа проигрывалась бы у всех разом при открытии экрана, а не по
+        // факту попадания в кадр при скролле (см. подробный комментарий в
+        // CascadeEntrance.kt). Ловим bounds именно этого Column — он же и
+        // есть видимая область: fillMaxSize() выше заставляет его занимать
+        // ровно столько, сколько выделено родителем, а verticalScroll сам
+        // клипует содержимое по этим границам.
+        var viewportBoundsPx by remember { mutableStateOf<Rect?>(null) }
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .onGloballyPositioned { viewportBoundsPx = it.boundsInWindow() }
                 .verticalScroll(rememberScrollState())
                 .padding(start = 14.dp, end = 14.dp, bottom = 80.dp, top = 2.dp),
             verticalArrangement = if (isShort)
@@ -458,6 +474,7 @@ private fun GroupPickerScreen(
                     triggerKey = entranceTrigger,
                     enabled    = entranceEnabled,
                     edge       = entranceEdge,
+                    viewportBoundsPx = { viewportBoundsPx },
                 ) {
                     GroupCard(name = group, isPinned = group == pinnedInFile) { onSelect(group) }
                 }

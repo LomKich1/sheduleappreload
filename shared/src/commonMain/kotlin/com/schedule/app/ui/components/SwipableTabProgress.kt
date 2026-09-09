@@ -4,7 +4,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,10 +14,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import com.schedule.app.data.prefs.TabAnimMode
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /**
  * Дефолтный visibilityThreshold у spring() — Spring.DefaultDisplacementThreshold
@@ -146,59 +149,122 @@ fun rememberSwipableProgress(
         animatable.animateTo(targetProgress, animSpec, initialVelocity = v)
     }
 
+    // ─── Драг-модификатор ───────────────────────────────────────────────────
+    //
+    // ВАЖНО (баг: "во время свайпа палец повело по вертикали — жест
+    // сбросился"): раньше здесь стоял обычный detectHorizontalDragGestures —
+    // удобная обёртка, но она слушает события на PointerEventPass.Main.
+    // Main-pass идёт по дереву СНИЗУ ВВЕРХ (сперва дети, потом родители).
+    // Пикер группы/препода — Column + verticalScroll, лежит ВНУТРИ этой же
+    // свайпаемой области, то есть он ребёнок по отношению к этому модификатору.
+    // Если во время уже идущего горизонтального драга палец уходит по
+    // вертикали, внутренний verticalScroll на СВОЁМ Main-pass успевает
+    // среагировать раньше нас (мы родитель — наш Main-pass выполняется позже)
+    // и помечает change как consumed. detectHorizontalDragGestures, увидев
+    // "чужое" потребление, считает жест отменённым — onDragCancel, свайп
+    // визуально сбрасывается, хотя палец всё ещё зажат и явно тянет по
+    // горизонтали. Побеждал не тот, кто раньше начал жест, а тот, кто ниже
+    // в дереве.
+    //
+    // Фикс — переехать на PointerEventPass.Initial. Initial-pass идёт СВЕРХУ
+    // ВНИЗ (родители раньше детей), так что наш обработчик, будучи предком
+    // verticalScroll-пикера, физически получает каждое сырое событие раньше
+    // него. Мы сами вручную определяем доминирующую ось по touch slop:
+    //  — если победила горизонталь — "запираемся" (locked=true) и с этого
+    //    кадра принудительно consume()'им событие на Initial-pass ДО того,
+    //    как Main-pass дочернего списка вообще успеет его увидеть — списку
+    //    физически нечего consume'ить, скролла не будет, и наш жест уже
+    //    не может быть отменён его конкуренцией, вне зависимости от того,
+    //    насколько сильно потом гуляет вертикальная составляющая;
+    //  — если победила вертикаль — просто выходим, ничего не consume'им —
+    //    список получает событие нетронутым на своём обычном Main-pass и
+    //    скроллится как обычно. Обычный вертикальный скролл списка групп
+    //    этим фиксом не задет.
     val dragModifier =
         if (!dragEnabled || widthPx <= 0f) {
             Modifier
         } else {
             Modifier.pointerInput(widthPx, activeIndex) {
-                val velocityTracker = VelocityTracker()
-                // Сброс на каждый новый жест (onDragStart) — направление
-                // сигналим не больше одного раза за один непрерывный драг,
-                // даже если палец подёргался туда-сюда до фактического порога.
-                var directionSignaled = false
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val pointerId = down.id
 
-                detectHorizontalDragGestures(
-                    onDragStart = {
-                        velocityTracker.resetTracking()
-                        directionSignaled = false
-                        scope.launch { animatable.stop() }
-                    },
-                    onDragCancel = {
-                        scope.launch { animatable.animateTo(targetProgress, animSpec) }
-                    },
-                    onHorizontalDrag = { change, dragAmount ->
-                        change.consume()
-                        velocityTracker.addPosition(change.uptimeMillis, change.position)
+                    scope.launch { animatable.stop() }
 
-                        // Микро-порог — не сигналим на дрожание пальца на месте,
-                        // но и не ждём сколько-нибудь заметного смещения: цель —
-                        // поймать направление максимально рано, задолго до того
-                        // как соседняя страница физически появится в кадре.
-                        //
-                        // towardPage считается ЧИСТО по знаку — если дёрнули в
-                        // сторону, где и так уже progress=0/1 (упирается в
-                        // coerceIn и никуда реально не двигает), towardPage
-                        // совпадёт с самим activeIndex. Проверка ниже отсекает
-                        // именно этот случай — иначе дрожание пальца на месте
-                        // сбрасывало бы каскад у уже видимого, активного экрана.
-                        if (!directionSignaled && kotlin.math.abs(dragAmount) > 0.5f) {
-                            directionSignaled = true
-                            val towardPage = if (dragAmount < 0) 1 else 0
-                            if (towardPage != activeIndex) {
-                                onDragTowardPage?.invoke(towardPage)
+                    val velocityTracker = VelocityTracker()
+                    // Сигналим направление не больше одного раза за жест —
+                    // тот же контракт, что был у directionSignaled раньше.
+                    var directionSignaled = false
+                    // Определились ли уже с осью вообще (locked — горизонталь
+                    // "наша", settled — вертикаль "не наша", дальше не лезем).
+                    var locked = false
+                    var settled = false
+                    var totalDx = 0f
+                    var totalDy = 0f
+                    val slop = viewConfiguration.touchSlop
+
+                    while (true) {
+                        val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                        if (!change.pressed) break
+
+                        val dx = change.position.x - change.previousPosition.x
+                        val dy = change.position.y - change.previousPosition.y
+
+                        if (!locked && !settled) {
+                            totalDx += dx
+                            totalDy += dy
+                            if (abs(totalDx) > slop || abs(totalDy) > slop) {
+                                if (abs(totalDx) > abs(totalDy)) {
+                                    locked = true
+                                    velocityTracker.resetTracking()
+                                } else {
+                                    // Вертикаль — отдаём жест списку/скроллу,
+                                    // дальше этот gesture-loop нас не касается.
+                                    settled = true
+                                }
                             }
                         }
 
-                        val delta = dragAmount / widthPx
-                        val newValue = (animatable.value - delta).coerceIn(0f, 1f)
-                        scope.launch { animatable.snapTo(newValue) }
-                    },
-                    onDragEnd = {
+                        if (locked) {
+                            change.consume()
+                            velocityTracker.addPosition(change.uptimeMillis, change.position)
+
+                            // Микро-порог тот же, что и раньше — ловим
+                            // направление максимально рано, задолго до того
+                            // как соседняя страница физически появится в кадре.
+                            //
+                            // towardPage считается ЧИСТО по знаку — если
+                            // дёрнули в сторону, где и так уже progress=0/1,
+                            // towardPage совпадёт с activeIndex — проверка
+                            // ниже отсекает этот случай (дрожание пальца на
+                            // месте не должно сбрасывать каскад уже видимого,
+                            // активного экрана).
+                            if (!directionSignaled && abs(dx) > 0.5f) {
+                                directionSignaled = true
+                                val towardPage = if (dx < 0) 1 else 0
+                                if (towardPage != activeIndex) {
+                                    onDragTowardPage?.invoke(towardPage)
+                                }
+                            }
+
+                            val delta = dx / widthPx
+                            val newValue = (animatable.value - delta).coerceIn(0f, 1f)
+                            scope.launch { animatable.snapTo(newValue) }
+                        }
+                    }
+
+                    // Финализация — только если реально были "нашим" жестом
+                    // (locked). Если жест оказался вертикальным (settled) или
+                    // палец поднялся, не успев пересечь slop ни в одну из
+                    // осей — прогресс никуда не двигался, доезжать некуда.
+                    if (locked) {
                         val velocityPxPerSec = velocityTracker.calculateVelocity().x
-                        // Скорость в единицах прогресса/сек (а не px/сек) — чтобы
-                        // передать её как initialVelocity в animateTo ниже. Знак
-                        // инвертирован по той же причине, что и delta выше: палец
-                        // влево (velocity < 0) должен ДОБАВЛЯТЬ к прогрессу.
+                        // Скорость в единицах прогресса/сек (а не px/сек) —
+                        // чтобы передать её как initialVelocity в animateTo
+                        // ниже. Знак инвертирован по той же причине, что и
+                        // delta выше: палец влево (velocity < 0) должен
+                        // ДОБАВЛЯТЬ к прогрессу.
                         val velocityProgressPerSec = -velocityPxPerSec / widthPx
 
                         val current = animatable.value
@@ -215,9 +281,8 @@ fun rememberSwipableProgress(
                         val shouldRetreat = activeIndex == 1 &&
                             (movedFromActive < -distanceThreshold || velocityPxPerSec > flickThresholdPxPerSec)
 
-                        // Доезд/откат — В ЛЮБОМ случае с реальной скоростью пальца
-                        // на выходе, а не с нуля: раньше animateTo стартовал так,
-                        // будто отпустили неподвижно, даже после резкого флика.
+                        // Доезд/откат — В ЛЮБОМ случае с реальной скоростью
+                        // пальца на выходе, а не с нуля.
                         when {
                             shouldAdvance -> {
                                 pendingVelocity = velocityProgressPerSec
@@ -231,8 +296,17 @@ fun rememberSwipableProgress(
                                 animatable.animateTo(targetProgress, animSpec, initialVelocity = velocityProgressPerSec)
                             }
                         }
-                    },
-                )
+                    } else {
+                        // Жест оказался вертикальным (settled) или палец
+                        // поднялся раньше, чем определилась ось (обычный тап).
+                        // stop() выше мог оборвать ещё не доехавшую анимацию
+                        // доезда/отката от предыдущего переключения — без
+                        // locked=true доездом уже некому заняться, поэтому
+                        // досчитываем её сами, иначе прогресс так и останется
+                        // висеть на промежуточном значении.
+                        scope.launch { animatable.animateTo(targetProgress, animSpec) }
+                    }
+                }
             }
         }
 

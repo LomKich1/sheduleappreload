@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,7 +17,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.TextUnit
 import kotlinx.coroutines.delay
 
@@ -35,6 +39,43 @@ import kotlinx.coroutines.delay
 // небольшой задержкой. Сжимается количество слотов, наоборот, только ПОСЛЕ
 // того, как переворот гарантированно закончился у всех символов — иначе
 // "хвост" пропадал бы прямо посреди анимации.
+//
+// Обрезание длинного текста (п.4): компонент рисует буквы поштучно в Row без
+// внутреннего ограничения ширины — сам по себе он не умеет overflow/ellipsis,
+// как обычный Text. Раньше при переполнении текст просто вылезал за границы
+// и обрубался родителем "как получится" (см. шапку ScheduleHostScreen —
+// длинное имя группы/препода). Теперь компонент сам меряет доступную ширину
+// через BoxWithConstraints и, если полный текст не влезает, заранее (ДО
+// рендера по буквам) обрезает его до нужной длины с "…" на конце — сам
+// FlipChar по буквам так не умеет, поэтому обрезка происходит один раз здесь,
+// а дальше рендерится уже готовая укороченная строка как обычно.
+private fun truncateToFit(
+    text: String,
+    availableWidthPx: Float,
+    textMeasurer: TextMeasurer,
+    style: TextStyle,
+): String {
+    if (text.isEmpty()) return text
+    val fullWidth = textMeasurer.measure(text, style).size.width
+    if (fullWidth <= availableWidthPx) return text
+
+    // Бинарным поиском ищем максимальное число символов N, при котором
+    // "первые N символов + …" всё ещё влезает в доступную ширину.
+    var lo = 0
+    var hi = text.length
+    var best = 0
+    while (lo <= hi) {
+        val mid = (lo + hi) / 2
+        val candidateWidth = textMeasurer.measure(text.take(mid) + "…", style).size.width
+        if (candidateWidth <= availableWidthPx) {
+            best = mid
+            lo = mid + 1
+        } else {
+            hi = mid - 1
+        }
+    }
+    return if (best <= 0) "…" else text.take(best) + "…"
+}
 
 private const val FLIP_STAGGER_MS = 16
 private const val FLIP_OUT_MS = 140
@@ -48,15 +89,65 @@ fun FlipTransitionText(
     fontWeight: FontWeight = FontWeight.Bold,
     modifier: Modifier = Modifier,
 ) {
+    // BoxWithConstraints — чтобы узнать РЕАЛЬНО доступную ширину от родителя
+    // (например Column(Modifier.weight(1f)) в шапке ScheduleHostScreen) ДО
+    // того, как решать, обрезать ли текст. Если родитель ничего не
+    // ограничивает (constraints.hasBoundedWidth == false — как у AppHeader,
+    // там короткие статичные "Расписание"/"Звонки" и обрезать нечего) —
+    // просто ничего не трогаем, обрезка тут бессмысленна и небезопасна
+    // (не с чем сравнивать).
+    BoxWithConstraints(modifier = modifier) {
+        val textMeasurer = rememberTextMeasurer()
+        val style = remember(fontSize, fontWeight) {
+            TextStyle(fontSize = fontSize, fontWeight = fontWeight)
+        }
+        val displayText = if (!constraints.hasBoundedWidth) {
+            text
+        } else {
+            remember(text, constraints.maxWidth, style) {
+                truncateToFit(text, constraints.maxWidth.toFloat(), textMeasurer, style)
+            }
+        }
+
+        FlipTransitionLetters(
+            text = displayText,
+            color = color,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+        )
+    }
+}
+
+@Composable
+private fun FlipTransitionLetters(
+    text: String,
+    color: Color,
+    fontSize: TextUnit,
+    fontWeight: FontWeight,
+) {
     var slotCount by remember { mutableStateOf(text.length) }
 
-    // Сколько слотов было в САМЫЙ первый раз, когда этот заголовок вообще
-    // появился на экране (открыли файл) — символы в их пределах не должны
-    // "переворачиваться из пустоты" при самом первом появлении экрана, это
-    // выглядело бы как лишняя анимация на ровном месте. А вот всё, что
-    // добавится ПОЗЖЕ (текст стал длиннее при переключении тумблера) —
-    // должно появляться именно переворотом, а не просто выскакивать.
-    val initialSlotCount = remember { text.length }
+    // БЫЛО: val initialSlotCount = remember { text.length } — захватывался
+    // ОДИН РАЗ на всю жизнь компонента. Баг: этот заголовок (что в AppHeader
+    // "Расписание"/"Звонки", что в ScheduleHostScreen "Выберите группу"/
+    // "Выберите преподавателя"/имя группы) не пересоздаётся между
+    // переключениями — живёт одним инстансом, меняется только текст. Из-за
+    // этого initialSlotCount навсегда фиксировался на длине ПЕРВОГО когда-либо
+    // показанного текста (например "Расписание", 10 букв), и animateOnMount
+    // (index >= initialSlotCount) ошибочно считал слоты 0..9 "не новыми"
+    // даже после того, как компонент реально схлопывался в более короткий
+    // текст и рос обратно — буквы в пределах старой длины просто появлялись
+    // без флипа вместо переворота.
+    //
+    // Фикс — everMounted: не "сколько слотов было при первом рендере", а
+    // "случился ли уже вообще хоть один рендер этого инстанса". remember
+    // стартует с false, LaunchedEffect(Unit) на первом кадре переключает в
+    // true один раз и больше не трогает. animateOnMount = everMounted теперь
+    // корректно отличает истинно первый рендер компонента (единственный
+    // случай, когда анимировать не нужно) от ЛЮБОГО последующего появления
+    // слота — не важно, был ли он в тексте раньше или нет.
+    var everMounted by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { everMounted = true }
 
     // Рост — сразу, без ожидания кадра.
     if (text.length > slotCount) {
@@ -74,7 +165,7 @@ fun FlipTransitionText(
 
     val padded = text.padEnd(slotCount, ' ')
 
-    Row(modifier = modifier) {
+    Row {
         padded.forEachIndexed { index, ch ->
             key(index) {
                 FlipChar(
@@ -83,7 +174,7 @@ fun FlipTransitionText(
                     color          = color,
                     fontSize       = fontSize,
                     fontWeight     = fontWeight,
-                    animateOnMount = index >= initialSlotCount,
+                    animateOnMount = everMounted,
                 )
             }
         }
@@ -100,7 +191,7 @@ private fun FlipChar(
     animateOnMount: Boolean,
 ) {
     // Слот, появившийся ПОСЛЕ самого первого рендера заголовка (см.
-    // initialSlotCount выше), стартует с пробела — так его самое первое
+    // everMounted выше), стартует с пробела — так его самое первое
     // появление тоже переворачивается, а не просто выскакивает целиком.
     // Слоты, бывшие в тексте с самого начала, стартуют сразу с нужной буквы —
     // на первом появлении экрана анимировать нечего, старой буквы не было.

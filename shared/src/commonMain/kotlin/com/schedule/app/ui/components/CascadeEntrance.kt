@@ -7,10 +7,18 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -45,6 +53,24 @@ fun CascadeEntranceItem(
     triggerKey: Any?,
     enabled: Boolean,
     edge: CascadeEdge,
+    // null (по умолчанию) — старое поведение: анимация стартует сразу при
+    // появлении в композиции, без оглядки на скролл. Годится для списков,
+    // целиком помещающихся на экране (пары дня, скелетоны загрузки) — там
+    // "видимость" и "появление в композиции" — одно и то же.
+    //
+    // non-null — анимация стартует ТОЛЬКО когда элемент реально попадает в
+    // видимую часть viewport'а. Нужно для длинных Column+verticalScroll
+    // списков (пикер группы/преподавателя, см. GroupPickerScreen) — раз все
+    // карточки строятся сразу при первом появлении экрана (см. история ниже
+    // про отказ от LazyColumn), без этого гейта анимация проигрывалась бы
+    // сразу у ВСЕХ карточек одновременно, включая те, что ещё физически ниже
+    // экрана и появятся только через полминуты скролла — то есть "каскад"
+    // был бы не по месту прокрутки, а по факту загрузки списка.
+    //
+    // Лямбда, а не голый Rect — читается изнутри snapshotFlow (см. ниже),
+    // чтобы отслеживать движение viewport'а/самой карточки БЕЗ пересоздания
+    // всего LaunchedEffect на каждый кадр скролла (см. подробности там же).
+    viewportBoundsPx: (() -> Rect?)? = null,
     content: @Composable () -> Unit,
 ) {
     if (!enabled) {
@@ -80,7 +106,24 @@ fun CascadeEntranceItem(
     val offsetY = remember(triggerKey) { Animatable(startY) }
     val alpha   = remember(triggerKey) { Animatable(0f) }
 
+    // Собственные координаты карточки в окне — обновляются на каждый layout-
+    // проход (в т.ч. каждый кадр скролла). Именно поэтому ниже читаются через
+    // snapshotFlow, а не как ключ LaunchedEffect — ключ пересоздавал бы весь
+    // эффект (и отменял бы уже идущий delay/animateTo) на каждый такой кадр.
+    var itemBoundsPx by remember(triggerKey) { mutableStateOf<Rect?>(null) }
+
     LaunchedEffect(triggerKey) {
+        val getViewportBounds = viewportBoundsPx
+        if (getViewportBounds != null) {
+            // Ждём кадра, когда карточка реально пересечёт видимую область —
+            // до этого момента здесь просто suspend, никакой анимации.
+            snapshotFlow { itemBoundsPx to getViewportBounds.invoke() }
+                .first { (item, viewport) ->
+                    item != null && viewport != null &&
+                        item.top < viewport.bottom && item.bottom > viewport.top
+                }
+        }
+
         val delayMs = STAGGER_MS * index.coerceAtMost(MAX_STAGGER_ITEMS)
         delay(delayMs)
         launch {
@@ -107,11 +150,17 @@ fun CascadeEntranceItem(
     }
 
     Box(
-        modifier = Modifier.graphicsLayer {
-            translationX = offsetX.value
-            translationY = offsetY.value
-            this.alpha   = alpha.value
-        },
+        modifier = Modifier
+            .onGloballyPositioned { coords ->
+                if (viewportBoundsPx != null) {
+                    itemBoundsPx = coords.boundsInWindow()
+                }
+            }
+            .graphicsLayer {
+                translationX = offsetX.value
+                translationY = offsetY.value
+                this.alpha   = alpha.value
+            },
     ) {
         content()
     }
@@ -131,4 +180,14 @@ fun CascadeEntranceItem(
 //  карточки в памяти, и была прямой причиной подтормаживаний при скролле).
 //  Без пересоздания композиции при скролле сам класс не нужен — все
 //  использования были только в этих двух местах.
+//
+//  НО у Column+verticalScroll оказался СВОЙ побочный эффект (другая сторона
+//  той же монеты): раз все карточки строятся сразу при первом появлении
+//  экрана, а не лениво по мере скролла — LaunchedEffect(triggerKey) тоже
+//  запускался у ВСЕХ карточек сразу, включая те, что физически ниже экрана.
+//  Анимация "въезда" проигрывалась по факту загрузки списка, а не по факту
+//  попадания в кадр — до карточек в середине/конце длинного списка долистать
+//  успевал уже после того, как их анимация давно отыграла впустую.
+//  Решение — не возвращать виртуализацию, а просто ГЕЙТИТЬ старт анимации
+//  видимостью: см. параметр viewportBoundsPx выше.
 // ══════════════════════════════════════════════════════════════════════════════
