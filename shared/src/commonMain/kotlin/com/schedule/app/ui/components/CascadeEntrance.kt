@@ -18,7 +18,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -46,6 +45,13 @@ private const val STAGGER_MS        = 60L  // 50-100мс — практика р
                                             // Design рекомендует ≤20мс, но это правило про рутинные
                                             // обновления списков, а не про момент "контент загрузился")
 private const val MAX_STAGGER_ITEMS = 10 // дальше 10-го элемента задержка не растёт — иначе долго ждать
+
+// Общий спринг-спек для offsetX/offsetY — раньше дублировался в двух местах
+// (обычный въезд и повторный при возврате в кадр), вынесен один раз.
+private val entranceSpringSpec = spring<Float>(
+    dampingRatio = Spring.DampingRatioMediumBouncy,
+    stiffness    = Spring.StiffnessLow,
+)
 
 @Composable
 fun CascadeEntranceItem(
@@ -114,39 +120,56 @@ fun CascadeEntranceItem(
 
     LaunchedEffect(triggerKey) {
         val getViewportBounds = viewportBoundsPx
-        if (getViewportBounds != null) {
-            // Ждём кадра, когда карточка реально пересечёт видимую область —
-            // до этого момента здесь просто suspend, никакой анимации.
-            snapshotFlow { itemBoundsPx to getViewportBounds.invoke() }
-                .first { (item, viewport) ->
-                    item != null && viewport != null &&
-                        item.top < viewport.bottom && item.bottom > viewport.top
-                }
+        if (getViewportBounds == null) {
+            // Старое поведение — без гейта по видимости, один раз при
+            // появлении в композиции.
+            delay(STAGGER_MS * index.coerceAtMost(MAX_STAGGER_ITEMS))
+            launch { offsetX.animateTo(0f, entranceSpringSpec) }
+            launch { offsetY.animateTo(0f, entranceSpringSpec) }
+            launch { alpha.animateTo(1f, animationSpec = tween(220)) }
+            return@LaunchedEffect
         }
 
-        val delayMs = STAGGER_MS * index.coerceAtMost(MAX_STAGGER_ITEMS)
-        delay(delayMs)
-        launch {
-            offsetX.animateTo(
-                targetValue   = 0f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness    = Spring.StiffnessLow,
-                ),
-            )
-        }
-        launch {
-            offsetY.animateTo(
-                targetValue   = 0f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness    = Spring.StiffnessLow,
-                ),
-            )
-        }
-        launch {
-            alpha.animateTo(1f, animationSpec = tween(220))
-        }
+        // Гейт по видимости — но теперь не "первый раз и забыли" (first{}),
+        // а живое отслеживание входа/выхода из кадра (collect{}), пока жив
+        // сам triggerKey. Пролистал вниз, элемент ушёл за край — тихо
+        // откатываем его в стартовое положение (он всё равно не виден, тут
+        // анимировать нечего). Вернулся в кадр (хоть сверху, хоть снизу) —
+        // снова проигрываем въезд, как в самый первый раз.
+        //
+        // hasAnimatedOnce — стаггер-задержка (STAGGER_MS * index) нужна
+        // только для самого первого появления, когда карточки первого
+        // экрана въезжают "волной" одна за другой. При повторном входе
+        // (проскроллил туда-обратно) элементы и так появляются по одному —
+        // сама прокрутка уже даёт нужный тайминг, а добавочная задержка
+        // тут же читалась бы как лишний лаг перед появлением.
+        var wasVisible = false
+        var hasAnimatedOnce = false
+        snapshotFlow { itemBoundsPx to getViewportBounds.invoke() }
+            .collect { (item, viewport) ->
+                val isVisible = item != null && viewport != null &&
+                    item.top < viewport.bottom && item.bottom > viewport.top
+
+                if (isVisible && !wasVisible) {
+                    launch {
+                        if (!hasAnimatedOnce) {
+                            hasAnimatedOnce = true
+                            delay(STAGGER_MS * index.coerceAtMost(MAX_STAGGER_ITEMS))
+                        }
+                        launch { offsetX.animateTo(0f, entranceSpringSpec) }
+                        launch { offsetY.animateTo(0f, entranceSpringSpec) }
+                        launch { alpha.animateTo(1f, animationSpec = tween(220)) }
+                    }
+                } else if (!isVisible && wasVisible) {
+                    // Ушёл из кадра — откат БЕЗ анимации (snapTo, не
+                    // animateTo): его всё равно никто не видит, анимировать
+                    // отступление за экран незачем, только тратить кадры.
+                    offsetX.snapTo(startX)
+                    offsetY.snapTo(startY)
+                    alpha.snapTo(0f)
+                }
+                wasVisible = isVisible
+            }
     }
 
     Box(
