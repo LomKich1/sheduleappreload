@@ -16,7 +16,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,7 +33,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -45,7 +49,7 @@ import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
-import com.schedule.app.ui.components.rememberScrollCascadeState
+import com.schedule.app.ui.components.rememberSwipeBackModifier
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
 
@@ -209,6 +213,13 @@ fun ScheduleScreen(
     // когда пикер раскрыт тумблером без перезагрузки (см. lastRevealApplied
     // ниже); во всех остальных случаях действует обычная goingBack-логика
     // (LEFT назад / BOTTOM вперёд, см. GroupPickerScreen(...) ниже).
+    //
+    // ВАЖНО: revealTrigger, приходящий сюда из ScheduleHostScreen, — теперь
+    // per-screen (раньше был один общий на оба режима, ученики/преподы, и тут
+    // стоял доп. гейт "if (active)", который из-за гонки active vs момент
+    // срабатывания триггера ловил не тот экран — см. подробности в
+    // ScheduleHostScreen.kt). С раздельным триггером сюда в принципе не
+    // прилетает ничего лишнего, поэтому гейта по active больше нет.
     var pickerRevealEdgeOverride by remember { mutableStateOf<CascadeEdge?>(null) }
 
     // Системный жест "назад" перехватываем ТОЛЬКО пока показано расписание —
@@ -227,14 +238,8 @@ fun ScheduleScreen(
     var lastRevealApplied by remember { mutableStateOf(revealTrigger) }
     LaunchedEffect(revealTrigger) {
         if (revealTrigger != lastRevealApplied) {
-            // Триггер общий на оба экрана (ученики/преподы) — см. подробный
-            // комментарий у идентичного блока в TeacherScheduleScreen.kt.
-            // Реплеим каскад пикера только когда именно этот режим становится
-            // активным, иначе он лишний раз переигрывался и у уходящего вида.
-            if (active) {
-                pickerRevealEdgeOverride = revealEdge
-                transitionSeq++
-            }
+            pickerRevealEdgeOverride = revealEdge
+            transitionSeq++
             lastRevealApplied = revealTrigger
         }
     }
@@ -252,6 +257,14 @@ fun ScheduleScreen(
         else -> ""
     }
 
+    // Свайп слева направо — выйти с расписания пар обратно к пикеру, с
+    // любой точки экрана, живо едет за пальцем. См. подробности в
+    // rememberSwipeBackModifier (SwipeBackGesture.kt) — включая, почему
+    // именно Initial-pass жест, а не обычный detectHorizontalDragGestures.
+    // enabled = isPairsScreen — жест имеет смысл только когда есть куда
+    // возвращаться (пикер/загрузка/ошибка не участвуют).
+    val swipeBackModifier = rememberSwipeBackModifier(enabled = isPairsScreen, onBack = backToPicker)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -264,12 +277,23 @@ fun ScheduleScreen(
             onHeaderInfo(
                 ScheduleHeaderInfo(
                     title          = headerGroupName,
-                    placeholder    = "Выберите группу",
+                    // Раньше тут был константный "Выберите группу", видимый
+                    // и во время Loading, и на самом пикере — при этом внутри
+                    // тела экрана (см. GroupPickerLoading) уже отдельно шло
+                    // "Загружаем список групп…". Теперь шапка синхронизирована
+                    // с тем же текстом, что и тело — не два разных сообщения
+                    // о состоянии, а одно.
+                    placeholder    = if (uiState is ScheduleUiState.Loading)
+                        "Загружаем список групп…"
+                    else
+                        "Выберите группу",
                     dateText       = file.dateLabel,
                     isPairsScreen  = isPairsScreen,
                     isLoading      = uiState is ScheduleUiState.Loading,
                     progress       = progress,
-                    filledFontSize = 22.sp,
+                    // Размер больше не переопределяем — единый filledFontSize
+                    // (17.sp, как в AppHeader) задан дефолтом в самой
+                    // ScheduleHeaderInfo, см. комментарий там.
                     // Со экрана пар стрелка ведёт к пикеру группы; с любого
                     // другого под-экрана (пикер, загрузка, ошибка) — как
                     // раньше, наружу из ScheduleScreen.
@@ -280,7 +304,7 @@ fun ScheduleScreen(
 
         AnimatedContent(
             targetState = uiState,
-            modifier    = Modifier.weight(1f),
+            modifier    = Modifier.weight(1f).then(swipeBackModifier),
             transitionSpec = {
                 val from = initialState
                 val to   = targetState
@@ -415,33 +439,51 @@ private fun GroupPickerScreen(
         // вместо прилипания к верху с пустым "хвостом".
         val isShort = orderedGroups.size <= 3
 
-        val listState = rememberLazyListState()
-        // Раньше при прокрутке элементы, ушедшие за пределы экрана и
-        // вернувшиеся обратно, "случайно" заново проигрывали анимацию входа
-        // на экран (включая LEFT после возврата с расписания пары — что
-        // выглядело нелогично). Теперь это разделено осознанно —
-        // см. комментарий у ScrollCascadeState.
-        val scrollCascade = rememberScrollCascadeState(listState, entranceTrigger)
-
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 14.dp, end = 14.dp,
-                bottom = 80.dp, top = 2.dp,
-            ),
+        // Раньше тут стоял LazyColumn — виртуализация, при которой карточки,
+        // ушедшие за пределы экрана, полностью уничтожаются и пересоздаются
+        // при возврате в вьюпорт. Список групп конечен и небольшой (обычно
+        // до полусотни строк в самом крупном файле), поэтому цена
+        // виртуализации (постоянная композиция/декомпозиция карточек при
+        // каждом скролле) оказалась дороже, чем просто держать все карточки
+        // в памяти сразу — LazyColumn и вызывал ощутимые подтормаживания при
+        // прокрутке, о которых просили разобраться. Обычный Column с
+        // verticalScroll строит вообще ВСЕ карточки один раз при первом
+        // появлении экрана и просто скроллит уже готовое дерево — скроллинг
+        // становится чисто графической операцией без перекомпозиции.
+        //
+        // Вместе с этим ScrollCascadeState (см. CascadeEntrance.kt) тут
+        // больше не нужен и убран: он существовал ИМЕННО для того, чтобы
+        // отличать "первое появление карточки" от "пересоздания при
+        // скролле" — раз пересоздания при скролле больше физически не
+        // происходит, разделять эти случаи незачем.
+        //
+        // viewportBoundsPx — компенсирует ДРУГОЙ побочный эффект того же
+        // перехода: раз все карточки строятся сразу, без него анимация
+        // входа проигрывалась бы у всех разом при открытии экрана, а не по
+        // факту попадания в кадр при скролле (см. подробный комментарий в
+        // CascadeEntrance.kt). Ловим bounds именно этого Column — он же и
+        // есть видимая область: fillMaxSize() выше заставляет его занимать
+        // ровно столько, сколько выделено родителем, а verticalScroll сам
+        // клипует содержимое по этим границам.
+        var viewportBoundsPx by remember { mutableStateOf<Rect?>(null) }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { viewportBoundsPx = it.boundsInWindow() }
+                .verticalScroll(rememberScrollState())
+                .padding(start = 14.dp, end = 14.dp, bottom = 80.dp, top = 2.dp),
             verticalArrangement = if (isShort)
                 Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
             else
                 Arrangement.spacedBy(8.dp),
         ) {
-            itemsIndexed(orderedGroups, key = { _, g -> "g_$g" }) { idx, group ->
-                val mount = scrollCascade.resolve("g_$group", idx, entranceEdge)
+            orderedGroups.forEachIndexed { idx, group ->
                 CascadeEntranceItem(
-                    index      = mount.index,
+                    index      = idx,
                     triggerKey = entranceTrigger,
                     enabled    = entranceEnabled,
-                    edge       = mount.edge,
+                    edge       = entranceEdge,
+                    viewportBoundsPx = { viewportBoundsPx },
                 ) {
                     GroupCard(name = group, isPinned = group == pinnedInFile) { onSelect(group) }
                 }

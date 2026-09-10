@@ -5,7 +5,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -14,9 +13,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeSource
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  CascadeEntrance — каскадное появление элементов списка с пружинным отскоком.
@@ -44,12 +48,56 @@ private const val STAGGER_MS        = 60L  // 50-100мс — практика р
                                             // обновления списков, а не про момент "контент загрузился")
 private const val MAX_STAGGER_ITEMS = 10 // дальше 10-го элемента задержка не растёт — иначе долго ждать
 
+// Окно после открытия экрана, в течение которого попадание карточки в кадр
+// считается "первым экраном" (видна сразу, без скролла) и получает
+// стаггер-задержку по index — см. подробный комментарий у mountMark ниже.
+private val MOUNT_WINDOW = 300.milliseconds
+
+// Общий спринг-спек для offsetX/offsetY — раньше дублировался в двух местах
+// (обычный въезд и повторный при возврате в кадр), вынесен один раз.
+private val entranceSpringSpec = spring<Float>(
+    dampingRatio = Spring.DampingRatioMediumBouncy,
+    stiffness    = Spring.StiffnessLow,
+)
+
 @Composable
 fun CascadeEntranceItem(
     index: Int,
     triggerKey: Any?,
     enabled: Boolean,
     edge: CascadeEdge,
+    // Направление "волны" первого экрана (см. isInitialWave ниже) — LEFT/RIGHT
+    // при возврате с расписания пар / раскрытии тумблером, BOTTOM при свежей
+    // загрузке. Раньше ЭТОТ ЖЕ edge применялся вообще ко ВСЕМ появлениям
+    // карточки, включая те, что произошли позже — просто по факту скролла
+    // вниз по списку. Из-за этого карточка, раскрытая вернувшимся со экрана
+    // конкретной группы/препода LEFT-въездом, продолжала въезжать точно так
+    // же слева и при обычной прокрутке — хотя логически это два разных
+    // события ("вернулись" vs "долистали"), и должны выглядеть по-разному.
+    //
+    // scrollRevealEdge — что использовать для ВТОРОГО случая (появление по
+    // факту скролла, не в первые MOUNT_WINDOW после открытия) — по умолчанию
+    // BOTTOM, тот же стиль, что при обычном "свежем" заходе на экран
+    // групп/преподов из Files.
+    scrollRevealEdge: CascadeEdge = CascadeEdge.BOTTOM,
+    // null (по умолчанию) — старое поведение: анимация стартует сразу при
+    // появлении в композиции, без оглядки на скролл. Годится для списков,
+    // целиком помещающихся на экране (пары дня, скелетоны загрузки) — там
+    // "видимость" и "появление в композиции" — одно и то же.
+    //
+    // non-null — анимация стартует ТОЛЬКО когда элемент реально попадает в
+    // видимую часть viewport'а. Нужно для длинных Column+verticalScroll
+    // списков (пикер группы/преподавателя, см. GroupPickerScreen) — раз все
+    // карточки строятся сразу при первом появлении экрана (см. история ниже
+    // про отказ от LazyColumn), без этого гейта анимация проигрывалась бы
+    // сразу у ВСЕХ карточек одновременно, включая те, что ещё физически ниже
+    // экрана и появятся только через полминуты скролла — то есть "каскад"
+    // был бы не по месту прокрутки, а по факту загрузки списка.
+    //
+    // Лямбда, а не голый Rect — читается изнутри snapshotFlow (см. ниже),
+    // чтобы отслеживать движение viewport'а/самой карточки БЕЗ пересоздания
+    // всего LaunchedEffect на каждый кадр скролла (см. подробности там же).
+    viewportBoundsPx: (() -> Rect?)? = null,
     content: @Composable () -> Unit,
 ) {
     if (!enabled) {
@@ -57,127 +105,179 @@ fun CascadeEntranceItem(
         return
     }
 
-    val startX = when (edge) {
-        CascadeEdge.LEFT   -> -START_OFFSET_PX
-        CascadeEdge.RIGHT  -> START_OFFSET_PX
-        CascadeEdge.BOTTOM, CascadeEdge.TOP -> 0f
+    fun edgeOffset(e: CascadeEdge): Pair<Float, Float> {
+        val x = when (e) {
+            CascadeEdge.LEFT   -> -START_OFFSET_PX
+            CascadeEdge.RIGHT  -> START_OFFSET_PX
+            CascadeEdge.BOTTOM, CascadeEdge.TOP -> 0f
+        }
+        val y = when (e) {
+            CascadeEdge.BOTTOM -> START_OFFSET_Y_PX
+            CascadeEdge.TOP    -> -START_OFFSET_Y_PX
+            else               -> 0f
+        }
+        return x to y
     }
-    val startY = when (edge) {
-        CascadeEdge.BOTTOM -> START_OFFSET_Y_PX
-        CascadeEdge.TOP    -> -START_OFFSET_Y_PX
-        else               -> 0f
-    }
+
+    val (startX, startY) = edgeOffset(edge)
+    val (scrollStartX, scrollStartY) = edgeOffset(scrollRevealEdge)
 
     // remember(triggerKey) — при смене triggerKey создаются новые Animatable,
     // то есть элемент откатывается за край/вниз и проигрывает анимацию заново.
-    // Важно: то же самое происходит и БЕЗ смены triggerKey, если сам элемент
-    // целиком пересоздаётся — например, вышёл из зоны композиции LazyColumn
-    // при прокрутке и вернулся обратно. Раньше это выглядело как "случайный"
-    // повторный вход элементов при скролле; теперь это осознанная фича —
-    // см. ScrollCascadeState ниже, который подбирает edge/index для такого
-    // случая отдельно от первого появления после навигации.
+    // То же самое происходит и БЕЗ смены triggerKey, если сам элемент целиком
+    // пересоздаётся — например, вышёл из зоны композиции LazyColumn при
+    // прокрутке и вернулся обратно. Раньше от этого "случайно" переигрывался
+    // повторный вход при скролле у пикеров группы/преподавателя — решалось
+    // отдельным ScrollCascadeState (см. историю ниже), но с переходом этих
+    // пикеров на обычный Column+verticalScroll пересоздания при скролле
+    // физически больше не происходит, так что для НИХ проблема снята сама
+    // собой. Если где-то ещё в будущем понадобится CascadeEntranceItem внутри
+    // настоящего LazyColumn — этот сценарий (повторный вход при скролле)
+    // снова станет актуален, и придётся либо восстановить похожий механизм,
+    // либо сознательно с ним смириться.
     val offsetX = remember(triggerKey) { Animatable(startX) }
     val offsetY = remember(triggerKey) { Animatable(startY) }
     val alpha   = remember(triggerKey) { Animatable(0f) }
 
+    // Собственные координаты карточки в окне — обновляются на каждый layout-
+    // проход (в т.ч. каждый кадр скролла). Читаются через snapshotFlow, а не
+    // как ключ LaunchedEffect — ключ пересоздавал бы весь эффект (и отменял
+    // бы уже идущий delay/animateTo) на каждый такой кадр.
+    //
+    // БЕЗ (triggerKey) в remember — ключевой момент: раньше это тоже
+    // сбрасывалось в null при смене triggerKey, вместе с Animatable выше.
+    // Баг: при переключении Ученики↔Преподаватели ТАПОМ по тумблеру (не
+    // свайпом) карточки пропадали и не появлялись обратно, пока не тронешь
+    // скролл. Причина — тумблер двигает страницы через graphicsLayer{
+    // translationX = ... } в ScheduleHostScreen: это ЧИСТО visual-трансформ
+    // (draw-фаза), он НЕ вызывает повторный layout-проход у контента внутри
+    // — а onGloballyPositioned вызывается именно как часть layout-прохода.
+    // После сброса в null (по старому triggerKey-скоупу) новый
+    // onGloballyPositioned просто было неоткуда взять — карточка не видит
+    // сама себя (item=null → isVisible=false) до тех пор, пока НЕ произойдёт
+    // настоящий layout-пересчёт — а его вызывает именно скролл. При свайпе
+    // это маскировалось: в самом начале жеста, пока направление ещё не
+    // определилось (см. SwipableTabProgress.kt), микроскопическая вертикаль
+    // в движении пальца успевала просочиться в verticalScroll ДО захвата
+    // жеста — этого хватало на один настоящий layout-пересчёт, который
+    // "случайно" чинил обоих. С тапом такого касания нет вообще, и без
+    // скролла подвесить было некому.
+    //
+    // Фикс — не завязывать itemBoundsPx на triggerKey вообще: реальная
+    // Y-позиция карточки в списке от переключения тумблером не меняется
+    // (двигается только X, через graphicsLayer, и не участвует в нашей
+    // проверке видимости), так что старое значение остаётся валидным и
+    // сразу доступно для проверки в момент, когда новый LaunchedEffect
+    // стартует — ждать нового layout-события больше не нужно.
+    var itemBoundsPx by remember { mutableStateOf<Rect?>(null) }
+
     LaunchedEffect(triggerKey) {
-        val delayMs = STAGGER_MS * index.coerceAtMost(MAX_STAGGER_ITEMS)
-        delay(delayMs)
-        launch {
-            offsetX.animateTo(
-                targetValue   = 0f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness    = Spring.StiffnessLow,
-                ),
-            )
+        val getViewportBounds = viewportBoundsPx
+        if (getViewportBounds == null) {
+            // Старое поведение — без гейта по видимости, один раз при
+            // появлении в композиции.
+            delay(STAGGER_MS * index.coerceAtMost(MAX_STAGGER_ITEMS))
+            launch { offsetX.animateTo(0f, entranceSpringSpec) }
+            launch { offsetY.animateTo(0f, entranceSpringSpec) }
+            launch { alpha.animateTo(1f, animationSpec = tween(220)) }
+            return@LaunchedEffect
         }
-        launch {
-            offsetY.animateTo(
-                targetValue   = 0f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness    = Spring.StiffnessLow,
-                ),
-            )
-        }
-        launch {
-            alpha.animateTo(1f, animationSpec = tween(220))
-        }
+
+        // Гейт по видимости — но теперь не "первый раз и забыли" (first{}),
+        // а живое отслеживание входа/выхода из кадра (collect{}), пока жив
+        // сам triggerKey. Пролистал вниз, элемент ушёл за край — тихо
+        // откатываем его в стартовое положение (он всё равно не виден, тут
+        // анимировать нечего). Вернулся в кадр (хоть сверху, хоть снизу) —
+        // снова проигрываем въезд, как в самый первый раз.
+        //
+        // mountMark/MOUNT_WINDOW — стаггер-задержка (STAGGER_MS * index)
+        // и направление edge применяются только к "волне" первого экрана —
+        // карточкам, попавшим в кадр в первые MOUNT_WINDOW после открытия
+        // (видны сразу, без скролла). Всё, что показалось в кадре позже —
+        // хоть при первом скролле, хоть при повторном — появляется СРАЗУ,
+        // без задержки, и с направлением scrollRevealEdge, а не edge: сам
+        // жест скролла уже раскрывает карточки по одной, добавочная
+        // задержка тут читалась бы только как лишний лаг, а "въезд слева"
+        // (направление возврата с расписания пар) на карточке из середины
+        // списка, до которой долистали спустя пять секунд — просто не к
+        // месту, там уместен тот же стиль, что и при обычной догрузке.
+        val mountMark = TimeSource.Monotonic.markNow()
+        var wasVisible = false
+        snapshotFlow { itemBoundsPx to getViewportBounds.invoke() }
+            .collect { (item, viewport) ->
+                val isVisible = item != null && viewport != null &&
+                    item.top < viewport.bottom && item.bottom > viewport.top
+
+                if (isVisible && !wasVisible) {
+                    val isInitialWave = mountMark.elapsedNow() < MOUNT_WINDOW
+                    launch {
+                        if (isInitialWave) {
+                            offsetX.snapTo(startX)
+                            offsetY.snapTo(startY)
+                            alpha.snapTo(0f)
+                            delay(STAGGER_MS * index.coerceAtMost(MAX_STAGGER_ITEMS))
+                        } else {
+                            offsetX.snapTo(scrollStartX)
+                            offsetY.snapTo(scrollStartY)
+                            alpha.snapTo(0f)
+                        }
+                        launch { offsetX.animateTo(0f, entranceSpringSpec) }
+                        launch { offsetY.animateTo(0f, entranceSpringSpec) }
+                        launch { alpha.animateTo(1f, animationSpec = tween(220)) }
+                    }
+                } else if (!isVisible && wasVisible) {
+                    // Ушёл из кадра — откат БЕЗ анимации (snapTo, не
+                    // animateTo): его всё равно никто не видит, анимировать
+                    // отступление за экран незачем, только тратить кадры.
+                    // scrollStartX/Y — не edge/startX/Y: реальный повторный
+                    // вход почти наверняка случится уже позже MOUNT_WINDOW.
+                    offsetX.snapTo(scrollStartX)
+                    offsetY.snapTo(scrollStartY)
+                    alpha.snapTo(0f)
+                }
+                wasVisible = isVisible
+            }
     }
 
     Box(
-        modifier = Modifier.graphicsLayer {
-            translationX = offsetX.value
-            translationY = offsetY.value
-            this.alpha   = alpha.value
-        },
+        modifier = Modifier
+            .onGloballyPositioned { coords ->
+                if (viewportBoundsPx != null) {
+                    itemBoundsPx = coords.boundsInWindow()
+                }
+            }
+            .graphicsLayer {
+                translationX = offsetX.value
+                translationY = offsetY.value
+                this.alpha   = alpha.value
+            },
     ) {
         content()
     }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  ScrollCascadeState — та же каскадная анимация, но для прокрутки списка.
+//  История: раньше тут жил ScrollCascadeState — костыль под LazyColumn в
+//  пикерах группы/преподавателя (ScheduleScreen.kt/TeacherScheduleScreen.kt).
+//  Он различал "первое появление карточки" (вход на экран) от "пересоздания
+//  при прокрутке" (LazyColumn уничтожает и заново создаёт композицию
+//  элементов, ушедших за пределы экрана), чтобы карточка не переигрывала
+//  анимацию входа заново каждый раз, когда снова попадала в вьюпорт.
 //
-//  LazyColumn полностью уничтожает композицию элементов, ушедших далеко за
-//  пределы экрана, и создаёт её заново, когда они возвращаются в видимую
-//  область — из-за этого CascadeEntranceItem выше "случайно" проигрывал
-//  анимацию входа повторно при прокрутке, используя тот же edge, что и вход
-//  на экран (включая LEFT после возврата с расписания пары/преподавателя —
-//  выглядело нелогично, эффект навигации назад никак не должен быть связан
-//  с прокруткой списка).
+//  Удалено вместе с самим переходом этих двух пикеров с LazyColumn на
+//  обычный Column+verticalScroll (список групп/преподавателей конечный и
+//  небольшой — виртуализация обходилась дороже, чем просто держать все
+//  карточки в памяти, и была прямой причиной подтормаживаний при скролле).
+//  Без пересоздания композиции при скролле сам класс не нужен — все
+//  использования были только в этих двух местах.
 //
-//  Здесь это осознанно разделено на два разных случая:
-//   - первое появление ключа в рамках текущего triggerKey — это часть
-//     перехода на экран, используется переданный navigationEdge как раньше;
-//   - повторное появление того же ключа (пересоздание при прокрутке) —
-//     всегда тот же "язык", что и у появления после открытия файла (BOTTOM),
-//     инвертированный на TOP при прокрутке вверх, и БЕЗ стаггер-задержки по
-//     абсолютному индексу в списке (задержка расчитана на пачку из ~10
-//     элементов, а тут за раз обычно возвращается один — с полной задержкой
-//     по индексу это выглядело как "почему-то медленно").
+//  НО у Column+verticalScroll оказался СВОЙ побочный эффект (другая сторона
+//  той же монеты): раз все карточки строятся сразу при первом появлении
+//  экрана, а не лениво по мере скролла — LaunchedEffect(triggerKey) тоже
+//  запускался у ВСЕХ карточек сразу, включая те, что физически ниже экрана.
+//  Анимация "въезда" проигрывалась по факту загрузки списка, а не по факту
+//  попадания в кадр — до карточек в середине/конце длинного списка долистать
+//  успевал уже после того, как их анимация давно отыграла впустую.
+//  Решение — не возвращать виртуализацию, а просто ГЕЙТИТЬ старт анимации
+//  видимостью: см. параметр viewportBoundsPx выше.
 // ══════════════════════════════════════════════════════════════════════════════
-
-class ScrollCascadeState internal constructor(
-    private val seenKeys: MutableSet<Any>,
-    private val scrollingDown: Boolean,
-) {
-    /** index — 0, если это повторный вход при прокрутке (без стаггера). */
-    data class Mount(val edge: CascadeEdge, val index: Int)
-
-    @Composable
-    fun resolve(key: Any, index: Int, navigationEdge: CascadeEdge): Mount {
-        val isFirstMount = key !in seenKeys
-        LaunchedEffect(key) { seenKeys.add(key) }
-        return if (isFirstMount) {
-            Mount(navigationEdge, index)
-        } else {
-            Mount(if (scrollingDown) CascadeEdge.BOTTOM else CascadeEdge.TOP, 0)
-        }
-    }
-}
-
-@Composable
-fun rememberScrollCascadeState(listState: LazyListState, triggerKey: Any): ScrollCascadeState {
-    // Обычный (не-snapshot) MutableSet — реактивность тут не нужна, каждый
-    // элемент читает его один раз при своей собственной композиции, которая
-    // и так происходит из-за скролла/навигации, а не из-за изменений в сете.
-    val seenKeys = remember(triggerKey) { mutableSetOf<Any>() }
-    var scrollingDown by remember(triggerKey) { mutableStateOf(true) }
-
-    LaunchedEffect(listState, triggerKey) {
-        var lastIndex  = listState.firstVisibleItemIndex
-        var lastOffset = listState.firstVisibleItemScrollOffset
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-            .collect { (index, offset) ->
-                if (index != lastIndex || offset != lastOffset) {
-                    scrollingDown = index > lastIndex || (index == lastIndex && offset > lastOffset)
-                    lastIndex = index
-                    lastOffset = offset
-                }
-            }
-    }
-
-    return ScrollCascadeState(seenKeys, scrollingDown)
-}

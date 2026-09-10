@@ -16,7 +16,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,7 +32,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -43,7 +47,7 @@ import com.schedule.app.data.model.TeacherLessonEntry
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
-import com.schedule.app.ui.components.rememberScrollCascadeState
+import com.schedule.app.ui.components.rememberSwipeBackModifier
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
 
@@ -189,28 +193,26 @@ fun TeacherScheduleScreen(
 
     // Одноразовая подмена направления каскада пикера преподавателя — см.
     // подробный комментарий у pickerRevealEdgeOverride в ScheduleScreen.kt.
+    //
+    // revealTrigger теперь per-screen (раньше был общий на оба режима, и тут
+    // стоял доп. гейт "if (active)" — убран, см. комментарий в
+    // ScheduleHostScreen.kt про гонку active vs момент срабатывания триггера).
     var pickerRevealEdgeOverride by remember { mutableStateOf<CascadeEdge?>(null) }
     var lastRevealApplied by remember { mutableStateOf(revealTrigger) }
     LaunchedEffect(revealTrigger) {
         if (revealTrigger != lastRevealApplied) {
-            // Триггер общий на оба экрана (ученики/преподы) — сюда прилетает
-            // ЛЮБОЕ переключение тумблера, не только "вход" в этот режим.
-            // Без "&& active" каскад карточек пикера переигрывался и у
-            // экрана, который в этот момент как раз УХОДИТ (становится
-            // неактивным) — визуально выглядело так, будто статичные
-            // элементы того же вида, что остаётся на экране, вдруг заново
-            // "влетают". Реплеим только когда именно ЭТОТ режим становится
-            // активным, но lastRevealApplied всё равно обновляем всегда —
-            // иначе при следующем реальном переключении сюда старое
-            // значение триггера будет считаться "новым".
-            if (active) {
-                pickerRevealEdgeOverride = revealEdge
-                transitionSeq++
-            }
+            pickerRevealEdgeOverride = revealEdge
+            transitionSeq++
             lastRevealApplied = revealTrigger
         }
     }
     LaunchedEffect(transitionSeq) { pickerRevealEdgeOverride = null }
+
+    // Свайп слева направо — выйти с расписания пар обратно к пикеру, с
+    // любой точки экрана, живо едет за пальцем. См. подробный комментарий
+    // у аналогичного подключения в ScheduleScreen.kt и в самом
+    // rememberSwipeBackModifier (SwipeBackGesture.kt).
+    val swipeBackModifier = rememberSwipeBackModifier(enabled = isPairsScreen, onBack = backToPicker)
 
     // Как и в ScheduleScreen: пока показывается пикер/загрузка — в шапке
     // не должно мелькать прошлое имя преподавателя из предыдущего файла.
@@ -231,12 +233,23 @@ fun TeacherScheduleScreen(
             onHeaderInfo(
                 ScheduleHeaderInfo(
                     title          = headerTeacherName,
-                    placeholder    = "Выберите преподавателя",
+                    // См. подробный комментарий у аналогичной правки в
+                    // ScheduleScreen.kt — синхронизация с "Загружаем..." из
+                    // TeacherPickerLoading вместо отдельного "Выберите..."
+                    // одновременно с ним.
+                    placeholder    = if (uiState is TeacherUiState.Loading)
+                        "Загружаем список преподавателей…"
+                    else
+                        "Выберите преподавателя",
                     dateText       = file.dateLabel,
                     isPairsScreen  = isPairsScreen,
                     isLoading      = uiState is TeacherUiState.Loading,
                     progress       = progress,
-                    filledFontSize = 20.sp,
+                    // Размер больше не переопределяем — единый filledFontSize
+                    // (17.sp, как в AppHeader) задан дефолтом в самой
+                    // ScheduleHeaderInfo (см. комментарий там; раньше здесь
+                    // стояло 20.sp, а у ScheduleScreen — своё 22.sp, из-за
+                    // чего шапка ещё и "прыгала" между режимами).
                     // Со экрана пар стрелка ведёт к пикеру преподавателя; с
                     // любого другого под-экрана — как раньше, наружу из
                     // TeacherScheduleScreen.
@@ -247,7 +260,7 @@ fun TeacherScheduleScreen(
 
         AnimatedContent(
             targetState = uiState,
-            modifier    = Modifier.weight(1f),
+            modifier    = Modifier.weight(1f).then(swipeBackModifier),
             transitionSpec = {
                 val from = initialState
                 val to   = targetState
@@ -361,28 +374,33 @@ private fun TeacherPickerScreen(
         // центрируем по вертикали вместо прилипания к верху.
         val isShort = teachers.size <= 3
 
-        val listState = rememberLazyListState()
-        val scrollCascade = rememberScrollCascadeState(listState, entranceTrigger)
-
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 14.dp, end = 14.dp,
-                bottom = 80.dp, top = 2.dp,
-            ),
+        // См. подробный комментарий у аналогичной правки в GroupPickerScreen
+        // (ScheduleScreen.kt) — та же замена LazyColumn → Column+verticalScroll
+        // по той же причине (список конечный, до ~52 преподавателей по
+        // ростеру колледжа, виртуализация была дороже, чем просто держать всё
+        // в памяти), и по той же причине ScrollCascadeState тут больше не
+        // нужен. viewportBoundsPx — тоже см. там же и в CascadeEntrance.kt:
+        // гейтит старт анимации входа реальной видимостью карточки при
+        // скролле, а не фактом загрузки списка.
+        var viewportBoundsPx by remember { mutableStateOf<Rect?>(null) }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { viewportBoundsPx = it.boundsInWindow() }
+                .verticalScroll(rememberScrollState())
+                .padding(start = 14.dp, end = 14.dp, bottom = 80.dp, top = 2.dp),
             verticalArrangement = if (isShort)
                 Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
             else
                 Arrangement.spacedBy(8.dp),
         ) {
-            itemsIndexed(teachers, key = { _, t -> "t_$t" }) { idx, teacher ->
-                val mount = scrollCascade.resolve("t_$teacher", idx, entranceEdge)
+            teachers.forEachIndexed { idx, teacher ->
                 CascadeEntranceItem(
-                    index      = mount.index,
+                    index      = idx,
                     triggerKey = entranceTrigger,
                     enabled    = entranceEnabled,
-                    edge       = mount.edge,
+                    edge       = entranceEdge,
+                    viewportBoundsPx = { viewportBoundsPx },
                 ) {
                     TeacherCard(name = teacher) { onSelect(teacher) }
                 }
