@@ -47,6 +47,7 @@ import com.schedule.app.data.model.TeacherLessonEntry
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
+import com.schedule.app.ui.components.rememberSwipeBackModifier
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
 
@@ -207,6 +208,12 @@ fun TeacherScheduleScreen(
     }
     LaunchedEffect(transitionSeq) { pickerRevealEdgeOverride = null }
 
+    // Свайп слева направо — выйти с расписания пар обратно к пикеру, с
+    // любой точки экрана, живо едет за пальцем. См. подробный комментарий
+    // у аналогичного подключения в ScheduleScreen.kt и в самом
+    // rememberSwipeBackModifier (SwipeBackGesture.kt).
+    val swipeBackModifier = rememberSwipeBackModifier(enabled = isPairsScreen, onBack = backToPicker)
+
     // Как и в ScheduleScreen: пока показывается пикер/загрузка — в шапке
     // не должно мелькать прошлое имя преподавателя из предыдущего файла.
     val headerTeacherName = when (uiState) {
@@ -253,7 +260,7 @@ fun TeacherScheduleScreen(
 
         AnimatedContent(
             targetState = uiState,
-            modifier    = Modifier.weight(1f),
+            modifier    = Modifier.weight(1f).then(swipeBackModifier),
             transitionSpec = {
                 val from = initialState
                 val to   = targetState
