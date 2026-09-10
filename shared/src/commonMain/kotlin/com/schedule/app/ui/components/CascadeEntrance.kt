@@ -66,6 +66,20 @@ fun CascadeEntranceItem(
     triggerKey: Any?,
     enabled: Boolean,
     edge: CascadeEdge,
+    // Направление "волны" первого экрана (см. isInitialWave ниже) — LEFT/RIGHT
+    // при возврате с расписания пар / раскрытии тумблером, BOTTOM при свежей
+    // загрузке. Раньше ЭТОТ ЖЕ edge применялся вообще ко ВСЕМ появлениям
+    // карточки, включая те, что произошли позже — просто по факту скролла
+    // вниз по списку. Из-за этого карточка, раскрытая вернувшимся со экрана
+    // конкретной группы/препода LEFT-въездом, продолжала въезжать точно так
+    // же слева и при обычной прокрутке — хотя логически это два разных
+    // события ("вернулись" vs "долистали"), и должны выглядеть по-разному.
+    //
+    // scrollRevealEdge — что использовать для ВТОРОГО случая (появление по
+    // факту скролла, не в первые MOUNT_WINDOW после открытия) — по умолчанию
+    // BOTTOM, тот же стиль, что при обычном "свежем" заходе на экран
+    // групп/преподов из Files.
+    scrollRevealEdge: CascadeEdge = CascadeEdge.BOTTOM,
     // null (по умолчанию) — старое поведение: анимация стартует сразу при
     // появлении в композиции, без оглядки на скролл. Годится для списков,
     // целиком помещающихся на экране (пары дня, скелетоны загрузки) — там
@@ -91,16 +105,22 @@ fun CascadeEntranceItem(
         return
     }
 
-    val startX = when (edge) {
-        CascadeEdge.LEFT   -> -START_OFFSET_PX
-        CascadeEdge.RIGHT  -> START_OFFSET_PX
-        CascadeEdge.BOTTOM, CascadeEdge.TOP -> 0f
+    fun edgeOffset(e: CascadeEdge): Pair<Float, Float> {
+        val x = when (e) {
+            CascadeEdge.LEFT   -> -START_OFFSET_PX
+            CascadeEdge.RIGHT  -> START_OFFSET_PX
+            CascadeEdge.BOTTOM, CascadeEdge.TOP -> 0f
+        }
+        val y = when (e) {
+            CascadeEdge.BOTTOM -> START_OFFSET_Y_PX
+            CascadeEdge.TOP    -> -START_OFFSET_Y_PX
+            else               -> 0f
+        }
+        return x to y
     }
-    val startY = when (edge) {
-        CascadeEdge.BOTTOM -> START_OFFSET_Y_PX
-        CascadeEdge.TOP    -> -START_OFFSET_Y_PX
-        else               -> 0f
-    }
+
+    val (startX, startY) = edgeOffset(edge)
+    val (scrollStartX, scrollStartY) = edgeOffset(scrollRevealEdge)
 
     // remember(triggerKey) — при смене triggerKey создаются новые Animatable,
     // то есть элемент откатывается за край/вниз и проигрывает анимацию заново.
@@ -120,10 +140,36 @@ fun CascadeEntranceItem(
     val alpha   = remember(triggerKey) { Animatable(0f) }
 
     // Собственные координаты карточки в окне — обновляются на каждый layout-
-    // проход (в т.ч. каждый кадр скролла). Именно поэтому ниже читаются через
-    // snapshotFlow, а не как ключ LaunchedEffect — ключ пересоздавал бы весь
-    // эффект (и отменял бы уже идущий delay/animateTo) на каждый такой кадр.
-    var itemBoundsPx by remember(triggerKey) { mutableStateOf<Rect?>(null) }
+    // проход (в т.ч. каждый кадр скролла). Читаются через snapshotFlow, а не
+    // как ключ LaunchedEffect — ключ пересоздавал бы весь эффект (и отменял
+    // бы уже идущий delay/animateTo) на каждый такой кадр.
+    //
+    // БЕЗ (triggerKey) в remember — ключевой момент: раньше это тоже
+    // сбрасывалось в null при смене triggerKey, вместе с Animatable выше.
+    // Баг: при переключении Ученики↔Преподаватели ТАПОМ по тумблеру (не
+    // свайпом) карточки пропадали и не появлялись обратно, пока не тронешь
+    // скролл. Причина — тумблер двигает страницы через graphicsLayer{
+    // translationX = ... } в ScheduleHostScreen: это ЧИСТО visual-трансформ
+    // (draw-фаза), он НЕ вызывает повторный layout-проход у контента внутри
+    // — а onGloballyPositioned вызывается именно как часть layout-прохода.
+    // После сброса в null (по старому triggerKey-скоупу) новый
+    // onGloballyPositioned просто было неоткуда взять — карточка не видит
+    // сама себя (item=null → isVisible=false) до тех пор, пока НЕ произойдёт
+    // настоящий layout-пересчёт — а его вызывает именно скролл. При свайпе
+    // это маскировалось: в самом начале жеста, пока направление ещё не
+    // определилось (см. SwipableTabProgress.kt), микроскопическая вертикаль
+    // в движении пальца успевала просочиться в verticalScroll ДО захвата
+    // жеста — этого хватало на один настоящий layout-пересчёт, который
+    // "случайно" чинил обоих. С тапом такого касания нет вообще, и без
+    // скролла подвесить было некому.
+    //
+    // Фикс — не завязывать itemBoundsPx на triggerKey вообще: реальная
+    // Y-позиция карточки в списке от переключения тумблером не меняется
+    // (двигается только X, через graphicsLayer, и не участвует в нашей
+    // проверке видимости), так что старое значение остаётся валидным и
+    // сразу доступно для проверки в момент, когда новый LaunchedEffect
+    // стартует — ждать нового layout-события больше не нужно.
+    var itemBoundsPx by remember { mutableStateOf<Rect?>(null) }
 
     LaunchedEffect(triggerKey) {
         val getViewportBounds = viewportBoundsPx
@@ -144,25 +190,17 @@ fun CascadeEntranceItem(
         // анимировать нечего). Вернулся в кадр (хоть сверху, хоть снизу) —
         // снова проигрываем въезд, как в самый первый раз.
         //
-        // mountMark/MOUNT_WINDOW — БАГ, который был здесь раньше: стаггер-
-        // задержка (STAGGER_MS * index) должна работать только для "волны"
-        // первого экрана (карточки, видимые сразу при открытии, БЕЗ
-        // скролла) — они действительно должны въезжать одна за другой. Но
-        // условие "hasAnimatedOnce" защищало только от ПОВТОРНОГО триггера
-        // (ушёл скроллом — вернулся), а не от ПЕРВОГО — то есть у карточки
-        // с, скажем, index=30 задержка всё равно считалась как
-        // STAGGER_MS * index.coerceAtMost(MAX_STAGGER_ITEMS) = 60×10 = 600мс
-        // — и это ПОСЛЕ того, как она уже реально попала в кадр при
-        // скролле. Результат — карточка визуально появляется с заметным
-        // лагом относительно самого скролла, а не сразу.
-        //
-        // Фикс — стаггер применяется только если карточка попала в кадр в
-        // первые MOUNT_WINDOW после открытия экрана (это и есть "первый
-        // экран", виден без скролла). Всё, что показалось в кадре позже —
+        // mountMark/MOUNT_WINDOW — стаггер-задержка (STAGGER_MS * index)
+        // и направление edge применяются только к "волне" первого экрана —
+        // карточкам, попавшим в кадр в первые MOUNT_WINDOW после открытия
+        // (видны сразу, без скролла). Всё, что показалось в кадре позже —
         // хоть при первом скролле, хоть при повторном — появляется СРАЗУ,
-        // без искусственной задержки: сам жест скролла уже раскрывает
-        // карточки по одной, добавочная задержка тут читалась бы только
-        // как лишний лаг.
+        // без задержки, и с направлением scrollRevealEdge, а не edge: сам
+        // жест скролла уже раскрывает карточки по одной, добавочная
+        // задержка тут читалась бы только как лишний лаг, а "въезд слева"
+        // (направление возврата с расписания пар) на карточке из середины
+        // списка, до которой долистали спустя пять секунд — просто не к
+        // месту, там уместен тот же стиль, что и при обычной догрузке.
         val mountMark = TimeSource.Monotonic.markNow()
         var wasVisible = false
         snapshotFlow { itemBoundsPx to getViewportBounds.invoke() }
@@ -174,7 +212,14 @@ fun CascadeEntranceItem(
                     val isInitialWave = mountMark.elapsedNow() < MOUNT_WINDOW
                     launch {
                         if (isInitialWave) {
+                            offsetX.snapTo(startX)
+                            offsetY.snapTo(startY)
+                            alpha.snapTo(0f)
                             delay(STAGGER_MS * index.coerceAtMost(MAX_STAGGER_ITEMS))
+                        } else {
+                            offsetX.snapTo(scrollStartX)
+                            offsetY.snapTo(scrollStartY)
+                            alpha.snapTo(0f)
                         }
                         launch { offsetX.animateTo(0f, entranceSpringSpec) }
                         launch { offsetY.animateTo(0f, entranceSpringSpec) }
@@ -184,8 +229,10 @@ fun CascadeEntranceItem(
                     // Ушёл из кадра — откат БЕЗ анимации (snapTo, не
                     // animateTo): его всё равно никто не видит, анимировать
                     // отступление за экран незачем, только тратить кадры.
-                    offsetX.snapTo(startX)
-                    offsetY.snapTo(startY)
+                    // scrollStartX/Y — не edge/startX/Y: реальный повторный
+                    // вход почти наверняка случится уже позже MOUNT_WINDOW.
+                    offsetX.snapTo(scrollStartX)
+                    offsetY.snapTo(scrollStartY)
                     alpha.snapTo(0f)
                 }
                 wasVisible = isVisible

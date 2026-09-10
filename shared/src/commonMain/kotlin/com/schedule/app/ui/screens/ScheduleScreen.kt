@@ -49,6 +49,7 @@ import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
+import com.schedule.app.ui.components.rememberSwipeBackModifier
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
 
@@ -256,6 +257,14 @@ fun ScheduleScreen(
         else -> ""
     }
 
+    // Свайп слева направо — выйти с расписания пар обратно к пикеру, с
+    // любой точки экрана, живо едет за пальцем. См. подробности в
+    // rememberSwipeBackModifier (SwipeBackGesture.kt) — включая, почему
+    // именно Initial-pass жест, а не обычный detectHorizontalDragGestures.
+    // enabled = isPairsScreen — жест имеет смысл только когда есть куда
+    // возвращаться (пикер/загрузка/ошибка не участвуют).
+    val swipeBackModifier = rememberSwipeBackModifier(enabled = isPairsScreen, onBack = backToPicker)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -295,7 +304,7 @@ fun ScheduleScreen(
 
         AnimatedContent(
             targetState = uiState,
-            modifier    = Modifier.weight(1f),
+            modifier    = Modifier.weight(1f).then(swipeBackModifier),
             transitionSpec = {
                 val from = initialState
                 val to   = targetState
