@@ -17,8 +17,19 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+
+// Мёртвая зона для этого жеста — специально БОЛЬШЕ системного touchSlop
+// (тот обычно ~8dp, рассчитан на защиту от дрожания пальца при обычном
+// тапе). Тут жест на весь экран, а не в узкой зоне у края — без осознанного
+// порога любое случайное касание с небольшим смещением (например, при
+// скролле списка пар кто-то чуть повёл пальцем не строго вертикально)
+// могло бы случайно чуть сдвинуть контент. 24dp — тот же порядок величины,
+// что и в Телеграме у свайпа-ответа на сообщение: заметно пальцу, но не
+// требует прямо размашистого жеста.
+private val DEAD_ZONE_DP = 24.dp
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  rememberSwipeBackModifier — свайп слева направо "как в iOS", с живым
@@ -69,7 +80,7 @@ fun rememberSwipeBackModifier(
                 var settled = false
                 var totalDx = 0f
                 var totalDy = 0f
-                val slop = viewConfiguration.touchSlop
+                val slop = DEAD_ZONE_DP.toPx()
 
                 while (true) {
                     val event = awaitPointerEvent(pass = PointerEventPass.Initial)
@@ -110,34 +121,46 @@ fun rememberSwipeBackModifier(
                     val shouldGoBack = offsetX.value > distanceThreshold ||
                         velocityPxPerSec > flickThresholdPxPerSec
 
-                    if (shouldGoBack) {
-                        // Дотягиваем контент ВЕСЬ путь вправо (визуально
-                        // "ушёл с экрана"), и только ПОСЛЕ этого зовём
-                        // onBack() — дальше уже AnimatedContent в
-                        // ScheduleScreen/TeacherScheduleScreen сам играет
-                        // свой обычный goingBack-переход (пикер въезжает
-                        // слева). snapTo(0f) в конце — сбрасываем себя,
-                        // чтобы следующий показ этого экрана (снова выбрали
-                        // группу) не унаследовал остаточный сдвиг.
-                        offsetX.animateTo(
-                            targetValue    = widthPx,
-                            animationSpec  = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness    = Spring.StiffnessMedium,
-                            ),
-                            initialVelocity = velocityPxPerSec,
-                        )
-                        onBack()
-                        offsetX.snapTo(0f)
-                    } else {
-                        offsetX.animateTo(
-                            targetValue   = 0f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness    = Spring.StiffnessLow,
-                            ),
-                            initialVelocity = velocityPxPerSec,
-                        )
+                    // Всё целиком — ОДНОЙ launch{}, а не по отдельности:
+                    // awaitEachGesture — restricted suspension scope (как
+                    // sequence{}), напрямую вызывать animateTo/snapTo внутри
+                    // него нельзя (именно это и упало на сборке — "Restricted
+                    // suspending functions can invoke..."). А порядок здесь
+                    // важен — animateTo (доехать) должен ЗАВЕРШИТЬСЯ ДО
+                    // onBack(), так что каждый вызов по отдельности в своём
+                    // launch{} не подошёл бы: они бы не гарантировали порядок
+                    // и не дожидались друг друга. Один launch на scope
+                    // (обычный, не restricted) — последовательно, как надо.
+                    scope.launch {
+                        if (shouldGoBack) {
+                            // Дотягиваем контент ВЕСЬ путь вправо (визуально
+                            // "ушёл с экрана"), и только ПОСЛЕ этого зовём
+                            // onBack() — дальше уже AnimatedContent в
+                            // ScheduleScreen/TeacherScheduleScreen сам играет
+                            // свой обычный goingBack-переход (пикер въезжает
+                            // слева). snapTo(0f) в конце — сбрасываем себя,
+                            // чтобы следующий показ этого экрана (снова
+                            // выбрали группу) не унаследовал остаточный сдвиг.
+                            offsetX.animateTo(
+                                targetValue    = widthPx,
+                                animationSpec  = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness    = Spring.StiffnessMedium,
+                                ),
+                                initialVelocity = velocityPxPerSec,
+                            )
+                            onBack()
+                            offsetX.snapTo(0f)
+                        } else {
+                            offsetX.animateTo(
+                                targetValue   = 0f,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness    = Spring.StiffnessLow,
+                                ),
+                                initialVelocity = velocityPxPerSec,
+                            )
+                        }
                     }
                 }
             }
