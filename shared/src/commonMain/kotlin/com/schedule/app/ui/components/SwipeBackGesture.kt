@@ -1,8 +1,10 @@
 package com.schedule.app.ui.components
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
@@ -18,6 +20,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
+import com.schedule.app.data.prefs.AnimPrefs
+import com.schedule.app.data.prefs.TabAnimMode
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -32,9 +36,18 @@ import kotlin.math.abs
 private val DEAD_ZONE_DP = 24.dp
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  rememberSwipeBackModifier — свайп слева направо "как в iOS", с живым
-//  следованием контента за пальцем: потянул вправо мимо порога/резко
-//  флик — доезжает и вызывает onBack(), не дотянул — пружинит обратно на 0.
+//  SwipeBackHandle / rememberSwipeBackHandle — свайп слева направо "как в
+//  iOS/Telegram": передний слой (пары) живо следует за пальцем, а вызывающий
+//  экран (ScheduleScreen/TeacherScheduleScreen) параллельно рисует "призрак"
+//  пикера снизу, тоже двигая его от offsetPx/widthPx — так во время самого
+//  драга уже видно, куда возвращаешься, а не пустоту с рывком анимации после
+//  отпускания. См. подробности синхронизации в комментарии над PickerSideBody
+//  в ScheduleScreen.kt.
+//
+//  Раньше это была просто rememberSwipeBackModifier(): Modifier — этого хватало
+//  для переднего слоя, но снаружи не было доступа к текущему offsetX/ширине,
+//  чтобы отрисовать что-то ещё синхронно с драгом. Теперь оборачиваем это в
+//  небольшой holder-класс с тем же modifier + сырыми offsetPx/widthPx.
 //
 //  Жест ловится с ЛЮБОЙ точки экрана (не только от края) — используется
 //  на экране расписания пар конкретной группы/преподавателя, чтобы выйти
@@ -54,18 +67,31 @@ private val DEAD_ZONE_DP = 24.dp
 //  тут просто не бывает).
 // ══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * @param modifier применяется на передний слой (сам контент "пар") — двигает
+ *        его вправо 1:1 с пальцем через graphicsLayer.translationX.
+ * @param offsetPx текущий сдвиг переднего слоя в пикселях, 0f в покое —
+ *        читай снаружи для расчёта позиции "призрака" пикера под ним.
+ * @param widthPx измеренная ширина контейнера, 0f пока не измерено/жест выключен.
+ */
+data class SwipeBackHandle(
+    val modifier: Modifier,
+    val offsetPx: Float,
+    val widthPx: Float,
+)
+
 @Composable
-fun rememberSwipeBackModifier(
+fun rememberSwipeBackHandle(
     enabled: Boolean,
     onBack: () -> Unit,
-): Modifier {
-    if (!enabled) return Modifier
+): SwipeBackHandle {
+    if (!enabled) return SwipeBackHandle(Modifier, 0f, 0f)
 
     var widthPx by remember { mutableStateOf(0f) }
     val offsetX = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
-    return Modifier
+    val modifier = Modifier
         .onSizeChanged { widthPx = it.width.toFloat() }
         .graphicsLayer { translationX = offsetX.value }
         .pointerInput(widthPx) {
@@ -121,6 +147,26 @@ fun rememberSwipeBackModifier(
                     val shouldGoBack = offsetX.value > distanceThreshold ||
                         velocityPxPerSec > flickThresholdPxPerSec
 
+                    // Спека релиза берётся из AnimPrefs.swipeBackMode — читаем
+                    // .value напрямую (не collectAsState выше), чтобы не
+                    // держать этот pointerInput-блок привязанным к отдельному
+                    // ключу и не ловить устаревшее замыкание: pointerInput тут
+                    // перезапускается только по widthPx, а не по смене режима
+                    // в дебаг-панели, так что нужен свежий читаемый именно в
+                    // момент отпускания пальца, а не значение из замыкания,
+                    // захваченного при последней перекомпозиции.
+                    val mode = AnimPrefs.swipeBackMode.value
+                    val releaseSpec: AnimationSpec<Float> = when (mode) {
+                        TabAnimMode.DEFAULT -> tween(
+                            durationMillis = AnimPrefs.swipeBackDurationMs.value,
+                            easing         = FastOutSlowInEasing,
+                        )
+                        TabAnimMode.SPRING, TabAnimMode.PARALLAX -> spring(
+                            dampingRatio = AnimPrefs.swipeBackSpringDamping.value,
+                            stiffness    = AnimPrefs.swipeBackSpringStiffness.value,
+                        )
+                    }
+
                     // Всё целиком — ОДНОЙ launch{}, а не по отдельности:
                     // awaitEachGesture — restricted suspension scope (как
                     // sequence{}), напрямую вызывать animateTo/snapTo внутри
@@ -138,26 +184,23 @@ fun rememberSwipeBackModifier(
                             // onBack() — дальше уже AnimatedContent в
                             // ScheduleScreen/TeacherScheduleScreen сам играет
                             // свой обычный goingBack-переход (пикер въезжает
-                            // слева). snapTo(0f) в конце — сбрасываем себя,
-                            // чтобы следующий показ этого экрана (снова
+                            // слева) — но с EnterTransition.None, т.к. к этому
+                            // моменту "призрак" пикера уже отрисован в той же
+                            // позиции (см. PickerSideBody-ghost в
+                            // ScheduleScreen.kt). snapTo(0f) в конце — сбрасываем
+                            // себя, чтобы следующий показ этого экрана (снова
                             // выбрали группу) не унаследовал остаточный сдвиг.
                             offsetX.animateTo(
-                                targetValue    = widthPx,
-                                animationSpec  = spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness    = Spring.StiffnessMedium,
-                                ),
+                                targetValue     = widthPx,
+                                animationSpec   = releaseSpec,
                                 initialVelocity = velocityPxPerSec,
                             )
                             onBack()
                             offsetX.snapTo(0f)
                         } else {
                             offsetX.animateTo(
-                                targetValue   = 0f,
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness    = Spring.StiffnessLow,
-                                ),
+                                targetValue     = 0f,
+                                animationSpec   = releaseSpec,
                                 initialVelocity = velocityPxPerSec,
                             )
                         }
@@ -165,4 +208,6 @@ fun rememberSwipeBackModifier(
                 }
             }
         }
+
+    return SwipeBackHandle(modifier = modifier, offsetPx = offsetX.value, widthPx = widthPx)
 }
