@@ -43,20 +43,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.util.lerp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.schedule.app.data.model.LessonEntry
 import com.schedule.app.data.model.ScheduleDay
 import com.schedule.app.data.model.ScheduleFile
-import com.schedule.app.data.prefs.AnimPrefs
 import com.schedule.app.data.prefs.AppPrefs
-import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
-import com.schedule.app.ui.components.rememberSwipeBackHandle
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
-import kotlin.math.pow
 
 // Длительность анимации переключения между "под-экранами" ScheduleScreen
 // (пикер группы ↔ расписание пар) — то же значение, что и NAV_ANIM_MS в
@@ -214,29 +209,6 @@ fun ScheduleScreen(
         vm.clearGroup()
     }
 
-    // ── Живой свайп-назад (пары → пикер) ────────────────────────────────────
-    // lastPickerState — последнее НЕ-парное состояние (Idle/Loading/GroupPicker/
-    // Error). Пока показаны пары, uiState — Success/OnPractice, и настоящего
-    // GroupPicker(...) для отрисовки уже нет — этот кеш даёт "призраку" ниже
-    // что рисовать во время самого драга, ДО того как vm.clearGroup() реально
-    // пересчитает список групп из закешированных байт.
-    var lastPickerState by remember { mutableStateOf<ScheduleUiState>(ScheduleUiState.Idle) }
-    LaunchedEffect(uiState) {
-        if (uiState !is ScheduleUiState.Success && uiState !is ScheduleUiState.OnPractice) {
-            lastPickerState = uiState
-        }
-    }
-
-    // swipeJustCompleted — одноразовый флаг: свайп САМ дорисовал возврат к
-    // пикеру живьём (см. "призрак" ниже), поэтому когда uiState реально
-    // переключится на GroupPicker, обычный AnimatedContent-переход (тот, что
-    // играется по кнопке "назад"/карандашу) должен в этот раз промолчать —
-    // иначе поверх уже готового кадра наложится ещё один слайд-ин, и получится
-    // видимый "дёрг" в конце жеста. Сбрасывается тем же приёмом, что и
-    // pickerRevealEdgeOverride ниже — на один-единственный переход.
-    var swipeJustCompleted by remember { mutableStateOf(false) }
-    LaunchedEffect(transitionSeq) { swipeJustCompleted = false }
-
     // Одноразовая "подмена" направления каскада пикера — используется только
     // когда пикер раскрыт тумблером без перезагрузки (см. lastRevealApplied
     // ниже); во всех остальных случаях действует обычная goingBack-логика
@@ -285,50 +257,6 @@ fun ScheduleScreen(
         else -> ""
     }
 
-    // Свайп слева направо — выйти с расписания пар обратно к пикеру, с
-    // любой точки экрана, живо едет за пальцем. См. подробности в
-    // rememberSwipeBackHandle (SwipeBackGesture.kt) — включая, почему
-    // именно Initial-pass жест, а не обычный detectHorizontalDragGestures.
-    // enabled = isPairsScreen — жест имеет смысл только когда есть куда
-    // возвращаться (пикер/загрузка/ошибка не участвуют).
-    //
-    // onBack тут — ОТДЕЛЬНЫЙ от backToPicker выше колбэк: свайп уже сам
-    // отрисовал "призрак" пикера живьём (см. ниже), поэтому кроме обычных
-    // goingBack/vm.clearGroup() ему нужно ещё выставить swipeJustCompleted,
-    // чтобы AnimatedContent не переиграл вход GroupPicker ещё раз поверх уже
-    // готового кадра.
-    val swipeBack = rememberSwipeBackHandle(
-        enabled = isPairsScreen,
-        onBack  = {
-            goingBack = true
-            swipeJustCompleted = true
-            vm.clearGroup()
-        },
-    )
-
-    // Режим анимации свайпа-назад и параметры параллакса — из дебаг-настроек
-    // (см. DebugSettingsScreen → "Свайп назад: пары → пикер"). В релизе всегда
-    // DEFAULT, если не открывали дебаг-панель и не трогали крутилки.
-    val swipeBackMode         by AnimPrefs.swipeBackMode.collectAsState()
-    val swipeBackParallaxPow  by AnimPrefs.swipeBackParallaxPower.collectAsState()
-
-    // 0f в покое, 1f — палец дотянул на всю ширину экрана. Единственный
-    // источник правды для "призрака" ниже — вычисляется из тех же сырых
-    // offsetPx/widthPx, которые двигают сам передний слой (пары), так что оба
-    // слоя гарантированно совпадают кадр-в-кадр, включая хвост release-анимации
-    // после отпускания пальца (offsetX всё ещё едет к widthPx в это время).
-    val dragProgress = if (swipeBack.widthPx > 0f)
-        (swipeBack.offsetPx / swipeBack.widthPx).coerceIn(0f, 1f)
-    else 0f
-
-    // В PARALLAX-режиме "призрак" не идёт с пальцем строго 1:1, а слегка
-    // "нагоняет" — та же кривая (1 - (1-p)^power), что и у Bells/Teacher
-    // переднего слоя в AppScaffold.kt/ScheduleHostScreen.kt, для единого
-    // ощущения глубины во всём приложении. В DEFAULT/SPRING — просто 1:1.
-    val ghostProgress = if (swipeBackMode == TabAnimMode.PARALLAX)
-        1f - (1f - dragProgress).pow(swipeBackParallaxPow)
-    else dragProgress
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -366,160 +294,91 @@ fun ScheduleScreen(
             )
         }
 
-        Box(modifier = Modifier.weight(1f)) {
-            // ── "Призрак" пикера — живой предпросмотр во время свайпа-назад ──
-            // Рисуется ПОД основным AnimatedContent (порядок вызовов в Box —
-            // z-order), тем же PickerSideBody, что и внутренняя ветка GroupPicker
-            // ниже (гарантия пиксель-в-пиксель совпадения, чтобы финальная
-            // подмена на настоящий uiState была незаметна — см. swipeJustCompleted
-            // выше). Виден, только пока реально идёт/доигрывает жест — при
-            // dragProgress == 0 полностью скрыт за левым краем, лишних
-            // перерисовок в состоянии покоя не добавляет.
-            if (dragProgress > 0f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            translationX = -size.width * (1f - ghostProgress)
-                            if (swipeBackMode == TabAnimMode.PARALLAX) {
-                                val s = lerp(0.94f, 1f, ghostProgress)
-                                scaleX = s
-                                scaleY = s
-                                alpha = lerp(0.55f, 1f, ghostProgress)
-                            }
-                        },
-                ) {
-                    PickerSideBody(
-                        state                    = lastPickerState,
-                        transitionSeq            = transitionSeq,
-                        goingBack                = true,
-                        pickerRevealEdgeOverride = null,
-                        onSelectGroup            = { group -> goingBack = false; vm.selectGroup(group, file.name) },
-                        onRetry                  = { goingBack = false; vm.load(file) },
-                    )
+        AnimatedContent(
+            targetState = uiState,
+            modifier    = Modifier.weight(1f),
+            transitionSpec = {
+                val from = initialState
+                val to   = targetState
+
+                // Скелетон загрузки и реальный список групп теперь идентичны по
+                // расположению (см. правки GroupPickerLoading выше) — слайд/фейд
+                // между ними смотрится как лишний "дёрг" ради самого себя, поэтому
+                // здесь просто мгновенная подмена контента без анимации.
+                val isSkeletonToPicker =
+                    from is ScheduleUiState.Loading && from.stage == LoadingStage.FILE &&
+                    to is ScheduleUiState.GroupPicker
+
+                // Idle → Loading — это самый первый внутренний переход сразу после
+                // того, как NavHost только что задвинул весь ScheduleScreen целиком
+                // слайдом справа (см. enterTransition в AppScaffold). Если тут ещё
+                // раз слайдить содержимое, анимация "двоится" — накладывается сама
+                // на себя в первые ~280мс. Idle ничего осмысленного не показывает,
+                // так что для этого перехода анимация просто не нужна.
+                val isInitialLoad = from is ScheduleUiState.Idle
+
+                if (isSkeletonToPicker || isInitialLoad) {
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else if (goingBack) {
+                    // Те же слайды, что и в AppScaffold: назад — новый экран
+                    // въезжает с ЛЕВОГО края, старый уезжает вправо (см.
+                    // NAV_ANIM_MS/popEnterTransition в AppScaffold.kt).
+                    (slideInHorizontally(
+                        initialOffsetX = { -it / 4 },
+                        animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                    ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
+                        (slideOutHorizontally(
+                            targetOffsetX = { it },
+                            animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                        ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
+                } else {
+                    // Вперёд — новый экран въезжает с ПРАВОГО края, старый чуть
+                    // уезжает влево (см. enterTransition в AppScaffold.kt).
+                    (slideInHorizontally(
+                        initialOffsetX = { it },
+                        animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                    ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
+                        (slideOutHorizontally(
+                            targetOffsetX = { -it / 4 },
+                            animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                        ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
                 }
-            }
+            },
+            label = "scheduleSubscreen",
+        ) { state ->
+            when (state) {
+                is ScheduleUiState.Success -> SchedContent(
+                    day             = state.day,
+                    clockMin        = clockMin,
+                    entranceTrigger = transitionSeq,
+                )
 
-            AnimatedContent(
-                targetState = uiState,
-                modifier    = Modifier.fillMaxSize().then(swipeBack.modifier),
-                transitionSpec = {
-                    val from = initialState
-                    val to   = targetState
+                is ScheduleUiState.OnPractice -> SchedOnPractice(headerText = state.headerText)
 
-                    // Скелетон загрузки и реальный список групп теперь идентичны по
-                    // расположению (см. правки GroupPickerLoading выше) — слайд/фейд
-                    // между ними смотрится как лишний "дёрг" ради самого себя, поэтому
-                    // здесь просто мгновенная подмена контента без анимации.
-                    val isSkeletonToPicker =
-                        from is ScheduleUiState.Loading && from.stage == LoadingStage.FILE &&
-                        to is ScheduleUiState.GroupPicker
+                is ScheduleUiState.Idle -> SchedLoading()
 
-                    // Idle → Loading — это самый первый внутренний переход сразу после
-                    // того, как NavHost только что задвинул весь ScheduleScreen целиком
-                    // слайдом справа (см. enterTransition в AppScaffold). Если тут ещё
-                    // раз слайдить содержимое, анимация "двоится" — накладывается сама
-                    // на себя в первые ~280мс. Idle ничего осмысленного не показывает,
-                    // так что для этого перехода анимация просто не нужна.
-                    val isInitialLoad = from is ScheduleUiState.Idle
-
-                    // swipeJustCompleted — этот конкретный переход к GroupPicker уже
-                    // "доигран" вживую призраком выше, повторно анимировать въезд не
-                    // нужно (см. подробный комментарий у объявления флага выше).
-                    if (isSkeletonToPicker || isInitialLoad || swipeJustCompleted) {
-                        EnterTransition.None togetherWith ExitTransition.None
-                    } else if (goingBack) {
-                        // Те же слайды, что и в AppScaffold: назад — новый экран
-                        // въезжает с ЛЕВОГО края, старый уезжает вправо (см.
-                        // NAV_ANIM_MS/popEnterTransition в AppScaffold.kt).
-                        (slideInHorizontally(
-                            initialOffsetX = { -it / 4 },
-                            animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                        ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
-                            (slideOutHorizontally(
-                                targetOffsetX = { it },
-                                animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                            ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
-                    } else {
-                        // Вперёд — новый экран въезжает с ПРАВОГО края, старый чуть
-                        // уезжает влево (см. enterTransition в AppScaffold.kt).
-                        (slideInHorizontally(
-                            initialOffsetX = { it },
-                            animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                        ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
-                            (slideOutHorizontally(
-                                targetOffsetX = { -it / 4 },
-                                animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                            ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
-                    }
-                },
-                label = "scheduleSubscreen",
-            ) { state ->
-                when (state) {
-                    is ScheduleUiState.Success -> SchedContent(
-                        day             = state.day,
-                        clockMin        = clockMin,
-                        entranceTrigger = transitionSeq,
-                    )
-
-                    is ScheduleUiState.OnPractice -> SchedOnPractice(headerText = state.headerText)
-
-                    // Idle/Loading/GroupPicker/Error — общая с "призраком" выше
-                    // отрисовка, см. PickerSideBody.
-                    else -> PickerSideBody(
-                        state                    = state,
-                        transitionSeq            = transitionSeq,
-                        goingBack                = goingBack,
-                        pickerRevealEdgeOverride = pickerRevealEdgeOverride,
-                        onSelectGroup            = { group -> goingBack = false; vm.selectGroup(group, file.name) },
-                        onRetry                  = { goingBack = false; vm.load(file) },
-                    )
+                is ScheduleUiState.Loading -> when (state.stage) {
+                    LoadingStage.FILE     -> GroupPickerLoading(entranceTrigger = transitionSeq)
+                    LoadingStage.SCHEDULE -> SchedLoading()
                 }
+
+                is ScheduleUiState.GroupPicker -> GroupPickerScreen(
+                    groups          = state.groups,
+                    onSelect        = { group -> goingBack = false; vm.selectGroup(group, file.name) },
+                    entranceTrigger = transitionSeq,
+                    // BOTTOM — контент только что загрузился, LEFT — вернулись
+                    // с расписания пар, revealEdge — пикер "раскрыт" тумблером
+                    // в ScheduleHostScreen без перезагрузки (см. pickerRevealEdgeOverride).
+                    entranceEdge    = pickerRevealEdgeOverride
+                        ?: if (goingBack) CascadeEdge.LEFT else CascadeEdge.BOTTOM,
+                )
+
+                is ScheduleUiState.Error -> SchedError(
+                    message = state.message,
+                    onRetry = { goingBack = false; vm.load(file) },
+                )
             }
         }
-    }
-}
-
-// ─── Тело "не-парной" стороны экрана (Idle/Loading/GroupPicker/Error) ──────────
-// Вынесено отдельно, чтобы РОВНО тот же код рисовал и настоящую ветку внутри
-// AnimatedContent выше, и статичный "призрак" пикера во время живого свайпа —
-// без этого гарантии пиксель-в-пиксель совпадения не было бы, и в момент
-// подмены (см. swipeJustCompleted) был бы заметен micro-jump.
-
-@Composable
-private fun PickerSideBody(
-    state: ScheduleUiState,
-    transitionSeq: Any,
-    goingBack: Boolean,
-    pickerRevealEdgeOverride: CascadeEdge?,
-    onSelectGroup: (String) -> Unit,
-    onRetry: () -> Unit,
-) {
-    when (state) {
-        is ScheduleUiState.Idle -> SchedLoading()
-
-        is ScheduleUiState.Loading -> when (state.stage) {
-            LoadingStage.FILE     -> GroupPickerLoading(entranceTrigger = transitionSeq)
-            LoadingStage.SCHEDULE -> SchedLoading()
-        }
-
-        is ScheduleUiState.GroupPicker -> GroupPickerScreen(
-            groups          = state.groups,
-            onSelect        = onSelectGroup,
-            entranceTrigger = transitionSeq,
-            // BOTTOM — контент только что загрузился, LEFT — вернулись
-            // с расписания пар, revealEdge — пикер "раскрыт" тумблером
-            // в ScheduleHostScreen без перезагрузки (см. pickerRevealEdgeOverride).
-            entranceEdge    = pickerRevealEdgeOverride
-                ?: if (goingBack) CascadeEdge.LEFT else CascadeEdge.BOTTOM,
-        )
-
-        is ScheduleUiState.Error -> SchedError(message = state.message, onRetry = onRetry)
-
-        // Success/OnPractice сюда никогда не приходят — они всегда идут отдельной
-        // веткой в AnimatedContent (см. вызов выше), а "призраку" на свайпе
-        // всегда достаётся lastPickerState, который их специально фильтрует.
-        is ScheduleUiState.Success, is ScheduleUiState.OnPractice -> Unit
     }
 }
 

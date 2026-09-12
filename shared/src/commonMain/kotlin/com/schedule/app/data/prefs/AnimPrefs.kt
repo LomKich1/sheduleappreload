@@ -26,17 +26,6 @@ object AnimPrefs {
     private const val KEY_PARALLAX_POWER  = "tab_anim_parallax_power"
     private const val KEY_NAV_MS          = "nav_anim_duration_ms"
 
-    // ── Свайп-назад (пары → пикер, ScheduleScreen/TeacherScheduleScreen) ───────
-    // Отдельный от табов набор ключей — то же трио режимов (DEFAULT/SPRING/
-    // PARALLAX), но со своими значениями, потому что это другой жест
-    // (одноразовый pop, а не туда-обратно между двумя постоянными вкладками) и
-    // крутить его хочется независимо от табов. См. SwipeBackGesture.kt.
-    private const val KEY_SWIPEBACK_MODE           = "swipeback_anim_mode"
-    private const val KEY_SWIPEBACK_MS             = "swipeback_anim_default_ms"
-    private const val KEY_SWIPEBACK_SPRING_DAMPING = "swipeback_spring_damping"
-    private const val KEY_SWIPEBACK_SPRING_STIFF   = "swipeback_spring_stiffness"
-    private const val KEY_SWIPEBACK_PARALLAX_POWER = "swipeback_parallax_power"
-
     // Дефолты подобраны в этом чате: DEFAULT_MS — как было в проекте изначально,
     // SPRING/PARALLAX — то, что мы вместе настроили и на чём остановились.
     val DEFAULT_MODE            = TabAnimMode.DEFAULT
@@ -49,16 +38,6 @@ object AnimPrefs {
     // экрана (те выше, DEFAULT_DURATION_MS и др.). Два разных механизма
     // анимации в проекте, каждый со своей настройкой — см. AppScaffold.kt.
     const val DEFAULT_NAV_DURATION_MS  = 340
-
-    // По умолчанию — DEFAULT (простой синхронный dual-mount reveal, 1:1 с
-    // пальцем, без scale/alpha) — именно то, что попросили воспроизвести
-    // "как в Телеграме", без лишних эффектов поверх. SPRING/PARALLAX доступны
-    // в дебаг-панели для сравнения, как и с табами.
-    val DEFAULT_SWIPEBACK_MODE                = TabAnimMode.DEFAULT
-    const val DEFAULT_SWIPEBACK_DURATION_MS   = 280 // совпадает с SUBSCREEN_ANIM_MS
-    const val DEFAULT_SWIPEBACK_SPRING_DAMPING   = 0.78f
-    const val DEFAULT_SWIPEBACK_SPRING_STIFFNESS = 380f
-    const val DEFAULT_SWIPEBACK_PARALLAX_POWER   = 1.6f
 
     private var initialized = false
 
@@ -79,21 +58,6 @@ object AnimPrefs {
 
     private val _navDurationMs = MutableStateFlow(DEFAULT_NAV_DURATION_MS)
     val navDurationMs: StateFlow<Int> = _navDurationMs.asStateFlow()
-
-    private val _swipeBackMode = MutableStateFlow(DEFAULT_SWIPEBACK_MODE)
-    val swipeBackMode: StateFlow<TabAnimMode> = _swipeBackMode.asStateFlow()
-
-    private val _swipeBackDurationMs = MutableStateFlow(DEFAULT_SWIPEBACK_DURATION_MS)
-    val swipeBackDurationMs: StateFlow<Int> = _swipeBackDurationMs.asStateFlow()
-
-    private val _swipeBackSpringDamping = MutableStateFlow(DEFAULT_SWIPEBACK_SPRING_DAMPING)
-    val swipeBackSpringDamping: StateFlow<Float> = _swipeBackSpringDamping.asStateFlow()
-
-    private val _swipeBackSpringStiffness = MutableStateFlow(DEFAULT_SWIPEBACK_SPRING_STIFFNESS)
-    val swipeBackSpringStiffness: StateFlow<Float> = _swipeBackSpringStiffness.asStateFlow()
-
-    private val _swipeBackParallaxPower = MutableStateFlow(DEFAULT_SWIPEBACK_PARALLAX_POWER)
-    val swipeBackParallaxPower: StateFlow<Float> = _swipeBackParallaxPower.asStateFlow()
 
     /** Вызывается вместе с AppPrefs.init() — PrefsStorage.init() уже идемпотентен. */
     fun init(platformHandle: Any?) {
@@ -124,26 +88,6 @@ object AnimPrefs {
         _navDurationMs.value = runCatching {
             PrefsStorage.getString(KEY_NAV_MS, DEFAULT_NAV_DURATION_MS.toString()).toInt()
         }.getOrDefault(DEFAULT_NAV_DURATION_MS)
-
-        _swipeBackMode.value = runCatching {
-            TabAnimMode.valueOf(PrefsStorage.getString(KEY_SWIPEBACK_MODE, DEFAULT_SWIPEBACK_MODE.name))
-        }.getOrDefault(DEFAULT_SWIPEBACK_MODE)
-
-        _swipeBackDurationMs.value = runCatching {
-            PrefsStorage.getString(KEY_SWIPEBACK_MS, DEFAULT_SWIPEBACK_DURATION_MS.toString()).toInt()
-        }.getOrDefault(DEFAULT_SWIPEBACK_DURATION_MS)
-
-        _swipeBackSpringDamping.value = runCatching {
-            PrefsStorage.getString(KEY_SWIPEBACK_SPRING_DAMPING, DEFAULT_SWIPEBACK_SPRING_DAMPING.toString()).toFloat()
-        }.getOrDefault(DEFAULT_SWIPEBACK_SPRING_DAMPING)
-
-        _swipeBackSpringStiffness.value = runCatching {
-            PrefsStorage.getString(KEY_SWIPEBACK_SPRING_STIFF, DEFAULT_SWIPEBACK_SPRING_STIFFNESS.toString()).toFloat()
-        }.getOrDefault(DEFAULT_SWIPEBACK_SPRING_STIFFNESS)
-
-        _swipeBackParallaxPower.value = runCatching {
-            PrefsStorage.getString(KEY_SWIPEBACK_PARALLAX_POWER, DEFAULT_SWIPEBACK_PARALLAX_POWER.toString()).toFloat()
-        }.getOrDefault(DEFAULT_SWIPEBACK_PARALLAX_POWER)
     }
 
     fun setMode(newMode: TabAnimMode) {
@@ -176,31 +120,6 @@ object AnimPrefs {
         PrefsStorage.putString(KEY_NAV_MS, ms.toString())
     }
 
-    fun setSwipeBackMode(newMode: TabAnimMode) {
-        _swipeBackMode.value = newMode
-        PrefsStorage.putString(KEY_SWIPEBACK_MODE, newMode.name)
-    }
-
-    fun setSwipeBackDurationMs(ms: Int) {
-        _swipeBackDurationMs.value = ms
-        PrefsStorage.putString(KEY_SWIPEBACK_MS, ms.toString())
-    }
-
-    fun setSwipeBackSpringDamping(v: Float) {
-        _swipeBackSpringDamping.value = v
-        PrefsStorage.putString(KEY_SWIPEBACK_SPRING_DAMPING, v.toString())
-    }
-
-    fun setSwipeBackSpringStiffness(v: Float) {
-        _swipeBackSpringStiffness.value = v
-        PrefsStorage.putString(KEY_SWIPEBACK_SPRING_STIFF, v.toString())
-    }
-
-    fun setSwipeBackParallaxPower(v: Float) {
-        _swipeBackParallaxPower.value = v
-        PrefsStorage.putString(KEY_SWIPEBACK_PARALLAX_POWER, v.toString())
-    }
-
     /** Сброс всех крутилок к значениям по умолчанию (кнопка в дебаг-панели). */
     fun resetToDefaults() {
         setMode(DEFAULT_MODE)
@@ -209,10 +128,5 @@ object AnimPrefs {
         setSpringStiffness(DEFAULT_SPRING_STIFFNESS)
         setParallaxPower(DEFAULT_PARALLAX_POWER)
         setNavDurationMs(DEFAULT_NAV_DURATION_MS)
-        setSwipeBackMode(DEFAULT_SWIPEBACK_MODE)
-        setSwipeBackDurationMs(DEFAULT_SWIPEBACK_DURATION_MS)
-        setSwipeBackSpringDamping(DEFAULT_SWIPEBACK_SPRING_DAMPING)
-        setSwipeBackSpringStiffness(DEFAULT_SWIPEBACK_SPRING_STIFFNESS)
-        setSwipeBackParallaxPower(DEFAULT_SWIPEBACK_PARALLAX_POWER)
     }
 }
