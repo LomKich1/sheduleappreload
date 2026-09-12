@@ -65,13 +65,6 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
 
-            SettingsSectionLabel("Свайп назад: пары → пикер")
-            SettingsCard {
-                SwipeBackDebugSection()
-            }
-
-            Spacer(Modifier.height(20.dp))
-
             SettingsSectionLabel("Анимация перехода между экранами")
             SettingsCard {
                 NavAnimDebugSection()
@@ -207,107 +200,6 @@ private fun AnimDebugSection() {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .clickable { AnimPrefs.resetToDefaults() }
-                .padding(vertical = 4.dp),
-        )
-    }
-}
-
-// ─── Свайп назад: пары → пикер (ScheduleScreen/TeacherScheduleScreen) ──────────
-// Отдельная от табов настройка — тот же жест, что просили сделать "как в
-// Telegram": во время драга пикер живьём едет за пальцем, оба экрана
-// смонтированы разом (см. SwipeBackGesture.kt + PickerSideBody-призрак в
-// ScheduleScreen.kt/TeacherScheduleScreen.kt). Три вида, а не просто вкл/выкл:
-// DEFAULT — простой синхронный reveal 1:1, без scale/alpha (буквально то, что
-// видно на скрине из Telegram); SPRING — тот же 1:1, но отпускание/отмена по
-// пружине вместо tween; PARALLAX — призрак дополнительно чуть отстаёт и
-// подъезжает по кривой + лёгкий scale/alpha, как у Files/Bells и
-// Ученики/Преподы выше.
-
-@Composable
-private fun SwipeBackDebugSection() {
-    val c = LocalAppColors.current
-
-    val mode        by AnimPrefs.swipeBackMode.collectAsState()
-    val durationMs  by AnimPrefs.swipeBackDurationMs.collectAsState()
-    val damping     by AnimPrefs.swipeBackSpringDamping.collectAsState()
-    val stiffness   by AnimPrefs.swipeBackSpringStiffness.collectAsState()
-    val parallaxPow by AnimPrefs.swipeBackParallaxPower.collectAsState()
-
-    Column {
-        Text(
-            text = "Меняется сразу — открой любое расписание пар и свайпни слева направо, чтобы проверить",
-            color = c.textSub,
-            fontSize = 11.sp,
-            lineHeight = 15.sp,
-            modifier = Modifier.padding(bottom = 12.dp),
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            AnimModeChip("Default", mode == TabAnimMode.DEFAULT, Modifier.weight(1f)) { AnimPrefs.setSwipeBackMode(TabAnimMode.DEFAULT) }
-            AnimModeChip("Spring", mode == TabAnimMode.SPRING, Modifier.weight(1f)) { AnimPrefs.setSwipeBackMode(TabAnimMode.SPRING) }
-            AnimModeChip("Parallax", mode == TabAnimMode.PARALLAX, Modifier.weight(1f)) { AnimPrefs.setSwipeBackMode(TabAnimMode.PARALLAX) }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        AnimatedVisibility(visible = mode == TabAnimMode.DEFAULT) {
-            LabeledSlider(
-                label     = "Длительность отпускания/отмены",
-                valueText = "${durationMs}мс",
-                value     = durationMs.toFloat(),
-                range     = 100f..600f,
-                onChange  = { AnimPrefs.setSwipeBackDurationMs(it.toInt()) },
-            )
-        }
-
-        AnimatedVisibility(visible = mode == TabAnimMode.SPRING || mode == TabAnimMode.PARALLAX) {
-            Column {
-                LabeledSlider(
-                    label     = "Damping (упругость)",
-                    valueText = fixed(damping, 2),
-                    value     = damping,
-                    range     = 0.3f..1.5f,
-                    onChange  = { AnimPrefs.setSwipeBackSpringDamping(it) },
-                )
-                Spacer(Modifier.height(10.dp))
-                LabeledSlider(
-                    label     = "Stiffness (жёсткость)",
-                    valueText = fixed(stiffness, 0),
-                    value     = stiffness,
-                    range     = 50f..1500f,
-                    onChange  = { AnimPrefs.setSwipeBackSpringStiffness(it) },
-                )
-                if (mode == TabAnimMode.PARALLAX) {
-                    Spacer(Modifier.height(10.dp))
-                    LabeledSlider(
-                        label     = "Parallax power (насколько призрак отстаёт)",
-                        valueText = fixed(parallaxPow, 2),
-                        value     = parallaxPow,
-                        range     = 1f..3f,
-                        onChange  = { AnimPrefs.setSwipeBackParallaxPower(it) },
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        Text(
-            text = "Сбросить к дефолтам",
-            color = c.accent,
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier
-                .clickable {
-                    AnimPrefs.setSwipeBackMode(AnimPrefs.DEFAULT_SWIPEBACK_MODE)
-                    AnimPrefs.setSwipeBackDurationMs(AnimPrefs.DEFAULT_SWIPEBACK_DURATION_MS)
-                    AnimPrefs.setSwipeBackSpringDamping(AnimPrefs.DEFAULT_SWIPEBACK_SPRING_DAMPING)
-                    AnimPrefs.setSwipeBackSpringStiffness(AnimPrefs.DEFAULT_SWIPEBACK_SPRING_STIFFNESS)
-                    AnimPrefs.setSwipeBackParallaxPower(AnimPrefs.DEFAULT_SWIPEBACK_PARALLAX_POWER)
-                }
                 .padding(vertical = 4.dp),
         )
     }
