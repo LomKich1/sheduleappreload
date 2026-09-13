@@ -2,8 +2,6 @@ package com.schedule.app.ui.screens
 
 import com.schedule.app.util.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -48,12 +46,13 @@ import com.schedule.app.data.model.TeacherLessonEntry
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
+import com.schedule.app.ui.components.rememberSwipeDismissState
+import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
 
 // Та же длительность, что и SUBSCREEN_ANIM_MS в ScheduleScreen.kt — переходы
-// пикер преподавателя ↔ расписание пар должны визуально совпадать с
-// переходами пикер группы ↔ расписание пар у студенческой ветки.
+// пикер преподавателя ↔ расписание пар должны визуально совпадать.
 private const val TEACHER_SUBSCREEN_ANIM_MS = 280
 
 // ─── Скелетон для пикера преподавателя — визуально идентичен TeacherPickerScreen ─
@@ -142,61 +141,30 @@ private fun TeacherPickerLoading(entranceTrigger: Any) {
 }
 
 // ─── TeacherScheduleScreen ─────────────────────────────────────────────────────
+// Зеркало ScheduleScreen.kt — см. большой комментарий там про архитектуру
+// после рефакторинга (пикер = база, экран пар = оверлей со свайп-дисмиссом).
 
 @Composable
 fun TeacherScheduleScreen(
     file: ScheduleFile,
     onBack: () -> Unit,
-    vm: TeacherScheduleViewModel = viewModel { TeacherScheduleViewModel() },
+    vm: TeacherPickerViewModel = viewModel { TeacherPickerViewModel() },
     // См. аналогичные параметры и комментарий в ScheduleScreen.kt — тут то же
     // самое, зеркально, для преподавательской ветки.
     active: Boolean = true,
     revealTrigger: Int = 0,
     revealEdge: CascadeEdge = CascadeEdge.BOTTOM,
-    // onHeaderInfo — см. подробный комментарий у аналогичного параметра в
-    // ScheduleScreen.kt: этот экран больше не рисует шапку/тумблер/прогресс-
-    // бар сам, а поднимает их состояние наверх в ScheduleHostScreen.
     onHeaderInfo: (ScheduleHeaderInfo) -> Unit = {},
 ) {
-    val c            = LocalAppColors.current
-    val uiState      by vm.uiState.collectAsState()
-    val progress     by vm.progress.collectAsState()
-    val teacherName  by vm.teacherName.collectAsState()
-    val clockMin     by vm.clockMin.collectAsState()
+    val c        = LocalAppColors.current
+    val uiState  by vm.uiState.collectAsState()
+    val progress by vm.progress.collectAsState()
 
     LaunchedEffect(file.name) { vm.load(file) }
 
-    // ── Направление и "номер" перехода между под-экранами — зеркало ScheduleScreen ──
-    // goingBack — true, когда возвращаемся к пикеру преподавателя (стрелка назад
-    // или карандаш с экрана расписания), false — когда идём вперёд.
-    var goingBack by remember { mutableStateOf(false) }
-
-    // transitionSeq — уникальный номер каждого перехода, передаётся вниз как
-    // triggerKey для каскадных анимаций карточек.
     var transitionSeq by remember { mutableStateOf(0) }
     LaunchedEffect(uiState) { transitionSeq++ }
 
-    val isPairsScreen = uiState is TeacherUiState.Success
-
-    // Общее действие для стрелки "назад" и карандаша "сменить преподавателя" —
-    // оба ведут к пикеру, а не сразу выкидывают на главный экран.
-    val backToPicker: () -> Unit = {
-        goingBack = true
-        vm.clearTeacher()
-    }
-
-    // Системный жест "назад" перехватываем только пока показано расписание —
-    // см. подробный комментарий у аналогичного BackHandler в ScheduleScreen.kt.
-    // "&& active" — та же причина, что и там: невидимая половина
-    // ScheduleHostScreen не должна перехватывать системный back.
-    BackHandler(enabled = isPairsScreen && active) { backToPicker() }
-
-    // Одноразовая подмена направления каскада пикера преподавателя — см.
-    // подробный комментарий у pickerRevealEdgeOverride в ScheduleScreen.kt.
-    //
-    // revealTrigger теперь per-screen (раньше был общий на оба режима, и тут
-    // стоял доп. гейт "if (active)" — убран, см. комментарий в
-    // ScheduleHostScreen.kt про гонку active vs момент срабатывания триггера).
     var pickerRevealEdgeOverride by remember { mutableStateOf<CascadeEdge?>(null) }
     var lastRevealApplied by remember { mutableStateOf(revealTrigger) }
     LaunchedEffect(revealTrigger) {
@@ -208,123 +176,171 @@ fun TeacherScheduleScreen(
     }
     LaunchedEffect(transitionSeq) { pickerRevealEdgeOverride = null }
 
-    // Как и в ScheduleScreen: пока показывается пикер/загрузка — в шапке
-    // не должно мелькать прошлое имя преподавателя из предыдущего файла.
-    val headerTeacherName = when (uiState) {
-        is TeacherUiState.Success -> teacherName
-        else -> ""
+    // ── Экран пар — оверлей (см. ScheduleScreen.kt, тот же принцип) ─────────
+    var selection by remember { mutableStateOf<TeacherPairsSelection?>(null) }
+    var selectionCounter by remember { mutableStateOf(0) }
+
+    val onSelectTeacher: (String) -> Unit = onSelect@{ teacher ->
+        val (bytes, pickedFile) = vm.handoffOrNull() ?: return@onSelect
+        selectionCounter++
+        selection = TeacherPairsSelection(id = selectionCounter, bytes = bytes, file = pickedFile, teacher = teacher)
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(c.bg),
+        ) {
+            SideEffect {
+                if (selection == null) {
+                    onHeaderInfo(
+                        ScheduleHeaderInfo(
+                            title         = "",
+                            placeholder   = if (uiState is TeacherPickerUiState.Loading)
+                                "Загружаем список преподавателей…"
+                            else
+                                "Выберите преподавателя",
+                            dateText      = file.dateLabel,
+                            isPairsScreen = false,
+                            isLoading     = uiState is TeacherPickerUiState.Loading,
+                            progress      = progress,
+                            onBack        = onBack,
+                        ),
+                    )
+                }
+            }
+
+            AnimatedContent(
+                targetState = uiState,
+                modifier    = Modifier.weight(1f),
+                transitionSpec = {
+                    // Пикер посещается строго вперёд — см. подробный
+                    // комментарий у аналогичного места в ScheduleScreen.kt.
+                    val isSkeletonToPicker =
+                        initialState is TeacherPickerUiState.Loading && targetState is TeacherPickerUiState.Ready
+                    val isInitialLoad = initialState is TeacherPickerUiState.Idle
+
+                    if (isSkeletonToPicker || isInitialLoad) {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    } else {
+                        (slideInHorizontally(
+                            initialOffsetX = { it },
+                            animationSpec  = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                        ) + fadeIn(tween(TEACHER_SUBSCREEN_ANIM_MS - 60))) togetherWith
+                            (slideOutHorizontally(
+                                targetOffsetX = { -it / 4 },
+                                animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                            ) + fadeOut(tween(TEACHER_SUBSCREEN_ANIM_MS - 60)))
+                    }
+                },
+                label = "teacherPickerSubscreen",
+            ) { state ->
+                when (state) {
+                    is TeacherPickerUiState.Idle    -> TeacherSchedLoading()
+                    is TeacherPickerUiState.Loading -> TeacherPickerLoading(entranceTrigger = transitionSeq)
+                    is TeacherPickerUiState.Ready   -> TeacherPickerScreen(
+                        teachers        = state.teachers,
+                        onSelect        = onSelectTeacher,
+                        entranceTrigger = transitionSeq,
+                        entranceEdge    = pickerRevealEdgeOverride ?: CascadeEdge.BOTTOM,
+                    )
+                    is TeacherPickerUiState.Error   -> TeacherSchedError(
+                        message = state.message,
+                        onRetry = { vm.load(file) },
+                    )
+                }
+            }
+        }
+
+        selection?.let { sel ->
+            TeacherPairsOverlay(
+                selection    = sel,
+                active       = active,
+                onDismissed  = { selection = null },
+                onHeaderInfo = onHeaderInfo,
+            )
+        }
+    }
+}
+
+// ─── Экран пар преподавателя (оверлей поверх пикера) ───────────────────────
+// Зеркало PairsOverlay в ScheduleScreen.kt — см. комментарии там.
+
+private class TeacherPairsSelection(
+    val id: Int,
+    val bytes: ByteArray,
+    val file: ScheduleFile,
+    val teacher: String,
+)
+
+@Composable
+private fun TeacherPairsOverlay(
+    selection: TeacherPairsSelection,
+    active: Boolean,
+    onDismissed: () -> Unit,
+    onHeaderInfo: (ScheduleHeaderInfo) -> Unit,
+) {
+    val c  = LocalAppColors.current
+    val vm: TeacherPairsViewModel = viewModel(key = "teacher-pairs-${selection.id}") { TeacherPairsViewModel() }
+    val uiState  by vm.uiState.collectAsState()
+    val clockMin by vm.clockMin.collectAsState()
+
+    LaunchedEffect(selection.id) { vm.load(selection.bytes, selection.teacher, selection.file) }
+
+    var transitionSeq by remember { mutableStateOf(0) }
+    LaunchedEffect(uiState) { transitionSeq++ }
+
+    val dismissState = rememberSwipeDismissState(onDismissed = onDismissed)
+
+    var entered by remember { mutableStateOf(false) }
+    LaunchedEffect(dismissState.widthPx) {
+        if (!entered && dismissState.widthPx > 0f) {
+            entered = true
+            dismissState.offsetX.snapTo(dismissState.widthPx)
+            dismissState.offsetX.animateTo(
+                targetValue   = 0f,
+                animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+            )
+        }
+    }
+
+    BackHandler(enabled = active) { dismissState.dismiss() }
+
+    SideEffect {
+        onHeaderInfo(
+            ScheduleHeaderInfo(
+                title         = selection.teacher,
+                placeholder   = "",
+                dateText      = selection.file.dateLabel,
+                isPairsScreen = true,
+                isLoading     = uiState is TeacherScheduleUiState.Loading,
+                progress      = 1f,
+                onBack        = { dismissState.dismiss() },
+            ),
+        )
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(c.bg),
+            .background(c.bg)
+            .swipeToDismiss(dismissState, enabled = active),
     ) {
-        // Шапка/тумблер/полоса загрузки теперь рисуются один раз в
-        // ScheduleHostScreen на оба режима сразу (см. ScheduleHeaderInfo) —
-        // здесь только сообщаем актуальное состояние наверх.
-        SideEffect {
-            onHeaderInfo(
-                ScheduleHeaderInfo(
-                    title          = headerTeacherName,
-                    // См. подробный комментарий у аналогичной правки в
-                    // ScheduleScreen.kt — синхронизация с "Загружаем..." из
-                    // TeacherPickerLoading вместо отдельного "Выберите..."
-                    // одновременно с ним.
-                    placeholder    = if (uiState is TeacherUiState.Loading)
-                        "Загружаем список преподавателей…"
-                    else
-                        "Выберите преподавателя",
-                    dateText       = file.dateLabel,
-                    isPairsScreen  = isPairsScreen,
-                    isLoading      = uiState is TeacherUiState.Loading,
-                    progress       = progress,
-                    // Размер больше не переопределяем — единый filledFontSize
-                    // (17.sp, как в AppHeader) задан дефолтом в самой
-                    // ScheduleHeaderInfo (см. комментарий там; раньше здесь
-                    // стояло 20.sp, а у ScheduleScreen — своё 22.sp, из-за
-                    // чего шапка ещё и "прыгала" между режимами).
-                    // Со экрана пар стрелка ведёт к пикеру преподавателя; с
-                    // любого другого под-экрана — как раньше, наружу из
-                    // TeacherScheduleScreen.
-                    onBack         = if (isPairsScreen) backToPicker else onBack,
-                ),
-            )
-        }
-
         AnimatedContent(
-            targetState = uiState,
-            modifier    = Modifier.weight(1f),
-            transitionSpec = {
-                val from = initialState
-                val to   = targetState
-
-                // Скелетон загрузки и реальный пикер преподавателя визуально
-                // идентичны по расположению — мгновенная подмена без анимации,
-                // как и у GroupPickerLoading → GroupPicker в ScheduleScreen.
-                val isSkeletonToPicker =
-                    from is TeacherUiState.Loading && from.stage == LoadingStage.FILE &&
-                    to is TeacherUiState.TeacherPicker
-
-                // Idle → Loading — самый первый внутренний переход сразу после
-                // того, как NavHost уже задвинул весь экран слайдом (см. тот же
-                // комментарий в ScheduleScreen.kt) — без этого байпаса анимация
-                // "двоится" в первые ~280мс после открытия файла.
-                val isInitialLoad = from is TeacherUiState.Idle
-
-                if (isSkeletonToPicker || isInitialLoad) {
-                    EnterTransition.None togetherWith ExitTransition.None
-                } else if (goingBack) {
-                    (slideInHorizontally(
-                        initialOffsetX = { -it / 4 },
-                        animationSpec  = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                    ) + fadeIn(tween(TEACHER_SUBSCREEN_ANIM_MS - 60))) togetherWith
-                        (slideOutHorizontally(
-                            targetOffsetX = { it },
-                            animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                        ) + fadeOut(tween(TEACHER_SUBSCREEN_ANIM_MS - 60)))
-                } else {
-                    (slideInHorizontally(
-                        initialOffsetX = { it },
-                        animationSpec  = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                    ) + fadeIn(tween(TEACHER_SUBSCREEN_ANIM_MS - 60))) togetherWith
-                        (slideOutHorizontally(
-                            targetOffsetX = { -it / 4 },
-                            animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                        ) + fadeOut(tween(TEACHER_SUBSCREEN_ANIM_MS - 60)))
-                }
-            },
-            label = "teacherSubscreen",
+            targetState    = uiState,
+            modifier       = Modifier.weight(1f),
+            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+            label          = "teacherPairsSubstate",
         ) { state ->
             when (state) {
-                is TeacherUiState.Success -> TeacherSchedContent(
+                is TeacherScheduleUiState.Loading -> TeacherSchedLoading()
+                is TeacherScheduleUiState.Success -> TeacherSchedContent(
                     day             = state.day,
                     clockMin        = clockMin,
                     entranceTrigger = transitionSeq,
                 )
-
-                is TeacherUiState.Idle -> TeacherSchedLoading()
-
-                is TeacherUiState.Loading -> when (state.stage) {
-                    LoadingStage.FILE     -> TeacherPickerLoading(entranceTrigger = transitionSeq)
-                    LoadingStage.SCHEDULE -> TeacherSchedLoading()
-                }
-
-                is TeacherUiState.TeacherPicker -> TeacherPickerScreen(
-                    teachers        = state.teachers,
-                    onSelect        = { teacher -> goingBack = false; vm.selectTeacher(teacher, file.name) },
-                    entranceTrigger = transitionSeq,
-                    // Вперёд — карточки поднимаются снизу с fade (BOTTOM), назад —
-                    // едут слева (LEFT), revealEdge — раскрыт тумблером без
-                    // перезагрузки. См. аналогичную логику в GroupPickerScreen.
-                    entranceEdge    = pickerRevealEdgeOverride
-                        ?: if (goingBack) CascadeEdge.LEFT else CascadeEdge.BOTTOM,
-                )
-
-                is TeacherUiState.Error -> TeacherSchedError(
-                    message = state.message,
-                    onRetry = { goingBack = false; vm.load(file) },
-                )
+                is TeacherScheduleUiState.Error   -> TeacherSchedError(message = state.message, onRetry = vm::retry)
             }
         }
     }

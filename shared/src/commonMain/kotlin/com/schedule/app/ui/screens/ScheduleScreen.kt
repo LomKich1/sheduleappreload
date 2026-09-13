@@ -2,8 +2,6 @@ package com.schedule.app.ui.screens
 
 import com.schedule.app.util.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -50,14 +48,17 @@ import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
+import com.schedule.app.ui.components.rememberSwipeDismissState
+import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
 
-// Длительность анимации переключения между "под-экранами" ScheduleScreen
-// (пикер группы ↔ расписание пар) — то же значение, что и NAV_ANIM_MS в
-// AppScaffold для переходов Files/Bells → Schedule/Settings. Не переиспользуем
-// константу напрямую (она private в другом файле) — просто дублируем число,
-// чтобы анимации визуально совпадали.
+// Длительность анимации переключения между "под-экранами" ScheduleScreen —
+// то же значение, что и NAV_ANIM_MS в AppScaffold для переходов
+// Files/Bells → Schedule/Settings. Не переиспользуем константу напрямую
+// (она private в другом файле) — просто дублируем число, чтобы анимации
+// визуально совпадали. Используется и для пикера (Idle→Loading→Ready), и
+// для въезда PairsOverlay при тапе по группе.
 private const val SUBSCREEN_ANIM_MS = 280
 
 // ─── Скелетон для пикера группы — визуально идентичен GroupPickerScreen ───────
@@ -150,17 +151,33 @@ private fun GroupPickerLoading(entranceTrigger: Any) {
 }
 
 // ─── ScheduleScreen ───────────────────────────────────────────────────────────
+//
+// АРХИТЕКТУРА ПОСЛЕ РЕФАКТОРИНГА (свайп-выход с экрана пар, см. чат):
+// Раньше пикер и экран пар были двумя состояниями ОДНОГО ScheduleViewModel/
+// AnimatedContent — из-за этого честный always-mounted свайп (как у
+// Files/Bells или Ученики/Преподаватели, см. rememberSwipableProgress) был
+// невозможен без костылей. Теперь:
+//   • Пикер — БАЗА этого экрана, живёт всё время через GroupPickerViewModel.
+//   • Экран пар — ОВЕРЛЕЙ поверх неё (PairsOverlay), который РЕАЛЬНО создаётся
+//     тапом по группе (свой PairsViewModel, байты переданы hand-off'ом из
+//     GroupPickerViewModel — без повторного скачивания) и РЕАЛЬНО уничтожается
+//     свайпом вправо с любой точки экрана — см. SwipeDismiss.kt, комментарий
+//     там объясняет, почему это не rememberSwipableProgress.
+//   • Свайп асимметричен, как и должно быть: вперёд (Picker→Pairs) — только
+//     тапом, назад (Pairs→Picker) — только свайпом. Это НЕ двусторонний
+//     переключатель, а ближе к iOS/Telegram interactive-pop.
 
 @Composable
 fun ScheduleScreen(
     file: ScheduleFile,
     onBack: () -> Unit,
-    vm: ScheduleViewModel = viewModel { ScheduleViewModel() },
+    vm: GroupPickerViewModel = viewModel { GroupPickerViewModel() },
     // ── Параметры для хостинга внутри ScheduleHostScreen ────────────────────
     // active     — виден ли СЕЙЧАС этот экран пользователю (см. ScheduleHostScreen,
     //              где студенческий и преподавательский вид смонтированы ОБА
     //              одновременно и просто сдвигаются по X). Нужен, чтобы системный
-    //              back-жест не перехватывался невидимой половиной.
+    //              back-жест (и свайп-дисмисс PairsOverlay) не перехватывался
+    //              невидимой половиной.
     // revealTrigger/revealEdge — см. комментарий у lastRevealApplied ниже.
     active: Boolean = true,
     revealTrigger: Int = 0,
@@ -172,69 +189,23 @@ fun ScheduleScreen(
     // режима сразу. См. ScheduleHeaderInfo в ScheduleHostScreen.kt.
     onHeaderInfo: (ScheduleHeaderInfo) -> Unit = {},
 ) {
-    val c         = LocalAppColors.current
-    val uiState   by vm.uiState.collectAsState()
-    val progress  by vm.progress.collectAsState()
-    val groupName by AppPrefs.groupName.collectAsState()
-    val clockMin  by vm.clockMin.collectAsState()
+    val c        = LocalAppColors.current
+    val uiState  by vm.uiState.collectAsState()
+    val progress by vm.progress.collectAsState()
 
     LaunchedEffect(file.name) { vm.load(file) }
 
-    // ── Направление и "номер" перехода между под-экранами ──────────────────────
-    // Внутри ScheduleScreen на самом деле несколько логических экранов —
-    // загрузка / пикер группы / расписание пар / ошибка — и переключение между
-    // ними должно выглядеть так же, как переходы между Files/Bells/Schedule в
-    // AppScaffold: слайд + фейд, а не мгновенная подмена.
-    //
-    // goingBack — направление: true, когда мы ВОЗВРАЩАЕМСЯ к пикеру группы
-    // (кнопка назад/карандаш с экрана расписания), false — когда идём вперёд
-    // (первая загрузка, выбор группы, повтор после ошибки).
-    var goingBack by remember { mutableStateOf(false) }
-
-    // transitionSeq — уникальный номер каждого перехода. Передаём его вниз как
-    // triggerKey для каскадных анимаций карточек (групп/пар), а не полагаемся
-    // на то, что AnimatedContent сочтёт два одинаковых по содержимому состояния
-    // "разными" (два GroupPicker(sameGroups) подряд технически equals()).
+    // transitionSeq — уникальный номер каждого перехода пикера. Передаём его
+    // вниз как triggerKey для каскадных анимаций карточек групп, а не
+    // полагаемся на то, что AnimatedContent сочтёт два одинаковых по
+    // содержимому состояния "разными".
     var transitionSeq by remember { mutableStateOf(0) }
     LaunchedEffect(uiState) { transitionSeq++ }
 
-    // "Экран пар" в терминах задачи — это то, что видно ПОСЛЕ выбора группы:
-    // само расписание или плашка "на практике".
-    val isPairsScreen = uiState is ScheduleUiState.Success || uiState is ScheduleUiState.OnPractice
-
-    // Общее действие для стрелки "назад" и карандаша "сменить группу" — оба
-    // должны вести к пикеру, а не сразу выкидывать пользователя на главный экран.
-    val backToPicker: () -> Unit = {
-        goingBack = true
-        vm.clearGroup()
-    }
-
     // Одноразовая "подмена" направления каскада пикера — используется только
     // когда пикер раскрыт тумблером без перезагрузки (см. lastRevealApplied
-    // ниже); во всех остальных случаях действует обычная goingBack-логика
-    // (LEFT назад / BOTTOM вперёд, см. GroupPickerScreen(...) ниже).
-    //
-    // ВАЖНО: revealTrigger, приходящий сюда из ScheduleHostScreen, — теперь
-    // per-screen (раньше был один общий на оба режима, ученики/преподы, и тут
-    // стоял доп. гейт "if (active)", который из-за гонки active vs момент
-    // срабатывания триггера ловил не тот экран — см. подробности в
-    // ScheduleHostScreen.kt). С раздельным триггером сюда в принципе не
-    // прилетает ничего лишнего, поэтому гейта по active больше нет.
+    // ниже). revealTrigger — per-screen (см. историю в ScheduleHostScreen.kt).
     var pickerRevealEdgeOverride by remember { mutableStateOf<CascadeEdge?>(null) }
-
-    // Системный жест "назад" перехватываем ТОЛЬКО пока показано расписание —
-    // NavHost в AppScaffold обрабатывает системный back сам, минуя параметр
-    // onBack (тот срабатывает лишь по тапу на стрелку в шапке), поэтому без
-    // этого BackHandler'а жест увёл бы сразу на главный экран, а не к пикеру.
-    // "&& active" — пока этот экран сдвинут за край в ScheduleHostScreen
-    // (виден другой режим), он не должен перехватывать системный back.
-    BackHandler(enabled = isPairsScreen && active) { backToPicker() }
-
-    // ── Каскад при "раскрытии" этого режима тумблером ───────────────────────
-    // uiState тут не меняется (данные уже загружены и никуда не делись —
-    // в этом и была идея держать оба экрана смонтированными), поэтому обычный
-    // LaunchedEffect(uiState) выше не сработает — реагируем на revealTrigger
-    // отдельно и вручную "проигрываем" карточки пикера ещё раз.
     var lastRevealApplied by remember { mutableStateOf(revealTrigger) }
     LaunchedEffect(revealTrigger) {
         if (revealTrigger != lastRevealApplied) {
@@ -243,140 +214,208 @@ fun ScheduleScreen(
             lastRevealApplied = revealTrigger
         }
     }
-    // Override — ровно на один "проигрыш": как только transitionSeq применился
-    // (в т.ч. и по этому самому revealTrigger), сбрасываем его, чтобы следующий
-    // обычный переход снова считался по goingBack, а не залипал на revealEdge.
     LaunchedEffect(transitionSeq) { pickerRevealEdgeOverride = null }
 
-    // Пока показывается пикер (или идёт загрузка) — заголовок не должен
-    // показывать старое сохранённое имя группы, это сбивает с толку.
-    // Карандаш «сменить группу» тоже имеет смысл только когда группа
-    // реально подтверждена и расписание уже показано.
-    val headerGroupName = when (uiState) {
-        is ScheduleUiState.Success, is ScheduleUiState.OnPractice -> groupName
-        else -> ""
+    // ── Экран пар — теперь реальный оверлей, не состояние uiState ───────────
+    // selection == null → оверлея нет вообще (даже не смонтирован).
+    // selectionCounter — уникальный id на каждый тап, чтобы viewModel(key=...)
+    // пересоздавал PairsViewModel с нуля при каждом новом выборе группы (а не
+    // переиспользовал старый экземпляр с чужими данными).
+    var selection by remember { mutableStateOf<PairsSelection?>(null) }
+    var selectionCounter by remember { mutableStateOf(0) }
+
+    val onSelectGroup: (String) -> Unit = onSelect@{ group ->
+        val (bytes, pickedFile) = vm.handoffOrNull() ?: return@onSelect
+        AppPrefs.saveGroupName(group)
+        selectionCounter++
+        selection = PairsSelection(id = selectionCounter, bytes = bytes, file = pickedFile, group = group)
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(c.bg),
+        ) {
+            // Шапку рисуем только пока оверлей закрыт — пока он открыт, свою
+            // версию header info поднимает PairsOverlay ниже (композится
+            // позже в этом же дереве ⇒ SideEffect отрабатывает последним и
+            // "перебивает" этот вызов, см. PairsOverlay).
+            SideEffect {
+                if (selection == null) {
+                    onHeaderInfo(
+                        ScheduleHeaderInfo(
+                            title         = "",
+                            placeholder   = if (uiState is PickerUiState.Loading)
+                                "Загружаем список групп…"
+                            else
+                                "Выберите группу",
+                            dateText      = file.dateLabel,
+                            isPairsScreen = false,
+                            isLoading     = uiState is PickerUiState.Loading,
+                            progress      = progress,
+                            onBack        = onBack,
+                        ),
+                    )
+                }
+            }
+
+            AnimatedContent(
+                targetState = uiState,
+                modifier    = Modifier.weight(1f),
+                transitionSpec = {
+                    // Пикер теперь посещается СТРОГО вперёд: Idle→Loading→Ready,
+                    // либо Error→Loading→Ready при повторе. Раньше тут был ещё
+                    // goingBack-переход (LEFT-слайд при возврате с экрана пар),
+                    // но с оверлеем возврат больше не трогает состояние пикера
+                    // вообще — PairsOverlay просто закрывается, а пикер под ним
+                    // как был отрисован, так и остаётся. Отдельная "обратная"
+                    // ветка тут больше не нужна.
+                    val isSkeletonToPicker =
+                        initialState is PickerUiState.Loading && targetState is PickerUiState.Ready
+                    val isInitialLoad = initialState is PickerUiState.Idle
+
+                    if (isSkeletonToPicker || isInitialLoad) {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    } else {
+                        (slideInHorizontally(
+                            initialOffsetX = { it },
+                            animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                        ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
+                            (slideOutHorizontally(
+                                targetOffsetX = { -it / 4 },
+                                animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                            ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
+                    }
+                },
+                label = "pickerSubscreen",
+            ) { state ->
+                when (state) {
+                    is PickerUiState.Idle    -> SchedLoading()
+                    is PickerUiState.Loading -> GroupPickerLoading(entranceTrigger = transitionSeq)
+                    is PickerUiState.Ready   -> GroupPickerScreen(
+                        groups          = state.groups,
+                        onSelect        = onSelectGroup,
+                        entranceTrigger = transitionSeq,
+                        entranceEdge    = pickerRevealEdgeOverride ?: CascadeEdge.BOTTOM,
+                    )
+                    is PickerUiState.Error   -> SchedError(
+                        message = state.message,
+                        onRetry = { vm.load(file) },
+                    )
+                }
+            }
+        }
+
+        selection?.let { sel ->
+            PairsOverlay(
+                selection   = sel,
+                active      = active,
+                onDismissed = {
+                    AppPrefs.clearGroupName()
+                    selection = null
+                },
+                onHeaderInfo = onHeaderInfo,
+            )
+        }
+    }
+}
+
+// ─── Экран пар (оверлей поверх пикера) ─────────────────────────────────────
+//
+// Создаётся тапом по карточке группы, уничтожается свайпом вправо с любой
+// точки экрана (или программным dismiss() — кнопка "назад"/системный back) —
+// см. большой комментарий у ScheduleScreen выше и SwipeDismiss.kt.
+
+private class PairsSelection(
+    val id: Int,
+    val bytes: ByteArray,
+    val file: ScheduleFile,
+    val group: String,
+)
+
+@Composable
+private fun PairsOverlay(
+    selection: PairsSelection,
+    active: Boolean,
+    onDismissed: () -> Unit,
+    onHeaderInfo: (ScheduleHeaderInfo) -> Unit,
+) {
+    val c  = LocalAppColors.current
+    val vm: PairsViewModel = viewModel(key = "pairs-${selection.id}") { PairsViewModel() }
+    val uiState  by vm.uiState.collectAsState()
+    val clockMin by vm.clockMin.collectAsState()
+
+    LaunchedEffect(selection.id) { vm.load(selection.bytes, selection.group, selection.file) }
+
+    var transitionSeq by remember { mutableStateOf(0) }
+    LaunchedEffect(uiState) { transitionSeq++ }
+
+    val dismissState = rememberSwipeDismissState(onDismissed = onDismissed)
+
+    // Въезд экрана при монтировании — реюзаем тот же Animatable, которым
+    // рулит живой свайп (см. SwipeDismiss.kt): стартуем сразу за правым
+    // краем и приезжаем в 0, вместо AnimatedVisibility (у которой boolean-
+    // overload не проигрывает enter-анимацию, если контент смонтирован
+    // сразу с visible=true — известная особенность Compose).
+    var entered by remember { mutableStateOf(false) }
+    LaunchedEffect(dismissState.widthPx) {
+        if (!entered && dismissState.widthPx > 0f) {
+            entered = true
+            dismissState.offsetX.snapTo(dismissState.widthPx)
+            dismissState.offsetX.animateTo(
+                targetValue   = 0f,
+                animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+            )
+        }
+    }
+
+    // Системный back — та же анимация, что и живой свайп, не мгновенное
+    // исчезновение. "&& active" — пока эта половина Student/Teacher сдвинута
+    // за край в ScheduleHostScreen, она не должна перехватывать back.
+    BackHandler(enabled = active) { dismissState.dismiss() }
+
+    SideEffect {
+        onHeaderInfo(
+            ScheduleHeaderInfo(
+                title         = selection.group,
+                placeholder   = "",
+                dateText      = selection.file.dateLabel,
+                isPairsScreen = true,
+                isLoading     = uiState is ScheduleUiState.Loading,
+                progress      = 1f,
+                onBack        = { dismissState.dismiss() },
+            ),
+        )
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(c.bg),
+            .background(c.bg)
+            .swipeToDismiss(dismissState, enabled = active),
     ) {
-        // Шапка/тумблер/полоса загрузки теперь рисуются один раз в
-        // ScheduleHostScreen на оба режима сразу (см. ScheduleHeaderInfo) —
-        // здесь только сообщаем актуальное состояние наверх.
-        SideEffect {
-            onHeaderInfo(
-                ScheduleHeaderInfo(
-                    title          = headerGroupName,
-                    // Раньше тут был константный "Выберите группу", видимый
-                    // и во время Loading, и на самом пикере — при этом внутри
-                    // тела экрана (см. GroupPickerLoading) уже отдельно шло
-                    // "Загружаем список групп…". Теперь шапка синхронизирована
-                    // с тем же текстом, что и тело — не два разных сообщения
-                    // о состоянии, а одно.
-                    placeholder    = if (uiState is ScheduleUiState.Loading)
-                        "Загружаем список групп…"
-                    else
-                        "Выберите группу",
-                    dateText       = file.dateLabel,
-                    isPairsScreen  = isPairsScreen,
-                    isLoading      = uiState is ScheduleUiState.Loading,
-                    progress       = progress,
-                    // Размер больше не переопределяем — единый filledFontSize
-                    // (17.sp, как в AppHeader) задан дефолтом в самой
-                    // ScheduleHeaderInfo, см. комментарий там.
-                    // Со экрана пар стрелка ведёт к пикеру группы; с любого
-                    // другого под-экрана (пикер, загрузка, ошибка) — как
-                    // раньше, наружу из ScheduleScreen.
-                    onBack         = if (isPairsScreen) backToPicker else onBack,
-                ),
-            )
-        }
-
         AnimatedContent(
-            targetState = uiState,
-            modifier    = Modifier.weight(1f),
+            targetState    = uiState,
+            modifier       = Modifier.weight(1f),
             transitionSpec = {
-                val from = initialState
-                val to   = targetState
-
-                // Скелетон загрузки и реальный список групп теперь идентичны по
-                // расположению (см. правки GroupPickerLoading выше) — слайд/фейд
-                // между ними смотрится как лишний "дёрг" ради самого себя, поэтому
-                // здесь просто мгновенная подмена контента без анимации.
-                val isSkeletonToPicker =
-                    from is ScheduleUiState.Loading && from.stage == LoadingStage.FILE &&
-                    to is ScheduleUiState.GroupPicker
-
-                // Idle → Loading — это самый первый внутренний переход сразу после
-                // того, как NavHost только что задвинул весь ScheduleScreen целиком
-                // слайдом справа (см. enterTransition в AppScaffold). Если тут ещё
-                // раз слайдить содержимое, анимация "двоится" — накладывается сама
-                // на себя в первые ~280мс. Idle ничего осмысленного не показывает,
-                // так что для этого перехода анимация просто не нужна.
-                val isInitialLoad = from is ScheduleUiState.Idle
-
-                if (isSkeletonToPicker || isInitialLoad) {
-                    EnterTransition.None togetherWith ExitTransition.None
-                } else if (goingBack) {
-                    // Те же слайды, что и в AppScaffold: назад — новый экран
-                    // въезжает с ЛЕВОГО края, старый уезжает вправо (см.
-                    // NAV_ANIM_MS/popEnterTransition в AppScaffold.kt).
-                    (slideInHorizontally(
-                        initialOffsetX = { -it / 4 },
-                        animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                    ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
-                        (slideOutHorizontally(
-                            targetOffsetX = { it },
-                            animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                        ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
-                } else {
-                    // Вперёд — новый экран въезжает с ПРАВОГО края, старый чуть
-                    // уезжает влево (см. enterTransition в AppScaffold.kt).
-                    (slideInHorizontally(
-                        initialOffsetX = { it },
-                        animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                    ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
-                        (slideOutHorizontally(
-                            targetOffsetX = { -it / 4 },
-                            animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                        ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
-                }
+                // Тут только внутренние подсостояния ОДНОГО и того же выбора
+                // группы (Loading → Success/OnPractice/Error, либо повтор
+                // после Error) — сам экран уже "въехал" один раз при
+                // монтировании (см. entered выше), простого fade достаточно.
+                fadeIn(tween(180)) togetherWith fadeOut(tween(120))
             },
-            label = "scheduleSubscreen",
+            label = "pairsSubstate",
         ) { state ->
             when (state) {
-                is ScheduleUiState.Success -> SchedContent(
+                is ScheduleUiState.Loading    -> SchedLoading()
+                is ScheduleUiState.Success    -> SchedContent(
                     day             = state.day,
                     clockMin        = clockMin,
                     entranceTrigger = transitionSeq,
                 )
-
                 is ScheduleUiState.OnPractice -> SchedOnPractice(headerText = state.headerText)
-
-                is ScheduleUiState.Idle -> SchedLoading()
-
-                is ScheduleUiState.Loading -> when (state.stage) {
-                    LoadingStage.FILE     -> GroupPickerLoading(entranceTrigger = transitionSeq)
-                    LoadingStage.SCHEDULE -> SchedLoading()
-                }
-
-                is ScheduleUiState.GroupPicker -> GroupPickerScreen(
-                    groups          = state.groups,
-                    onSelect        = { group -> goingBack = false; vm.selectGroup(group, file.name) },
-                    entranceTrigger = transitionSeq,
-                    // BOTTOM — контент только что загрузился, LEFT — вернулись
-                    // с расписания пар, revealEdge — пикер "раскрыт" тумблером
-                    // в ScheduleHostScreen без перезагрузки (см. pickerRevealEdgeOverride).
-                    entranceEdge    = pickerRevealEdgeOverride
-                        ?: if (goingBack) CascadeEdge.LEFT else CascadeEdge.BOTTOM,
-                )
-
-                is ScheduleUiState.Error -> SchedError(
-                    message = state.message,
-                    onRetry = { goingBack = false; vm.load(file) },
-                )
+                is ScheduleUiState.Error      -> SchedError(message = state.message, onRetry = vm::retry)
             }
         }
     }
