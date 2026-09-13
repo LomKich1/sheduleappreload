@@ -2,6 +2,7 @@ package com.schedule.app.ui.screens
 
 import com.schedule.app.util.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.*
@@ -355,23 +356,6 @@ private fun PairsOverlay(
 
     val dismissState = rememberSwipeDismissState(onDismissed = onDismissed)
 
-    // Въезд экрана при монтировании — реюзаем тот же Animatable, которым
-    // рулит живой свайп (см. SwipeDismiss.kt): стартуем сразу за правым
-    // краем и приезжаем в 0, вместо AnimatedVisibility (у которой boolean-
-    // overload не проигрывает enter-анимацию, если контент смонтирован
-    // сразу с visible=true — известная особенность Compose).
-    var entered by remember { mutableStateOf(false) }
-    LaunchedEffect(dismissState.widthPx) {
-        if (!entered && dismissState.widthPx > 0f) {
-            entered = true
-            dismissState.offsetX.snapTo(dismissState.widthPx)
-            dismissState.offsetX.animateTo(
-                targetValue   = 0f,
-                animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-            )
-        }
-    }
-
     // Системный back — та же анимация, что и живой свайп, не мгновенное
     // исчезновение. "&& active" — пока эта половина Student/Teacher сдвинута
     // за край в ScheduleHostScreen, она не должна перехватывать back.
@@ -391,33 +375,52 @@ private fun PairsOverlay(
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(c.bg)
-            .swipeToDismiss(dismissState, enabled = active),
+    // Въезд экрана при монтировании — MutableTransitionState(false→true), а не
+    // ручной Animatable-хак (см. историю правок: та версия иногда роняла экран
+    // за правый край и НЕ доигрывала анимацию обратно — баг с "пустым" экраном
+    // на самом деле был экраном, уехавшим за пределы видимой области).
+    // Uход же остаётся на откупе живого свайпа/dismissState.dismiss() — они
+    // доигрывают анимацию ДО того, как selection станет null, поэтому exit
+    // здесь не нужен (ExitTransition.None).
+    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+
+    AnimatedVisibility(
+        visibleState = visibleState,
+        enter = slideInHorizontally(
+            initialOffsetX = { it },
+            animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+        ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60)),
+        exit = ExitTransition.None,
     ) {
-        AnimatedContent(
-            targetState    = uiState,
-            modifier       = Modifier.weight(1f),
-            transitionSpec = {
-                // Тут только внутренние подсостояния ОДНОГО и того же выбора
-                // группы (Loading → Success/OnPractice/Error, либо повтор
-                // после Error) — сам экран уже "въехал" один раз при
-                // монтировании (см. entered выше), простого fade достаточно.
-                fadeIn(tween(180)) togetherWith fadeOut(tween(120))
-            },
-            label = "pairsSubstate",
-        ) { state ->
-            when (state) {
-                is ScheduleUiState.Loading    -> SchedLoading()
-                is ScheduleUiState.Success    -> SchedContent(
-                    day             = state.day,
-                    clockMin        = clockMin,
-                    entranceTrigger = transitionSeq,
-                )
-                is ScheduleUiState.OnPractice -> SchedOnPractice(headerText = state.headerText)
-                is ScheduleUiState.Error      -> SchedError(message = state.message, onRetry = vm::retry)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(c.bg)
+                .swipeToDismiss(dismissState, enabled = active),
+        ) {
+            AnimatedContent(
+                targetState    = uiState,
+                modifier       = Modifier.weight(1f),
+                transitionSpec = {
+                    // Тут только внутренние подсостояния ОДНОГО и того же
+                    // выбора группы (Loading → Success/OnPractice/Error, либо
+                    // повтор после Error) — сам экран уже "въехал" один раз
+                    // при монтировании (см. visibleState выше), простого
+                    // fade достаточно.
+                    fadeIn(tween(180)) togetherWith fadeOut(tween(120))
+                },
+                label = "pairsSubstate",
+            ) { state ->
+                when (state) {
+                    is ScheduleUiState.Loading    -> SchedLoading()
+                    is ScheduleUiState.Success    -> SchedContent(
+                        day             = state.day,
+                        clockMin        = clockMin,
+                        entranceTrigger = transitionSeq,
+                    )
+                    is ScheduleUiState.OnPractice -> SchedOnPractice(headerText = state.headerText)
+                    is ScheduleUiState.Error      -> SchedError(message = state.message, onRetry = vm::retry)
+                }
             }
         }
     }

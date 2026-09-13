@@ -2,6 +2,7 @@ package com.schedule.app.ui.screens
 
 import com.schedule.app.util.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.*
@@ -295,18 +296,6 @@ private fun TeacherPairsOverlay(
 
     val dismissState = rememberSwipeDismissState(onDismissed = onDismissed)
 
-    var entered by remember { mutableStateOf(false) }
-    LaunchedEffect(dismissState.widthPx) {
-        if (!entered && dismissState.widthPx > 0f) {
-            entered = true
-            dismissState.offsetX.snapTo(dismissState.widthPx)
-            dismissState.offsetX.animateTo(
-                targetValue   = 0f,
-                animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-            )
-        }
-    }
-
     BackHandler(enabled = active) { dismissState.dismiss() }
 
     SideEffect {
@@ -323,26 +312,40 @@ private fun TeacherPairsOverlay(
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(c.bg)
-            .swipeToDismiss(dismissState, enabled = active),
+    // См. подробный комментарий у аналогичного места в ScheduleScreen.kt —
+    // MutableTransitionState вместо ручного Animatable-хака, который иногда
+    // ронял экран за правый край без анимации обратно.
+    val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+
+    AnimatedVisibility(
+        visibleState = visibleState,
+        enter = slideInHorizontally(
+            initialOffsetX = { it },
+            animationSpec  = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+        ) + fadeIn(tween(TEACHER_SUBSCREEN_ANIM_MS - 60)),
+        exit = ExitTransition.None,
     ) {
-        AnimatedContent(
-            targetState    = uiState,
-            modifier       = Modifier.weight(1f),
-            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
-            label          = "teacherPairsSubstate",
-        ) { state ->
-            when (state) {
-                is TeacherScheduleUiState.Loading -> TeacherSchedLoading()
-                is TeacherScheduleUiState.Success -> TeacherSchedContent(
-                    day             = state.day,
-                    clockMin        = clockMin,
-                    entranceTrigger = transitionSeq,
-                )
-                is TeacherScheduleUiState.Error   -> TeacherSchedError(message = state.message, onRetry = vm::retry)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(c.bg)
+                .swipeToDismiss(dismissState, enabled = active),
+        ) {
+            AnimatedContent(
+                targetState    = uiState,
+                modifier       = Modifier.weight(1f),
+                transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+                label          = "teacherPairsSubstate",
+            ) { state ->
+                when (state) {
+                    is TeacherScheduleUiState.Loading -> TeacherSchedLoading()
+                    is TeacherScheduleUiState.Success -> TeacherSchedContent(
+                        day             = state.day,
+                        clockMin        = clockMin,
+                        entranceTrigger = transitionSeq,
+                    )
+                    is TeacherScheduleUiState.Error   -> TeacherSchedError(message = state.message, onRetry = vm::retry)
+                }
             }
         }
     }
