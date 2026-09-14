@@ -284,17 +284,19 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         }
 
         // ── Тумблер "Ученики/Преподаватели" — один фиксированный экземпляр,
-        // виден только пока в активном режиме не открыт (и не едет) экран пар.
-        if (activePairsHeader == null) {
-            Spacer(Modifier.height(10.dp))
-            ScheduleModeToggle(
-                selected = mode,
-                onSelect = onModeSelect,
-                progress = swipable.progress,
-                modifier = Modifier.padding(horizontal = 18.dp),
-            )
-            Spacer(Modifier.height(4.dp))
-        }
+        // виден всегда, в том числе пока открыт (или едет) экран пар — по
+        // просьбе пользователя тумблер больше не прячется при открытии
+        // расписания конкретной группы/препода. Свайп между режимами
+        // по-прежнему заблокирован в этот момент (см. dragEnabled выше),
+        // но тап по самому тумблеру работает как обычно.
+        Spacer(Modifier.height(10.dp))
+        ScheduleModeToggle(
+            selected = mode,
+            onSelect = onModeSelect,
+            progress = swipable.progress,
+            modifier = Modifier.padding(horizontal = 18.dp),
+        )
+        Spacer(Modifier.height(4.dp))
 
         // ── Содержимое: оба вида смонтированы всегда, слайд между ними
         // управляется единым AnimPrefs (см. комментарий выше).
