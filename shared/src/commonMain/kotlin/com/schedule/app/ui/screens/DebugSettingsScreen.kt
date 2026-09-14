@@ -13,6 +13,7 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -77,6 +78,13 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
                 JsonTestSection()
             }
 
+            Spacer(Modifier.height(20.dp))
+
+            SettingsSectionLabel("Отладка рендера Picker/Pairs")
+            SettingsCard {
+                RenderDebugSection()
+            }
+
             Spacer(Modifier.height(80.dp))
         }
     }
@@ -114,6 +122,52 @@ private fun DebugSettingsHeader(onBack: () -> Unit) {
             fontSize = 19.sp,
             fontWeight = FontWeight.Bold,
         )
+    }
+}
+
+// ─── Отладка рендера Picker/Pairs ───────────────────────────────────────────
+// Диагностический тумблер под конкретный баг (см. обсуждение в чате):
+// свайп-закрытие экрана пар должно "обнажать" список групп/преподов под
+// собой, но там видна ровная заливка — непонятно, пикер вообще не рисуется,
+// или рисуется, просто фон у него того же чёрного цвета, что и у пар,
+// и визуально неотличим. Прозрачный фон снимает эту неоднозначность —
+// если карточки появятся, значит дело было в фоне/z-order, а не в самом
+// списке. НЕ персистится (см. AppPrefs.debugTransparentOverlayBg) — чисто
+// разовая диагностика, не постоянная настройка.
+
+@Composable
+private fun RenderDebugSection() {
+    val c = LocalAppColors.current
+    val transparentBg by AppPrefs.debugTransparentOverlayBg.collectAsState()
+
+    Column {
+        Text(
+            text = "Делает фон экрана пикера и экрана пар прозрачным вместо чёрного — " +
+                "чтобы отличить «список групп/преподов не рисуется» от «рисуется, но " +
+                "за пустым чёрным фоном не видно». Применяется сразу — зайди в расписание " +
+                "группы/препода и свайпни назад.",
+            color = c.textSub,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Прозрачный фон Picker/Pairs",
+                color = c.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = transparentBg,
+                onCheckedChange = { AppPrefs.setDebugTransparentOverlayBg(it) },
+            )
+        }
     }
 }
 

@@ -164,6 +164,7 @@ fun TeacherScheduleScreen(
     val c        = LocalAppColors.current
     val uiState  by vm.uiState.collectAsState()
     val progress by vm.progress.collectAsState()
+    val debugTransparentBg by AppPrefs.debugTransparentOverlayBg.collectAsState()
 
     LaunchedEffect(file.name) { vm.load(file) }
 
@@ -196,7 +197,7 @@ fun TeacherScheduleScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(0f)
-                .background(c.bg),
+                .background(if (debugTransparentBg) Color.Transparent else c.bg),
         ) {
             SideEffect {
                 onHeaderInfo(
@@ -294,6 +295,7 @@ private fun TeacherPairsOverlay(
     val vm: TeacherPairsViewModel = viewModel(key = "teacher-pairs-${selection.id}") { TeacherPairsViewModel() }
     val uiState  by vm.uiState.collectAsState()
     val clockMin by vm.clockMin.collectAsState()
+    val debugTransparentBg by AppPrefs.debugTransparentOverlayBg.collectAsState()
 
     LaunchedEffect(selection.id) { vm.load(selection.bytes, selection.teacher, selection.file) }
 
@@ -340,7 +342,7 @@ private fun TeacherPairsOverlay(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(c.bg)
+                .background(if (debugTransparentBg) Color.Transparent else c.bg)
                 .swipeToDismiss(dismissState, enabled = active),
         ) {
             AnimatedContent(

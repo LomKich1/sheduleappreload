@@ -202,6 +202,7 @@ fun ScheduleScreen(
     val c        = LocalAppColors.current
     val uiState  by vm.uiState.collectAsState()
     val progress by vm.progress.collectAsState()
+    val debugTransparentBg by AppPrefs.debugTransparentOverlayBg.collectAsState()
 
     LaunchedEffect(file.name) { vm.load(file) }
 
@@ -246,7 +247,7 @@ fun ScheduleScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(0f)
-                .background(c.bg),
+                .background(if (debugTransparentBg) Color.Transparent else c.bg),
         ) {
             // Picker-заголовок теперь репортится ВСЕГДА, а не только пока
             // оверлей закрыт — хосту он нужен постоянно, чтобы было что
@@ -362,6 +363,7 @@ private fun PairsOverlay(
     val vm: PairsViewModel = viewModel(key = "pairs-${selection.id}") { PairsViewModel() }
     val uiState  by vm.uiState.collectAsState()
     val clockMin by vm.clockMin.collectAsState()
+    val debugTransparentBg by AppPrefs.debugTransparentOverlayBg.collectAsState()
 
     LaunchedEffect(selection.id) { vm.load(selection.bytes, selection.group, selection.file) }
 
@@ -420,7 +422,7 @@ private fun PairsOverlay(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(c.bg)
+                .background(if (debugTransparentBg) Color.Transparent else c.bg)
                 .swipeToDismiss(dismissState, enabled = active),
         ) {
             AnimatedContent(

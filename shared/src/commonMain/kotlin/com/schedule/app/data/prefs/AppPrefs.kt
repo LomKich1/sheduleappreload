@@ -61,6 +61,19 @@ object AppPrefs {
     private val _listEntranceAnim = MutableStateFlow(true)
     val listEntranceAnim: StateFlow<Boolean> = _listEntranceAnim.asStateFlow()
 
+    // ── DEBUG: прозрачный (не чёрный) фон Picker/Pairs-слоёв в ScheduleScreen/
+    // TeacherScheduleScreen — диагностика "проступания" пикера сквозь едущий
+    // экран пар при свайпе (см. обсуждение в чате про баг с пустым списком
+    // групп под оверлеем). Намеренно НЕ персистится через PrefsStorage — это
+    // одноразовый диагностический тумблер, не настоящая настройка приложения,
+    // сбрасывается при каждом перезапуске.
+    private val _debugTransparentOverlayBg = MutableStateFlow(false)
+    val debugTransparentOverlayBg: StateFlow<Boolean> = _debugTransparentOverlayBg.asStateFlow()
+
+    fun setDebugTransparentOverlayBg(enabled: Boolean) {
+        _debugTransparentOverlayBg.value = enabled
+    }
+
     // ── Какой вид открывается первым на экране файла: Ученики или Преподаватели ──
     private val _defaultScheduleMode = MutableStateFlow(DEFAULT_SCHEDULE_MODE)
     val defaultScheduleMode: StateFlow<ScheduleMode> = _defaultScheduleMode.asStateFlow()
