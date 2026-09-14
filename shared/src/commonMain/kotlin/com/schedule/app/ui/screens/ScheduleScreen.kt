@@ -191,6 +191,12 @@ fun ScheduleScreen(
     // ScheduleHostScreen, который рисует единую фиксированную шапку на оба
     // режима сразу. См. ScheduleHeaderInfo в ScheduleHostScreen.kt.
     onHeaderInfo: (ScheduleHeaderInfo) -> Unit = {},
+    // onPairsHeaderInfo — отдельный канал для заголовка экрана пар + живого
+    // прогресса свайпа-закрытия (0..1). Раньше это был тот же onHeaderInfo,
+    // просто "перебивавший" пикер-версию — но тогда хост в момент свайпа не
+    // видел ОБА заголовка одновременно и не мог их синхронно двигать (см.
+    // обсуждение — шапка должна ехать вместе с телом, как в Telegram).
+    onPairsHeaderInfo: (ScheduleHeaderInfo?, Float) -> Unit = { _, _ -> },
 ) {
     val c        = LocalAppColors.current
     val uiState  by vm.uiState.collectAsState()
@@ -240,27 +246,31 @@ fun ScheduleScreen(
                 .fillMaxSize()
                 .background(c.bg),
         ) {
-            // Шапку рисуем только пока оверлей закрыт — пока он открыт, свою
-            // версию header info поднимает PairsOverlay ниже (композится
-            // позже в этом же дереве ⇒ SideEffect отрабатывает последним и
-            // "перебивает" этот вызов, см. PairsOverlay).
+            // Picker-заголовок теперь репортится ВСЕГДА, а не только пока
+            // оверлей закрыт — хосту он нужен постоянно, чтобы было что
+            // рисовать "проступающим" из-под уезжающей шапки пар во время
+            // live-свайпа (см. ScheduleHostScreen, activePickerHeader).
             SideEffect {
-                if (selection == null) {
-                    onHeaderInfo(
-                        ScheduleHeaderInfo(
-                            title         = "",
-                            placeholder   = if (uiState is PickerUiState.Loading)
-                                "Загружаем список групп…"
-                            else
-                                "Выберите группу",
-                            dateText      = file.dateLabel,
-                            isPairsScreen = false,
-                            isLoading     = uiState is PickerUiState.Loading,
-                            progress      = progress,
-                            onBack        = onBack,
-                        ),
-                    )
-                }
+                onHeaderInfo(
+                    ScheduleHeaderInfo(
+                        title         = "",
+                        placeholder   = if (uiState is PickerUiState.Loading)
+                            "Загружаем список групп…"
+                        else
+                            "Выберите группу",
+                        dateText      = file.dateLabel,
+                        isPairsScreen = false,
+                        isLoading     = uiState is PickerUiState.Loading,
+                        progress      = progress,
+                        onBack        = onBack,
+                    ),
+                )
+            }
+            // Когда оверлей закрывается (selection становится null), хост
+            // должен узнать об этом сразу — иначе его "pairs-заголовок"
+            // остался бы висеть с последним значением до следующего тапа.
+            LaunchedEffect(selection) {
+                if (selection == null) onPairsHeaderInfo(null, 0f)
             }
 
             AnimatedContent(
@@ -318,7 +328,7 @@ fun ScheduleScreen(
                     AppPrefs.clearGroupName()
                     selection = null
                 },
-                onHeaderInfo = onHeaderInfo,
+                onPairsHeaderInfo = onPairsHeaderInfo,
             )
         }
     }
@@ -342,7 +352,7 @@ private fun PairsOverlay(
     selection: PairsSelection,
     active: Boolean,
     onDismissed: () -> Unit,
-    onHeaderInfo: (ScheduleHeaderInfo) -> Unit,
+    onPairsHeaderInfo: (ScheduleHeaderInfo?, Float) -> Unit,
 ) {
     val c  = LocalAppColors.current
     val vm: PairsViewModel = viewModel(key = "pairs-${selection.id}") { PairsViewModel() }
@@ -361,8 +371,18 @@ private fun PairsOverlay(
     // за край в ScheduleHostScreen, она не должна перехватывать back.
     BackHandler(enabled = active) { dismissState.dismiss() }
 
+    // Живой прогресс свайпа-закрытия (0 = пары на месте, 1 = полностью
+    // закрыты/пикер раскрыт) — читаем offsetX.value прямо в теле composable
+    // (не только внутри graphicsLayer), поэтому каждый кадр живого перетаскивания
+    // или анимации доигрывания триггерит рекомпозицию и долетает до хоста —
+    // именно ради этого шапка вообще разделена на picker/pairs+progress
+    // (см. ScheduleHostScreen).
+    val swipeProgress = if (dismissState.widthPx > 0f)
+        (dismissState.offsetX.value / dismissState.widthPx).coerceIn(0f, 1f)
+    else 0f
+
     SideEffect {
-        onHeaderInfo(
+        onPairsHeaderInfo(
             ScheduleHeaderInfo(
                 title         = selection.group,
                 placeholder   = "",
@@ -372,6 +392,7 @@ private fun PairsOverlay(
                 progress      = 1f,
                 onBack        = { dismissState.dismiss() },
             ),
+            swipeProgress,
         )
     }
 

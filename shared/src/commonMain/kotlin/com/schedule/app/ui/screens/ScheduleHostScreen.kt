@@ -181,9 +181,28 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
     // случайно смахнуть на расписание другого режима, хотя тумблер там уже
     // скрыт (см. "if (!activeHeader.isPairsScreen)" ниже, на сам тумблер) —
     // жест и видимый UI были рассинхронизированы.
-    var studentHeader by remember { mutableStateOf(ScheduleHeaderInfo(placeholder = "Выберите группу")) }
-    var teacherHeader by remember { mutableStateOf(ScheduleHeaderInfo(placeholder = "Выберите преподавателя")) }
-    val activeHeader = if (mode == ScheduleMode.STUDENT) studentHeader else teacherHeader
+    // studentPickerHeader/teacherPickerHeader — заголовок пикера, актуален
+    // ВСЕГДА (даже пока открыт экран пар) — иначе хосту нечего было бы
+    // рисовать "проступающим" из-под уезжающей шапки пар во время live-свайпа.
+    // studentPairsHeader/teacherPairsHeader — null, когда экран пар не открыт;
+    // studentSwipeProgress/teacherSwipeProgress — 0..1 прогресс СВАЙПА ЗАКРЫТИЯ
+    // (0 = пары полностью открыты/на месте, 1 = полностью закрыты/пикер
+    // раскрыт), пробрасывается из PairsOverlay.dismissState — см. историю
+    // правок: раньше шапка просто мгновенно подменяла текст, что не давало
+    // почувствовать честный Telegram-style свайп, который просили сделать.
+    var studentPickerHeader by remember { mutableStateOf(ScheduleHeaderInfo(placeholder = "Выберите группу")) }
+    var teacherPickerHeader by remember { mutableStateOf(ScheduleHeaderInfo(placeholder = "Выберите преподавателя")) }
+    var studentPairsHeader by remember { mutableStateOf<ScheduleHeaderInfo?>(null) }
+    var teacherPairsHeader by remember { mutableStateOf<ScheduleHeaderInfo?>(null) }
+    var studentSwipeProgress by remember { mutableStateOf(0f) }
+    var teacherSwipeProgress by remember { mutableStateOf(0f) }
+
+    val activePickerHeader = if (mode == ScheduleMode.STUDENT) studentPickerHeader else teacherPickerHeader
+    val activePairsHeader = if (mode == ScheduleMode.STUDENT) studentPairsHeader else teacherPairsHeader
+    val activeSwipeProgress = if (mode == ScheduleMode.STUDENT) studentSwipeProgress else teacherSwipeProgress
+    // "Актуальный" заголовок для полосы загрузки и т.п. — то, что сейчас
+    // фактически на переднем плане: пары, если открыты, иначе пикер.
+    val activeHeader = activePairsHeader ?: activePickerHeader
 
     val swipable = rememberSwipableProgress(
         activeIndex = activeIndex,
@@ -193,7 +212,7 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         tweenDurationMs = tweenDurationMs,
         springDamping = springDamping,
         springStiffness = springStiffness,
-        dragEnabled = !activeHeader.isPairsScreen,
+        dragEnabled = activePairsHeader == null,
         // Сброс каскада карточек пикера — на старте направления жеста, не на
         // завершении свайпа (см. подробный комментарий в rememberSwipableProgress
         // и аналогичное подключение в AppScaffold для Files/Bells). idx здесь —
@@ -212,51 +231,37 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
 
     Column(modifier = Modifier.fillMaxSize().background(c.bg)) {
 
-        // ── Единая фиксированная шапка ──────────────────────────────────────
-        Column(modifier = Modifier.fillMaxWidth().background(c.surface)) {
-            Row(
+        // ── Шапка ────────────────────────────────────────────────────────────
+        // Пока экран пар не открыт — рисуется только слой пикера, на своём
+        // месте (см. activePairsHeader == null ниже). Пока открыт (или едет
+        // живым свайпом) — оба слоя наложены друг на друга и синхронно едут
+        // по activeSwipeProgress, ровно как тело в PairsOverlay: пикер-шапка
+        // "проступает" слева, шапка пар уезжает вправо. Раньше тут была одна
+        // шапка с мгновенной подменой текста — по итогам обсуждения в чате
+        // это не давало честного Telegram-style ощущения при свайпе.
+        var headerWidthPx by remember { mutableStateOf(0f) }
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // vertical = 12.dp — как в AppHeader (было 14.dp): вместе
-                    // с фикс. размером шрифта ниже это выравнивает высоту
-                    // "чистой" шапки (без подстрочника даты) с шапкой
-                    // Files/Bells. Сам контур/цвет не меняем — только отступ.
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    .clipToBounds()
+                    .onSizeChanged { headerWidthPx = it.width.toFloat() },
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(c.surface2)
-                        .clickable(onClick = activeHeader.onBack),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.ArrowBack,
-                        contentDescription = "Назад",
-                        tint = c.accent,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-
-                Column(modifier = Modifier.weight(1f)) {
-                    val displayTitle = activeHeader.title.ifBlank { activeHeader.placeholder }
-                    FlipTransitionText(
-                        text     = displayTitle,
-                        color    = if (activeHeader.title.isBlank()) c.textSub else c.accent,
-                        // Раньше размер тоже прыгал вместе с цветом
-                        // (16.sp плейсхолдер / filledFontSize факт) — теперь
-                        // меняется только цвет, размер единый на все
-                        // состояния (см. комментарий у filledFontSize выше).
-                        fontSize = activeHeader.filledFontSize,
-                    )
-                    Text(
-                        text = activeHeader.dateText,
-                        color = c.textSub,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(top = 2.dp),
+                ScheduleHeaderRow(
+                    header = activePickerHeader,
+                    modifier = Modifier.graphicsLayer {
+                        translationX = if (activePairsHeader != null)
+                            -headerWidthPx * (1f - activeSwipeProgress)
+                        else
+                            0f
+                    },
+                )
+                if (activePairsHeader != null) {
+                    ScheduleHeaderRow(
+                        header = activePairsHeader,
+                        modifier = Modifier.graphicsLayer {
+                            translationX = headerWidthPx * activeSwipeProgress
+                        },
                     )
                 }
             }
@@ -279,8 +284,8 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         }
 
         // ── Тумблер "Ученики/Преподаватели" — один фиксированный экземпляр,
-        // виден только пока в активном режиме не показано само расписание пар.
-        if (!activeHeader.isPairsScreen) {
+        // виден только пока в активном режиме не открыт (и не едет) экран пар.
+        if (activePairsHeader == null) {
             Spacer(Modifier.height(10.dp))
             ScheduleModeToggle(
                 selected = mode,
@@ -347,7 +352,8 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     active        = studentActive,
                     revealTrigger = studentRevealTrigger,
                     revealEdge    = studentRevealEdge,
-                    onHeaderInfo  = { studentHeader = it },
+                    onHeaderInfo  = { studentPickerHeader = it },
+                    onPairsHeaderInfo = { info, prog -> studentPairsHeader = info; studentSwipeProgress = prog },
                 )
             }
 
@@ -369,9 +375,62 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     active        = !studentActive,
                     revealTrigger = teacherRevealTrigger,
                     revealEdge    = teacherRevealEdge,
-                    onHeaderInfo  = { teacherHeader = it },
+                    onHeaderInfo  = { teacherPickerHeader = it },
+                    onPairsHeaderInfo = { info, prog -> teacherPairsHeader = info; teacherSwipeProgress = prog },
                 )
             }
+        }
+    }
+}
+
+// Один слой шапки — раньше был единственной Row прямо внутри ScheduleHostScreen,
+// теперь вынесен, потому что рисуется ДВАЖДЫ и накладывается друг на друга во
+// время свайпа Picker↔Pairs (см. комментарий у "── Шапка" в ScheduleHostScreen).
+// Каждый слой обязан быть непрозрачным (свой .background(c.surface)) — иначе
+// при наложении был бы виден слой снизу сквозь едущий верхний.
+@Composable
+private fun ScheduleHeaderRow(header: ScheduleHeaderInfo, modifier: Modifier = Modifier) {
+    val c = LocalAppColors.current
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(c.surface)
+            // vertical = 12.dp — как в AppHeader (было 14.dp): вместе с фикс.
+            // размером шрифта ниже это выравнивает высоту "чистой" шапки (без
+            // подстрочника даты) с шапкой Files/Bells.
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(c.surface2)
+                .clickable(onClick = header.onBack),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.ArrowBack,
+                contentDescription = "Назад",
+                tint = c.accent,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            val displayTitle = header.title.ifBlank { header.placeholder }
+            FlipTransitionText(
+                text     = displayTitle,
+                color    = if (header.title.isBlank()) c.textSub else c.accent,
+                fontSize = header.filledFontSize,
+            )
+            Text(
+                text = header.dateText,
+                color = c.textSub,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
     }
 }

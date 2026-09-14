@@ -158,6 +158,7 @@ fun TeacherScheduleScreen(
     revealTrigger: Int = 0,
     revealEdge: CascadeEdge = CascadeEdge.BOTTOM,
     onHeaderInfo: (ScheduleHeaderInfo) -> Unit = {},
+    onPairsHeaderInfo: (ScheduleHeaderInfo?, Float) -> Unit = { _, _ -> },
 ) {
     val c        = LocalAppColors.current
     val uiState  by vm.uiState.collectAsState()
@@ -196,22 +197,23 @@ fun TeacherScheduleScreen(
                 .background(c.bg),
         ) {
             SideEffect {
-                if (selection == null) {
-                    onHeaderInfo(
-                        ScheduleHeaderInfo(
-                            title         = "",
-                            placeholder   = if (uiState is TeacherPickerUiState.Loading)
-                                "Загружаем список преподавателей…"
-                            else
-                                "Выберите преподавателя",
-                            dateText      = file.dateLabel,
-                            isPairsScreen = false,
-                            isLoading     = uiState is TeacherPickerUiState.Loading,
-                            progress      = progress,
-                            onBack        = onBack,
-                        ),
-                    )
-                }
+                onHeaderInfo(
+                    ScheduleHeaderInfo(
+                        title         = "",
+                        placeholder   = if (uiState is TeacherPickerUiState.Loading)
+                            "Загружаем список преподавателей…"
+                        else
+                            "Выберите преподавателя",
+                        dateText      = file.dateLabel,
+                        isPairsScreen = false,
+                        isLoading     = uiState is TeacherPickerUiState.Loading,
+                        progress      = progress,
+                        onBack        = onBack,
+                    ),
+                )
+            }
+            LaunchedEffect(selection) {
+                if (selection == null) onPairsHeaderInfo(null, 0f)
             }
 
             AnimatedContent(
@@ -261,7 +263,7 @@ fun TeacherScheduleScreen(
                 selection    = sel,
                 active       = active,
                 onDismissed  = { selection = null },
-                onHeaderInfo = onHeaderInfo,
+                onPairsHeaderInfo = onPairsHeaderInfo,
             )
         }
     }
@@ -282,7 +284,7 @@ private fun TeacherPairsOverlay(
     selection: TeacherPairsSelection,
     active: Boolean,
     onDismissed: () -> Unit,
-    onHeaderInfo: (ScheduleHeaderInfo) -> Unit,
+    onPairsHeaderInfo: (ScheduleHeaderInfo?, Float) -> Unit,
 ) {
     val c  = LocalAppColors.current
     val vm: TeacherPairsViewModel = viewModel(key = "teacher-pairs-${selection.id}") { TeacherPairsViewModel() }
@@ -298,8 +300,13 @@ private fun TeacherPairsOverlay(
 
     BackHandler(enabled = active) { dismissState.dismiss() }
 
+    // См. комментарий у аналогичного места в ScheduleScreen.kt.
+    val swipeProgress = if (dismissState.widthPx > 0f)
+        (dismissState.offsetX.value / dismissState.widthPx).coerceIn(0f, 1f)
+    else 0f
+
     SideEffect {
-        onHeaderInfo(
+        onPairsHeaderInfo(
             ScheduleHeaderInfo(
                 title         = selection.teacher,
                 placeholder   = "",
@@ -309,6 +316,7 @@ private fun TeacherPairsOverlay(
                 progress      = 1f,
                 onBack        = { dismissState.dismiss() },
             ),
+            swipeProgress,
         )
     }
 
