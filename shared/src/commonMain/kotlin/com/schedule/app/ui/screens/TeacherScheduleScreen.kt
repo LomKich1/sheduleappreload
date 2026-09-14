@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.model.TeacherDay
@@ -194,6 +195,7 @@ fun TeacherScheduleScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .zIndex(0f)
                 .background(c.bg),
         ) {
             SideEffect {
@@ -259,12 +261,14 @@ fun TeacherScheduleScreen(
         }
 
         selection?.let { sel ->
-            TeacherPairsOverlay(
-                selection    = sel,
-                active       = active,
-                onDismissed  = { selection = null },
-                onPairsHeaderInfo = onPairsHeaderInfo,
-            )
+            Box(modifier = Modifier.fillMaxSize().zIndex(1f)) {
+                TeacherPairsOverlay(
+                    selection    = sel,
+                    active       = active,
+                    onDismissed  = { selection = null },
+                    onPairsHeaderInfo = onPairsHeaderInfo,
+                )
+            }
         }
     }
 }

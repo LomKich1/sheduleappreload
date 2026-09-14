@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.schedule.app.data.model.LessonEntry
 import com.schedule.app.data.model.ScheduleDay
@@ -244,6 +245,7 @@ fun ScheduleScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .zIndex(0f)
                 .background(c.bg),
         ) {
             // Picker-заголовок теперь репортится ВСЕГДА, а не только пока
@@ -321,15 +323,17 @@ fun ScheduleScreen(
         }
 
         selection?.let { sel ->
-            PairsOverlay(
-                selection   = sel,
-                active      = active,
-                onDismissed = {
-                    AppPrefs.clearGroupName()
-                    selection = null
-                },
-                onPairsHeaderInfo = onPairsHeaderInfo,
-            )
+            Box(modifier = Modifier.fillMaxSize().zIndex(1f)) {
+                PairsOverlay(
+                    selection   = sel,
+                    active      = active,
+                    onDismissed = {
+                        AppPrefs.clearGroupName()
+                        selection = null
+                    },
+                    onPairsHeaderInfo = onPairsHeaderInfo,
+                )
+            }
         }
     }
 }
