@@ -342,8 +342,8 @@ private fun TeacherPairsOverlay(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(if (debugTransparentBg) Color.Transparent else c.bg)
-                .swipeToDismiss(dismissState, enabled = active),
+                .swipeToDismiss(dismissState, enabled = active)
+                .background(if (debugTransparentBg) Color.Transparent else c.bg),
         ) {
             AnimatedContent(
                 targetState    = uiState,
