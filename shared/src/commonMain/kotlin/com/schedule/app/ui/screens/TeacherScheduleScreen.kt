@@ -164,6 +164,8 @@ fun TeacherScheduleScreen(
     onModeSelect: (ScheduleMode) -> Unit = {},
     modeSwipeProgress: Float = 0f,
     onPairsOpenChanged: (Boolean) -> Unit = {},
+    // См. counterTranslationX в ScheduleScreen.kt — тот же принцип.
+    counterTranslationX: Float = 0f,
 ) {
     val c        = LocalAppColors.current
     val uiState  by vm.uiState.collectAsState()
@@ -203,36 +205,44 @@ fun TeacherScheduleScreen(
                 .zIndex(0f)
                 .background(if (debugTransparentBg) Color.Transparent else c.bg),
         ) {
-            val pickerHeader = ScheduleHeaderInfo(
-                title         = "",
-                placeholder   = if (uiState is TeacherPickerUiState.Loading)
-                    "Загружаем список преподавателей…"
-                else
-                    "Выберите преподавателя",
-                dateText      = file.dateLabel,
-                isPairsScreen = false,
-                isLoading     = uiState is TeacherPickerUiState.Loading,
-                progress      = progress,
-                onBack        = onBack,
-            )
-            ScheduleHeaderRow(header = pickerHeader)
-            if (pickerHeader.isLoading) {
-                LinearProgressIndicator(
-                    progress   = { pickerHeader.progress },
-                    modifier   = Modifier.fillMaxWidth().height(2.dp),
-                    color      = c.accent,
-                    trackColor = c.surface2,
+            // См. подробный комментарий у аналогичного места в ScheduleScreen.kt
+            // про counterTranslationX — тот же приём здесь, зеркально.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer { translationX = -counterTranslationX },
+            ) {
+                val pickerHeader = ScheduleHeaderInfo(
+                    title         = "",
+                    placeholder   = if (uiState is TeacherPickerUiState.Loading)
+                        "Загружаем список преподавателей…"
+                    else
+                        "Выберите преподавателя",
+                    dateText      = file.dateLabel,
+                    isPairsScreen = false,
+                    isLoading     = uiState is TeacherPickerUiState.Loading,
+                    progress      = progress,
+                    onBack        = onBack,
                 )
-            }
+                ScheduleHeaderRow(header = pickerHeader)
+                if (pickerHeader.isLoading) {
+                    LinearProgressIndicator(
+                        progress   = { pickerHeader.progress },
+                        modifier   = Modifier.fillMaxWidth().height(2.dp),
+                        color      = c.accent,
+                        trackColor = c.surface2,
+                    )
+                }
 
-            Spacer(Modifier.height(10.dp))
-            ScheduleModeToggle(
-                selected = mode,
-                onSelect = onModeSelect,
-                progress = modeSwipeProgress,
-                modifier = Modifier.padding(horizontal = 18.dp),
-            )
-            Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(10.dp))
+                ScheduleModeToggle(
+                    selected = mode,
+                    onSelect = onModeSelect,
+                    progress = modeSwipeProgress,
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                )
+                Spacer(Modifier.height(4.dp))
+            }
 
             LaunchedEffect(selection) { onPairsOpenChanged(selection != null) }
 

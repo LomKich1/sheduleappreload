@@ -203,6 +203,19 @@ fun ScheduleScreen(
     // в PairsOverlay ниже, и хосту нужен только простой факт "открыт ли
     // сейчас экран пар" — для блокировки жеста Ученики↔Преподаватели.
     onPairsOpenChanged: (Boolean) -> Unit = {},
+    // counterTranslationX — тот же translationX (studentOffset/teacherOffset),
+    // что и накладывает ScheduleHostScreen на ВЕСЬ этот экран целиком во
+    // время свайпа/тумблера Ученики↔Преподаватели. Шапка и тумблер ниже
+    // компенсируют его обратным знаком у себя, поэтому визуально остаются
+    // неподвижными на экране, пока весь остальной контент (список групп)
+    // честно едет вместе со своим слоем — то есть z-order/раскрытие
+    // Picker↔Pairs остаётся "настоящим" (см. комментарий у ScheduleHostScreen),
+    // а неподвижность шапки/тумблера — отдельный, чисто визуальный трюк поверх
+    // этого. Точная компенсация работает в DEFAULT/SPRING (там scale = 1); в
+    // PARALLAX добавляется небольшой (пропорционально 1 - scale) остаточный
+    // дрейф, т.к. масштаб родителя чуть подрастягивает саму компенсацию —
+    // на глаз почти незаметно, но не идеально ноль.
+    counterTranslationX: Float = 0f,
 ) {
     val c        = LocalAppColors.current
     val uiState  by vm.uiState.collectAsState()
@@ -254,41 +267,51 @@ fun ScheduleScreen(
                 .zIndex(0f)
                 .background(if (debugTransparentBg) Color.Transparent else c.bg),
         ) {
-            // Шапка пикера рисуется прямо здесь — раньше поднималась в хост
-            // через onHeaderInfo (см. историю в ScheduleHostScreen.kt), теперь
-            // это просто ЧАСТЬ слоя пикера (zIndex 0), поэтому естественно
-            // закрывается опаковым PairsOverlay сверху и так же естественно
-            // проступает при свайпе-закрытии — без ручной синхронизации.
-            val pickerHeader = ScheduleHeaderInfo(
-                title         = "",
-                placeholder   = if (uiState is PickerUiState.Loading)
-                    "Загружаем список групп…"
-                else
-                    "Выберите группу",
-                dateText      = file.dateLabel,
-                isPairsScreen = false,
-                isLoading     = uiState is PickerUiState.Loading,
-                progress      = progress,
-                onBack        = onBack,
-            )
-            ScheduleHeaderRow(header = pickerHeader)
-            if (pickerHeader.isLoading) {
-                LinearProgressIndicator(
-                    progress   = { pickerHeader.progress },
-                    modifier   = Modifier.fillMaxWidth().height(2.dp),
-                    color      = c.accent,
-                    trackColor = c.surface2,
+            // Шапка пикера + тумблер — обёрнуты в компенсирующий
+            // translationX (см. counterTranslationX выше), поэтому остаются
+            // неподвижными на экране во время свайпа/тумблера Ученики↔
+            // Преподаватели, хотя физически являются частью этого же слоя
+            // пикера (и потому корректно закрываются/проступают вместе с
+            // ним при свайпе Picker↔Pairs — см. комментарий у
+            // ScheduleHostScreen). Список групп ниже (AnimatedContent) эту
+            // компенсацию не получает — он-то как раз честно едет вместе со
+            // своим слоем, как и раньше.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer { translationX = -counterTranslationX },
+            ) {
+                val pickerHeader = ScheduleHeaderInfo(
+                    title         = "",
+                    placeholder   = if (uiState is PickerUiState.Loading)
+                        "Загружаем список групп…"
+                    else
+                        "Выберите группу",
+                    dateText      = file.dateLabel,
+                    isPairsScreen = false,
+                    isLoading     = uiState is PickerUiState.Loading,
+                    progress      = progress,
+                    onBack        = onBack,
                 )
-            }
+                ScheduleHeaderRow(header = pickerHeader)
+                if (pickerHeader.isLoading) {
+                    LinearProgressIndicator(
+                        progress   = { pickerHeader.progress },
+                        modifier   = Modifier.fillMaxWidth().height(2.dp),
+                        color      = c.accent,
+                        trackColor = c.surface2,
+                    )
+                }
 
-            Spacer(Modifier.height(10.dp))
-            ScheduleModeToggle(
-                selected = mode,
-                onSelect = onModeSelect,
-                progress = modeSwipeProgress,
-                modifier = Modifier.padding(horizontal = 18.dp),
-            )
-            Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(10.dp))
+                ScheduleModeToggle(
+                    selected = mode,
+                    onSelect = onModeSelect,
+                    progress = modeSwipeProgress,
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                )
+                Spacer(Modifier.height(4.dp))
+            }
 
             // Хосту нужен только факт "открыт ли сейчас экран пар" (см.
             // onPairsOpenChanged в комментарии к параметрам выше).

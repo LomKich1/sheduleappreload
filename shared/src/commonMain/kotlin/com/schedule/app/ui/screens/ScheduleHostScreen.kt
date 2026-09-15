@@ -279,15 +279,16 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     .blockTouchesIfInactive(!studentActive),
             ) {
                 ScheduleScreen(
-                    file              = file,
-                    onBack            = onBack,
-                    active            = studentActive,
-                    revealTrigger     = studentRevealTrigger,
-                    revealEdge        = studentRevealEdge,
-                    mode              = mode,
-                    onModeSelect      = onModeSelect,
-                    modeSwipeProgress = swipable.progress,
+                    file               = file,
+                    onBack             = onBack,
+                    active             = studentActive,
+                    revealTrigger      = studentRevealTrigger,
+                    revealEdge         = studentRevealEdge,
+                    mode               = mode,
+                    onModeSelect       = onModeSelect,
+                    modeSwipeProgress  = swipable.progress,
                     onPairsOpenChanged = { studentPairsOpen = it },
+                    counterTranslationX = studentOffset,
                 )
             }
 
@@ -304,15 +305,16 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     .blockTouchesIfInactive(studentActive),
             ) {
                 TeacherScheduleScreen(
-                    file              = file,
-                    onBack            = onBack,
-                    active            = !studentActive,
-                    revealTrigger     = teacherRevealTrigger,
-                    revealEdge        = teacherRevealEdge,
-                    mode              = mode,
-                    onModeSelect      = onModeSelect,
-                    modeSwipeProgress = swipable.progress,
+                    file               = file,
+                    onBack             = onBack,
+                    active             = !studentActive,
+                    revealTrigger      = teacherRevealTrigger,
+                    revealEdge         = teacherRevealEdge,
+                    mode               = mode,
+                    onModeSelect       = onModeSelect,
+                    modeSwipeProgress  = swipable.progress,
                     onPairsOpenChanged = { teacherPairsOpen = it },
+                    counterTranslationX = teacherOffset,
                 )
             }
         }
