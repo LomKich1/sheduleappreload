@@ -7,7 +7,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -36,21 +35,23 @@ import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.FlipTransitionText
 import com.schedule.app.ui.components.ScheduleMode
-import com.schedule.app.ui.components.ScheduleModeToggle
 import com.schedule.app.ui.components.rememberSwipableProgress
 import com.schedule.app.ui.theme.LocalAppColors
 import kotlin.math.pow
 
 // ─── ScheduleHeaderInfo ─────────────────────────────────────────────────────
 //
-// Раньше каждый под-экран (ScheduleScreen/TeacherScheduleScreen) сам рисовал
-// у себя в шапке заголовок, дату, кнопку назад и полосу загрузки (см. старые
-// SchedHeader/TeacherHeader) — из-за этого при переключении тумблером
-// съезжала ВСЯ шапка целиком вместе с содержимым, что и выглядело странно.
-// Теперь каждый под-экран только ВЫЧИСЛЯЕТ эти данные и поднимает их сюда
-// через onHeaderInfo, а рисует шапку ОДИН раз сам ScheduleHostScreen — при
-// переключении режима она не пересоздаётся и не двигается, меняется только
-// сам текст заголовка (см. FlipTransitionText в теле ScheduleHostScreen).
+// Раньше каждый под-экран сам рисовал у себя в шапке заголовок/дату/кнопку
+// назад, потом это унесли в хост (единый общий экземпляр на оба режима), а
+// теперь, по итогам обсуждения в чате, вернули обратно в под-экраны — но не
+// как раньше: каждый под-экран по-прежнему только ВЫЧИСЛЯЕТ эти данные в этот
+// data class, а рисует их сам через ScheduleHeaderRow (см. ScheduleScreen.kt/
+// TeacherScheduleScreen.kt) — по одному разу в слое пикера и по одному разу в
+// слое PairsOverlay, вместо одного общего экземпляра в хосте. Так шапка и
+// тумблер естественно закрываются/проступают вместе со своим слоем при
+// свайпе Picker↔Pairs (см. комментарий у ScheduleHostScreen), без ручной
+// синхронизации translateX между копиями, как было раньше.
+
 data class ScheduleHeaderInfo(
     val title: String = "",
     val placeholder: String = "",
@@ -91,9 +92,8 @@ data class ScheduleHeaderInfo(
 // группы/преподавателя внутри активного вида по-прежнему анимированно
 // "влетают" отдельно (см. revealTrigger/revealEdge, не менялось).
 //
-// Шапка, тумблер и полоса загрузки теперь тоже не дублируются на два экрана —
-// единственный экземпляр каждого живёт здесь и берёт данные из headerInfo
-// активного в данный момент режима.
+// Шапка, тумблер и полоса загрузки живут внутри каждого под-экрана (см.
+// ScheduleHeaderInfo/ScheduleHeaderRow) — хост их не рисует и не дублирует.
 @Composable
 fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
     val c = LocalAppColors.current
@@ -168,41 +168,19 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
     // свайп в обе стороны через тот же rememberSwipableProgress.
     val activeIndex = if (mode == ScheduleMode.STUDENT) 0 else 1
 
-    // Состояние шапки для каждого из двух видов — оба смонтированы всегда и
-    // независимо сообщают о себе, а рисуется только то, что относится к
-    // активному в данный момент mode.
-    //
-    // Поднято ВЫШЕ swipable (а не осталось на прежнем месте ниже) — теперь
-    // нужно ДО вызова rememberSwipableProgress: сам жест свайпа между
-    // Ученики/Преподаватели должен быть доступен только там же, где виден
-    // тумблер (пикер группы/препода), а не поверх уже открытого расписания
-    // пар конкретной группы/препода. Баг: раньше dragEnabled вообще не
-    // передавался (дефолт true) — из экрана расписания пар можно было
-    // случайно смахнуть на расписание другого режима, хотя тумблер там уже
-    // скрыт (см. "if (!activeHeader.isPairsScreen)" ниже, на сам тумблер) —
-    // жест и видимый UI были рассинхронизированы.
-    // studentPickerHeader/teacherPickerHeader — заголовок пикера, актуален
-    // ВСЕГДА (даже пока открыт экран пар) — иначе хосту нечего было бы
-    // рисовать "проступающим" из-под уезжающей шапки пар во время live-свайпа.
-    // studentPairsHeader/teacherPairsHeader — null, когда экран пар не открыт;
-    // studentSwipeProgress/teacherSwipeProgress — 0..1 прогресс СВАЙПА ЗАКРЫТИЯ
-    // (0 = пары полностью открыты/на месте, 1 = полностью закрыты/пикер
-    // раскрыт), пробрасывается из PairsOverlay.dismissState — см. историю
-    // правок: раньше шапка просто мгновенно подменяла текст, что не давало
-    // почувствовать честный Telegram-style свайп, который просили сделать.
-    var studentPickerHeader by remember { mutableStateOf(ScheduleHeaderInfo(placeholder = "Выберите группу")) }
-    var teacherPickerHeader by remember { mutableStateOf(ScheduleHeaderInfo(placeholder = "Выберите преподавателя")) }
-    var studentPairsHeader by remember { mutableStateOf<ScheduleHeaderInfo?>(null) }
-    var teacherPairsHeader by remember { mutableStateOf<ScheduleHeaderInfo?>(null) }
-    var studentSwipeProgress by remember { mutableStateOf(0f) }
-    var teacherSwipeProgress by remember { mutableStateOf(0f) }
-
-    val activePickerHeader = if (mode == ScheduleMode.STUDENT) studentPickerHeader else teacherPickerHeader
-    val activePairsHeader = if (mode == ScheduleMode.STUDENT) studentPairsHeader else teacherPairsHeader
-    val activeSwipeProgress = if (mode == ScheduleMode.STUDENT) studentSwipeProgress else teacherSwipeProgress
-    // "Актуальный" заголовок для полосы загрузки и т.п. — то, что сейчас
-    // фактически на переднем плане: пары, если открыты, иначе пикер.
-    val activeHeader = activePairsHeader ?: activePickerHeader
+    // Флаг "открыт ли сейчас экран пар" для каждого из двух видов — нужен
+    // ТОЛЬКО чтобы блокировать сам жест свайпа Ученики↔Преподаватели, пока
+    // пользователь смотрит расписание конкретной группы/препода (см.
+    // dragEnabled ниже). Раньше сюда же поднималась ПОЛНАЯ информация о
+    // шапке/тумблере, чтобы рисовать их здесь, в хосте, одним общим
+    // экземпляром на оба режима — по итогам обсуждения в чате от этого
+    // отказались: шапка и тумблер теперь физически живут внутри
+    // ScheduleScreen/TeacherScheduleScreen (в слое пикера, zIndex 0), и
+    // просто естественно закрываются/проступают вместе с этим слоем при
+    // свайпе Picker↔Pairs — без отдельной синхронизации на хосте.
+    var studentPairsOpen by remember { mutableStateOf(false) }
+    var teacherPairsOpen by remember { mutableStateOf(false) }
+    val activePairsOpen = if (mode == ScheduleMode.STUDENT) studentPairsOpen else teacherPairsOpen
 
     val swipable = rememberSwipableProgress(
         activeIndex = activeIndex,
@@ -212,7 +190,7 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         tweenDurationMs = tweenDurationMs,
         springDamping = springDamping,
         springStiffness = springStiffness,
-        dragEnabled = activePairsHeader == null,
+        dragEnabled = !activePairsOpen,
         // Сброс каскада карточек пикера — на старте направления жеста, не на
         // завершении свайпа (см. подробный комментарий в rememberSwipableProgress
         // и аналогичное подключение в AppScaffold для Files/Bells). idx здесь —
@@ -231,85 +209,24 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
 
     Column(modifier = Modifier.fillMaxSize().background(c.bg)) {
 
-        // ── Шапка ────────────────────────────────────────────────────────────
-        // Пока экран пар не открыт — рисуется только слой пикера, на своём
-        // месте (см. activePairsHeader == null ниже). Пока открыт (или едет
-        // живым свайпом) — оба слоя наложены друг на друга и синхронно едут
-        // по activeSwipeProgress, ровно как тело в PairsOverlay: пикер-шапка
-        // "проступает" слева, шапка пар уезжает вправо. Раньше тут была одна
-        // шапка с мгновенной подменой текста — по итогам обсуждения в чате
-        // это не давало честного Telegram-style ощущения при свайпе.
-        var headerWidthPx by remember { mutableStateOf(0f) }
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clipToBounds()
-                    .onSizeChanged { headerWidthPx = it.width.toFloat() },
-            ) {
-                ScheduleHeaderRow(
-                    header = activePickerHeader,
-                    modifier = Modifier.graphicsLayer {
-                        translationX = if (activePairsHeader != null)
-                            -headerWidthPx * (1f - activeSwipeProgress)
-                        else
-                            0f
-                    },
-                )
-                if (activePairsHeader != null) {
-                    ScheduleHeaderRow(
-                        header = activePairsHeader,
-                        modifier = Modifier.graphicsLayer {
-                            translationX = headerWidthPx * activeSwipeProgress
-                        },
-                    )
-                }
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(c.border),
-            )
-        }
+        // ── Шапка и тумблер "Ученики/Преподаватели" ─────────────────────────
+        // Раньше рисовались здесь, в хосте, единым общим экземпляром на оба
+        // режима (см. историю выше и в комментариях ScheduleScreen.kt) — по
+        // итогам обсуждения в чате перенесены физически внутрь
+        // ScheduleScreen/TeacherScheduleScreen: шапка пикера + тумблер живут
+        // в слое пикера (zIndex 0), своя шапка пар — в слое PairsOverlay
+        // (zIndex 1). Хосту для этого ничего специально рисовать не нужно —
+        // естественный z-order уже даёт нужное поведение: пока пары открыты,
+        // их непрозрачный слой просто физически лежит поверх пикера (вместе
+        // с его шапкой и тумблером), а во время свайпа-закрытия PairsOverlay
+        // уезжает и всё это естественно проступает, без отдельной ручной
+        // синхронизации translateX/alpha, как было раньше.
+        //
+        // Единственное, что хосту всё ещё нужно от каждого под-экрана — это
+        // simple boolean "открыт ли сейчас экран пар" (studentPairsOpen /
+        // teacherPairsOpen выше), чтобы правильно выставлять dragEnabled у
+        // свайпа Ученики↔Преподаватели.
 
-        // ── Полоса загрузки — теперь НАД тумблером (раньше была под ним) ────
-        if (activeHeader.isLoading) {
-            LinearProgressIndicator(
-                progress   = { activeHeader.progress },
-                modifier   = Modifier.fillMaxWidth().height(2.dp),
-                color      = c.accent,
-                trackColor = c.surface2,
-            )
-        }
-
-        // ── Тумблер "Ученики/Преподаватели" — один фиксированный экземпляр.
-        // Пока пары открыты и не едут (activeSwipeProgress == 0) — вообще не
-        // монтируется, как и раньше (полностью не виден на экране пар).
-        // Как только начинается живой свайп-закрытие — монтируется и едет
-        // ТЕМ ЖЕ translationX, что и шапка пикера чуть выше (см.
-        // ScheduleHeaderRow(header = activePickerHeader, ...) в блоке "Шапка"):
-        // это заставляет его визуально быть частью того же самого слоя
-        // пикера, "проступающего" слева, а не отдельным элементом хоста.
-        if (activePairsHeader == null || activeSwipeProgress > 0f) {
-            Spacer(Modifier.height(10.dp))
-            Box(modifier = Modifier.fillMaxWidth().clipToBounds()) {
-                ScheduleModeToggle(
-                    selected = mode,
-                    onSelect = onModeSelect,
-                    progress = swipable.progress,
-                    modifier = Modifier
-                        .padding(horizontal = 18.dp)
-                        .graphicsLayer {
-                            translationX = if (activePairsHeader != null)
-                                -headerWidthPx * (1f - activeSwipeProgress)
-                            else
-                                0f
-                        },
-                )
-            }
-            Spacer(Modifier.height(4.dp))
-        }
 
         // ── Содержимое: оба вида смонтированы всегда, слайд между ними
         // управляется единым AnimPrefs (см. комментарий выше).
@@ -362,13 +279,15 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     .blockTouchesIfInactive(!studentActive),
             ) {
                 ScheduleScreen(
-                    file          = file,
-                    onBack        = onBack,
-                    active        = studentActive,
-                    revealTrigger = studentRevealTrigger,
-                    revealEdge    = studentRevealEdge,
-                    onHeaderInfo  = { studentPickerHeader = it },
-                    onPairsHeaderInfo = { info, prog -> studentPairsHeader = info; studentSwipeProgress = prog },
+                    file              = file,
+                    onBack            = onBack,
+                    active            = studentActive,
+                    revealTrigger     = studentRevealTrigger,
+                    revealEdge        = studentRevealEdge,
+                    mode              = mode,
+                    onModeSelect      = onModeSelect,
+                    modeSwipeProgress = swipable.progress,
+                    onPairsOpenChanged = { studentPairsOpen = it },
                 )
             }
 
@@ -385,26 +304,34 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     .blockTouchesIfInactive(studentActive),
             ) {
                 TeacherScheduleScreen(
-                    file          = file,
-                    onBack        = onBack,
-                    active        = !studentActive,
-                    revealTrigger = teacherRevealTrigger,
-                    revealEdge    = teacherRevealEdge,
-                    onHeaderInfo  = { teacherPickerHeader = it },
-                    onPairsHeaderInfo = { info, prog -> teacherPairsHeader = info; teacherSwipeProgress = prog },
+                    file              = file,
+                    onBack            = onBack,
+                    active            = !studentActive,
+                    revealTrigger     = teacherRevealTrigger,
+                    revealEdge        = teacherRevealEdge,
+                    mode              = mode,
+                    onModeSelect      = onModeSelect,
+                    modeSwipeProgress = swipable.progress,
+                    onPairsOpenChanged = { teacherPairsOpen = it },
                 )
             }
         }
     }
 }
 
-// Один слой шапки — раньше был единственной Row прямо внутри ScheduleHostScreen,
-// теперь вынесен, потому что рисуется ДВАЖДЫ и накладывается друг на друга во
-// время свайпа Picker↔Pairs (см. комментарий у "── Шапка" в ScheduleHostScreen).
-// Каждый слой обязан быть непрозрачным (свой .background(c.surface)) — иначе
-// при наложении был бы виден слой снизу сквозь едущий верхний.
+// Один слой шапки — теперь используется В ТРЁХ местах: в слое пикера и в
+// слое PairsOverlay КАЖДОГО из ScheduleScreen.kt/TeacherScheduleScreen.kt (не
+// private — тот же package, импорт не нужен). Раньше рисовался здесь же, в
+// хосте, ОДНИМ общим экземпляром на оба состояния сразу с ручной
+// синхронизацией translateX между ними во время свайпа Picker↔Pairs — по
+// итогам обсуждения в чате от этого отказались в пользу того, чтобы шапка
+// была просто частью соответствующего слоя (пикер/пары) и естественно
+// закрывалась/проступала вместе с ним по z-order, без всякой лишней
+// синхронизации. Каждый вызов обязан быть непрозрачным (свой
+// .background(c.surface)) — иначе при наложении был бы виден слой снизу
+// сквозь едущий верхний.
 @Composable
-private fun ScheduleHeaderRow(header: ScheduleHeaderInfo, modifier: Modifier = Modifier) {
+fun ScheduleHeaderRow(header: ScheduleHeaderInfo, modifier: Modifier = Modifier) {
     val c = LocalAppColors.current
     Row(
         modifier = modifier

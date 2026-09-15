@@ -50,6 +50,8 @@ import com.schedule.app.data.model.TeacherLessonEntry
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
+import com.schedule.app.ui.components.ScheduleMode
+import com.schedule.app.ui.components.ScheduleModeToggle
 import com.schedule.app.ui.components.rememberSwipeDismissState
 import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppRadius
@@ -158,8 +160,10 @@ fun TeacherScheduleScreen(
     active: Boolean = true,
     revealTrigger: Int = 0,
     revealEdge: CascadeEdge = CascadeEdge.BOTTOM,
-    onHeaderInfo: (ScheduleHeaderInfo) -> Unit = {},
-    onPairsHeaderInfo: (ScheduleHeaderInfo?, Float) -> Unit = { _, _ -> },
+    mode: ScheduleMode = ScheduleMode.STUDENT,
+    onModeSelect: (ScheduleMode) -> Unit = {},
+    modeSwipeProgress: Float = 0f,
+    onPairsOpenChanged: (Boolean) -> Unit = {},
 ) {
     val c        = LocalAppColors.current
     val uiState  by vm.uiState.collectAsState()
@@ -199,25 +203,38 @@ fun TeacherScheduleScreen(
                 .zIndex(0f)
                 .background(if (debugTransparentBg) Color.Transparent else c.bg),
         ) {
-            SideEffect {
-                onHeaderInfo(
-                    ScheduleHeaderInfo(
-                        title         = "",
-                        placeholder   = if (uiState is TeacherPickerUiState.Loading)
-                            "Загружаем список преподавателей…"
-                        else
-                            "Выберите преподавателя",
-                        dateText      = file.dateLabel,
-                        isPairsScreen = false,
-                        isLoading     = uiState is TeacherPickerUiState.Loading,
-                        progress      = progress,
-                        onBack        = onBack,
-                    ),
+            val pickerHeader = ScheduleHeaderInfo(
+                title         = "",
+                placeholder   = if (uiState is TeacherPickerUiState.Loading)
+                    "Загружаем список преподавателей…"
+                else
+                    "Выберите преподавателя",
+                dateText      = file.dateLabel,
+                isPairsScreen = false,
+                isLoading     = uiState is TeacherPickerUiState.Loading,
+                progress      = progress,
+                onBack        = onBack,
+            )
+            ScheduleHeaderRow(header = pickerHeader)
+            if (pickerHeader.isLoading) {
+                LinearProgressIndicator(
+                    progress   = { pickerHeader.progress },
+                    modifier   = Modifier.fillMaxWidth().height(2.dp),
+                    color      = c.accent,
+                    trackColor = c.surface2,
                 )
             }
-            LaunchedEffect(selection) {
-                if (selection == null) onPairsHeaderInfo(null, 0f)
-            }
+
+            Spacer(Modifier.height(10.dp))
+            ScheduleModeToggle(
+                selected = mode,
+                onSelect = onModeSelect,
+                progress = modeSwipeProgress,
+                modifier = Modifier.padding(horizontal = 18.dp),
+            )
+            Spacer(Modifier.height(4.dp))
+
+            LaunchedEffect(selection) { onPairsOpenChanged(selection != null) }
 
             AnimatedContent(
                 targetState = uiState,
@@ -267,7 +284,6 @@ fun TeacherScheduleScreen(
                     selection    = sel,
                     active       = active,
                     onDismissed  = { selection = null },
-                    onPairsHeaderInfo = onPairsHeaderInfo,
                 )
             }
         }
@@ -289,7 +305,6 @@ private fun TeacherPairsOverlay(
     selection: TeacherPairsSelection,
     active: Boolean,
     onDismissed: () -> Unit,
-    onPairsHeaderInfo: (ScheduleHeaderInfo?, Float) -> Unit,
 ) {
     val c  = LocalAppColors.current
     val vm: TeacherPairsViewModel = viewModel(key = "teacher-pairs-${selection.id}") { TeacherPairsViewModel() }
@@ -306,25 +321,15 @@ private fun TeacherPairsOverlay(
 
     BackHandler(enabled = active) { dismissState.dismiss() }
 
-    // См. комментарий у аналогичного места в ScheduleScreen.kt.
-    val swipeProgress = if (dismissState.widthPx > 0f)
-        (dismissState.offsetX.value / dismissState.widthPx).coerceIn(0f, 1f)
-    else 0f
-
-    SideEffect {
-        onPairsHeaderInfo(
-            ScheduleHeaderInfo(
-                title         = selection.teacher,
-                placeholder   = "",
-                dateText      = selection.file.dateLabel,
-                isPairsScreen = true,
-                isLoading     = uiState is TeacherScheduleUiState.Loading,
-                progress      = 1f,
-                onBack        = { dismissState.dismiss() },
-            ),
-            swipeProgress,
-        )
-    }
+    val pairsHeader = ScheduleHeaderInfo(
+        title         = selection.teacher,
+        placeholder   = "",
+        dateText      = selection.file.dateLabel,
+        isPairsScreen = true,
+        isLoading     = uiState is TeacherScheduleUiState.Loading,
+        progress      = 1f,
+        onBack        = { dismissState.dismiss() },
+    )
 
     // См. подробный комментарий у аналогичного места в ScheduleScreen.kt —
     // MutableTransitionState вместо ручного Animatable-хака, который иногда
@@ -345,6 +350,16 @@ private fun TeacherPairsOverlay(
                 .swipeToDismiss(dismissState, enabled = active)
                 .background(if (debugTransparentBg) Color.Transparent else c.bg),
         ) {
+            ScheduleHeaderRow(header = pairsHeader)
+            if (pairsHeader.isLoading) {
+                LinearProgressIndicator(
+                    progress   = { pairsHeader.progress },
+                    modifier   = Modifier.fillMaxWidth().height(2.dp),
+                    color      = c.accent,
+                    trackColor = c.surface2,
+                )
+            }
+
             AnimatedContent(
                 targetState    = uiState,
                 modifier       = Modifier.weight(1f),
