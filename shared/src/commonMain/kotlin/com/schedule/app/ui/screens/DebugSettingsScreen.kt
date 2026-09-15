@@ -66,6 +66,13 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
 
+            SettingsSectionLabel("Свайп Ученики/Преподаватели")
+            SettingsCard {
+                ScheduleModeParallaxSection()
+            }
+
+            Spacer(Modifier.height(20.dp))
+
             SettingsSectionLabel("Анимация перехода между экранами")
             SettingsCard {
                 NavAnimDebugSection()
@@ -166,6 +173,50 @@ private fun RenderDebugSection() {
             Switch(
                 checked = transparentBg,
                 onCheckedChange = { AppPrefs.setDebugTransparentOverlayBg(it) },
+            )
+        }
+    }
+}
+
+// ─── Параллакс Ученики/Преподаватели ────────────────────────────────────────
+// Отдельный, независимый от общего "Анимация вкладок" переключатель (см.
+// AnimPrefs.disableScheduleModeParallax) — по просьбе из чата: PARALLAX даёт
+// небольшой (доли процента ширины экрана) остаточный дрейф у зафиксированной
+// шапки/тумблера ScheduleHostScreen (см. counterTranslationX в
+// ScheduleScreen.kt/TeacherScheduleScreen.kt), поэтому нужна возможность
+// принудительно отключить именно PARALLAX здесь, не трогая общий режим
+// Files/Bells выше.
+
+@Composable
+private fun ScheduleModeParallaxSection() {
+    val c = LocalAppColors.current
+    val disabled by AnimPrefs.disableScheduleModeParallax.collectAsState()
+
+    Column {
+        Text(
+            text = "Пока включено — переключение Ученики↔Преподаватели всегда " +
+                "использует Default, даже если выше выбран Parallax. Сам Parallax " +
+                "для Files/Bells это не трогает.",
+            color = c.textSub,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Отключить Parallax здесь",
+                color = c.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = disabled,
+                onCheckedChange = { AnimPrefs.setDisableScheduleModeParallax(it) },
             )
         }
     }

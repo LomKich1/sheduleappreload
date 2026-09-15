@@ -25,6 +25,7 @@ object AnimPrefs {
     private const val KEY_SPRING_STIFF    = "tab_anim_spring_stiffness"
     private const val KEY_PARALLAX_POWER  = "tab_anim_parallax_power"
     private const val KEY_NAV_MS          = "nav_anim_duration_ms"
+    private const val KEY_DISABLE_SCHEDULE_MODE_PARALLAX = "disable_schedule_mode_parallax"
 
     // Дефолты подобраны в этом чате: DEFAULT_MS — как было в проекте изначально,
     // SPRING/PARALLAX — то, что мы вместе настроили и на чём остановились.
@@ -38,6 +39,11 @@ object AnimPrefs {
     // экрана (те выше, DEFAULT_DURATION_MS и др.). Два разных механизма
     // анимации в проекте, каждый со своей настройкой — см. AppScaffold.kt.
     const val DEFAULT_NAV_DURATION_MS  = 340
+    // Отдельный, независимый от общего mode флаг — по просьбе из чата:
+    // конкретно свайп/тумблер Ученики↔Преподаватели (ScheduleHostScreen)
+    // должен уметь принудительно игнорировать PARALLAX, даже если он выбран
+    // глобально для Files/Bells — не трогая поведение самих Files/Bells.
+    const val DEFAULT_DISABLE_SCHEDULE_MODE_PARALLAX = false
 
     private var initialized = false
 
@@ -58,6 +64,9 @@ object AnimPrefs {
 
     private val _navDurationMs = MutableStateFlow(DEFAULT_NAV_DURATION_MS)
     val navDurationMs: StateFlow<Int> = _navDurationMs.asStateFlow()
+
+    private val _disableScheduleModeParallax = MutableStateFlow(DEFAULT_DISABLE_SCHEDULE_MODE_PARALLAX)
+    val disableScheduleModeParallax: StateFlow<Boolean> = _disableScheduleModeParallax.asStateFlow()
 
     /** Вызывается вместе с AppPrefs.init() — PrefsStorage.init() уже идемпотентен. */
     fun init(platformHandle: Any?) {
@@ -88,6 +97,13 @@ object AnimPrefs {
         _navDurationMs.value = runCatching {
             PrefsStorage.getString(KEY_NAV_MS, DEFAULT_NAV_DURATION_MS.toString()).toInt()
         }.getOrDefault(DEFAULT_NAV_DURATION_MS)
+
+        _disableScheduleModeParallax.value = runCatching {
+            PrefsStorage.getString(
+                KEY_DISABLE_SCHEDULE_MODE_PARALLAX,
+                DEFAULT_DISABLE_SCHEDULE_MODE_PARALLAX.toString(),
+            ).toBoolean()
+        }.getOrDefault(DEFAULT_DISABLE_SCHEDULE_MODE_PARALLAX)
     }
 
     fun setMode(newMode: TabAnimMode) {
@@ -120,6 +136,11 @@ object AnimPrefs {
         PrefsStorage.putString(KEY_NAV_MS, ms.toString())
     }
 
+    fun setDisableScheduleModeParallax(v: Boolean) {
+        _disableScheduleModeParallax.value = v
+        PrefsStorage.putString(KEY_DISABLE_SCHEDULE_MODE_PARALLAX, v.toString())
+    }
+
     /** Сброс всех крутилок к значениям по умолчанию (кнопка в дебаг-панели). */
     fun resetToDefaults() {
         setMode(DEFAULT_MODE)
@@ -128,5 +149,6 @@ object AnimPrefs {
         setSpringStiffness(DEFAULT_SPRING_STIFFNESS)
         setParallaxPower(DEFAULT_PARALLAX_POWER)
         setNavDurationMs(DEFAULT_NAV_DURATION_MS)
+        setDisableScheduleModeParallax(DEFAULT_DISABLE_SCHEDULE_MODE_PARALLAX)
     }
 }

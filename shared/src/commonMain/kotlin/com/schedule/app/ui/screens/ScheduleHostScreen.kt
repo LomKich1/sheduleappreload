@@ -157,7 +157,14 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
     // и с swipable/FloatingPillNav в AppScaffold — см. комментарий там).
     var widthPx by remember { mutableStateOf(0f) }
 
-    val animMode by AnimPrefs.mode.collectAsState()
+    val rawAnimMode by AnimPrefs.mode.collectAsState()
+    val disableParallaxHere by AnimPrefs.disableScheduleModeParallax.collectAsState()
+    // Отдельный debug-тумблер (см. AnimPrefs.disableScheduleModeParallax) —
+    // позволяет отключить PARALLAX конкретно для свайпа/тумблера Ученики↔
+    // Преподаватели, не трогая общий AnimPrefs.mode, которым по-прежнему
+    // управляются Files/Bells в AppScaffold. При включённом флаге здесь
+    // всегда используется DEFAULT, даже если глобально выбран PARALLAX.
+    val animMode = if (disableParallaxHere) TabAnimMode.DEFAULT else rawAnimMode
     val tweenDurationMs by AnimPrefs.durationMs.collectAsState()
     val springDamping by AnimPrefs.springDamping.collectAsState()
     val springStiffness by AnimPrefs.springStiffness.collectAsState()
