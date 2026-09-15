@@ -283,20 +283,33 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
             )
         }
 
-        // ── Тумблер "Ученики/Преподаватели" — один фиксированный экземпляр,
-        // виден всегда, в том числе пока открыт (или едет) экран пар — по
-        // просьбе пользователя тумблер больше не прячется при открытии
-        // расписания конкретной группы/препода. Свайп между режимами
-        // по-прежнему заблокирован в этот момент (см. dragEnabled выше),
-        // но тап по самому тумблеру работает как обычно.
-        Spacer(Modifier.height(10.dp))
-        ScheduleModeToggle(
-            selected = mode,
-            onSelect = onModeSelect,
-            progress = swipable.progress,
-            modifier = Modifier.padding(horizontal = 18.dp),
-        )
-        Spacer(Modifier.height(4.dp))
+        // ── Тумблер "Ученики/Преподаватели" — один фиксированный экземпляр.
+        // Пока пары открыты и не едут (activeSwipeProgress == 0) — вообще не
+        // монтируется, как и раньше (полностью не виден на экране пар).
+        // Как только начинается живой свайп-закрытие — монтируется и едет
+        // ТЕМ ЖЕ translationX, что и шапка пикера чуть выше (см.
+        // ScheduleHeaderRow(header = activePickerHeader, ...) в блоке "Шапка"):
+        // это заставляет его визуально быть частью того же самого слоя
+        // пикера, "проступающего" слева, а не отдельным элементом хоста.
+        if (activePairsHeader == null || activeSwipeProgress > 0f) {
+            Spacer(Modifier.height(10.dp))
+            Box(modifier = Modifier.fillMaxWidth().clipToBounds()) {
+                ScheduleModeToggle(
+                    selected = mode,
+                    onSelect = onModeSelect,
+                    progress = swipable.progress,
+                    modifier = Modifier
+                        .padding(horizontal = 18.dp)
+                        .graphicsLayer {
+                            translationX = if (activePairsHeader != null)
+                                -headerWidthPx * (1f - activeSwipeProgress)
+                            else
+                                0f
+                        },
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+        }
 
         // ── Содержимое: оба вида смонтированы всегда, слайд между ними
         // управляется единым AnimPrefs (см. комментарий выше).
