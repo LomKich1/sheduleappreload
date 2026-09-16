@@ -86,18 +86,29 @@ fun AppScaffold() {
         }
     }
 
-    // Тот же каскад должен проигрываться и когда мы ЗАКРЫВАЕМ глубокий экран
-    // (Schedule/Settings) и возвращаемся на вкладку.
+    // Тот же каскад раньше проигрывался и когда мы ЗАКРЫВАЕМ глубокий экран
+    // (Schedule/Settings) и возвращаемся на вкладку — по итогам обсуждения в
+    // чате это оказалось лишним: Files/Bells и так ВСЁ ЭТО ВРЕМЯ оставались
+    // смонтированными и полностью settled под NavHost (их просто закрывал
+    // непрозрачный слой сверху, а не пересоздавал) — значит и "влетать"
+    // им заново неоткуда и незачем, реплей просто дублировал уже видимое
+    // состояние резким скачком в момент, когда popBackStack() уже отработал.
+    // Оставлено отключаемым через debug-тумблер (AnimPrefs.
+    // replayTabsEntranceOnDeepScreenExit, по умолчанию выключен) — на случай
+    // если старый эффект зачем-то всё же нужен.
     var wasDeepScreenOpen by rememberSaveable { mutableStateOf(deepScreenOpen) }
+    val replayEntranceOnDeepScreenExit by AnimPrefs.replayTabsEntranceOnDeepScreenExit.collectAsState()
 
     LaunchedEffect(deepScreenOpen) {
-        if (wasDeepScreenOpen && !deepScreenOpen) {
+        if (replayEntranceOnDeepScreenExit && wasDeepScreenOpen && !deepScreenOpen) {
             if (activeTab == Screen.Files.route) filesEntranceTrigger++ else bellsEntranceTrigger++
         }
         wasDeepScreenOpen = deepScreenOpen
     }
 
-    val showPill = !deepScreenOpen
+    // deepScreenOpen по-прежнему нужен для BackHandler ниже и для триггера
+    // каскада (см. LaunchedEffect ниже) — а вот отдельный showPill/if-гейт
+    // на саму FloatingPillNav убран, см. комментарий у неё самой.
 
     // Системная кнопка «назад»: если открыта вкладка Bells и нет глубокого
     // экрана сверху — возвращаем на Files, а не выходим из приложения.
@@ -242,6 +253,30 @@ fun AppScaffold() {
             }
         }
 
+        // ── Плавающий пилл-навигатор Files/Bells ────────────────────────────
+        // Смонтирован ВСЕГДА (без if (showPill)) и физически лежит НИЖЕ
+        // NavHost по z-order — тот же принцип, что и с тумблером/шапкой в
+        // ScheduleHostScreen (см. историю правок там): раньше видимость
+        // была завязана на дискретное состояние навигации (showPill =
+        // !deepScreenOpen), которое переключается ТОЛЬКО в момент, когда
+        // navController.popBackStack() уже реально отработал — то есть
+        // ПОСЛЕ того как анимация закрытия (что живой свайп, что обычный
+        // tap по "назад") полностью доиграла. Из-за этого пилл-навигация
+        // резко "выскакивала" уже постфактум, хотя сам экран под NavHost
+        // к этому моменту давно был виден и проступал плавно. Теперь пилл
+        // всегда в дереве, и его естественно закрывает/открывает опаковый
+        // фон Schedule/Settings/DebugSettings, ровно синхронно с тем, как
+        // они уезжают — что при живом драге, что при обычном tap-transition
+        // самого NavHost (у него тот же slideOutHorizontally).
+        FloatingPillNav(
+            currentRoute = activeTab,
+            onNavigate = { route -> switchTab(route, animateEntrance = true) },
+            progress = swipable.progress,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 20.dp),
+        )
+
         // ── Глубокие экраны: Schedule, Settings — Telegram-стиль слайда ─────
         val navDurationMs by AnimPrefs.navDurationMs.collectAsState()
         NavHost(
@@ -313,17 +348,6 @@ fun AppScaffold() {
                     onBack = { navController.popBackStack() },
                 )
             }
-        }
-
-        if (showPill) {
-            FloatingPillNav(
-                currentRoute = activeTab,
-                onNavigate = { route -> switchTab(route, animateEntrance = true) },
-                progress = swipable.progress,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 20.dp),
-            )
         }
     }
 }

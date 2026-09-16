@@ -26,6 +26,7 @@ object AnimPrefs {
     private const val KEY_PARALLAX_POWER  = "tab_anim_parallax_power"
     private const val KEY_NAV_MS          = "nav_anim_duration_ms"
     private const val KEY_DISABLE_SCHEDULE_MODE_PARALLAX = "disable_schedule_mode_parallax"
+    private const val KEY_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT = "replay_tabs_entrance_on_deep_exit"
 
     // Дефолты подобраны в этом чате: DEFAULT_MS — как было в проекте изначально,
     // SPRING/PARALLAX — то, что мы вместе настроили и на чём остановились.
@@ -44,6 +45,12 @@ object AnimPrefs {
     // должен уметь принудительно игнорировать PARALLAX, даже если он выбран
     // глобально для Files/Bells — не трогая поведение самих Files/Bells.
     const val DEFAULT_DISABLE_SCHEDULE_MODE_PARALLAX = false
+    // По умолчанию ВЫКЛЮЧЕН — по итогам обсуждения в чате: Files/Bells и так
+    // всё время смонтированы под NavHost (см. AppScaffold.kt), реплей каскада
+    // при выходе с глубокого экрана оказался чисто вестигиальным поведением,
+    // дублирующим уже видимое состояние резким скачком. Тумблер оставлен на
+    // случай, если старый эффект всё же захочется вернуть.
+    const val DEFAULT_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT = false
 
     private var initialized = false
 
@@ -67,6 +74,9 @@ object AnimPrefs {
 
     private val _disableScheduleModeParallax = MutableStateFlow(DEFAULT_DISABLE_SCHEDULE_MODE_PARALLAX)
     val disableScheduleModeParallax: StateFlow<Boolean> = _disableScheduleModeParallax.asStateFlow()
+
+    private val _replayTabsEntranceOnDeepScreenExit = MutableStateFlow(DEFAULT_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT)
+    val replayTabsEntranceOnDeepScreenExit: StateFlow<Boolean> = _replayTabsEntranceOnDeepScreenExit.asStateFlow()
 
     /** Вызывается вместе с AppPrefs.init() — PrefsStorage.init() уже идемпотентен. */
     fun init(platformHandle: Any?) {
@@ -104,6 +114,13 @@ object AnimPrefs {
                 DEFAULT_DISABLE_SCHEDULE_MODE_PARALLAX.toString(),
             ).toBoolean()
         }.getOrDefault(DEFAULT_DISABLE_SCHEDULE_MODE_PARALLAX)
+
+        _replayTabsEntranceOnDeepScreenExit.value = runCatching {
+            PrefsStorage.getString(
+                KEY_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT,
+                DEFAULT_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT.toString(),
+            ).toBoolean()
+        }.getOrDefault(DEFAULT_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT)
     }
 
     fun setMode(newMode: TabAnimMode) {
@@ -141,6 +158,11 @@ object AnimPrefs {
         PrefsStorage.putString(KEY_DISABLE_SCHEDULE_MODE_PARALLAX, v.toString())
     }
 
+    fun setReplayTabsEntranceOnDeepScreenExit(v: Boolean) {
+        _replayTabsEntranceOnDeepScreenExit.value = v
+        PrefsStorage.putString(KEY_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT, v.toString())
+    }
+
     /** Сброс всех крутилок к значениям по умолчанию (кнопка в дебаг-панели). */
     fun resetToDefaults() {
         setMode(DEFAULT_MODE)
@@ -150,5 +172,6 @@ object AnimPrefs {
         setParallaxPower(DEFAULT_PARALLAX_POWER)
         setNavDurationMs(DEFAULT_NAV_DURATION_MS)
         setDisableScheduleModeParallax(DEFAULT_DISABLE_SCHEDULE_MODE_PARALLAX)
+        setReplayTabsEntranceOnDeepScreenExit(DEFAULT_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT)
     }
 }

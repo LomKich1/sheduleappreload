@@ -88,6 +88,13 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
 
+            SettingsSectionLabel("Выход с глубоких экранов")
+            SettingsCard {
+                TabsEntranceReplaySection()
+            }
+
+            Spacer(Modifier.height(20.dp))
+
             SettingsSectionLabel("Анимация перехода между экранами")
             SettingsCard {
                 NavAnimDebugSection()
@@ -232,6 +239,53 @@ private fun ScheduleModeParallaxSection() {
             Switch(
                 checked = disabled,
                 onCheckedChange = { AnimPrefs.setDisableScheduleModeParallax(it) },
+            )
+        }
+    }
+}
+
+// ─── Выход с глубоких экранов (Schedule/Settings/DebugSettings) ─────────────
+// По итогам обсуждения в чате: PillNav и каскад "влёта" элементов Files/Bells
+// раньше были завязаны на дискретный момент popBackStack() — из-за этого пилл
+// выскакивал резко, уже ПОСЛЕ того как экран сверху фактически уехал (фикс —
+// см. AppScaffold.kt, PillNav теперь просто всегда смонтирован ниже NavHost
+// по z-order), а каскад элементов Files/Bells переигрывался с нуля, хотя сам
+// список всё это время был смонтирован и виден под уезжающим экраном — то
+// есть визуально дублировал уже показанное резким скачком. Тумблер ниже
+// управляет именно вторым — реплеем каскада (см. AnimPrefs.
+// replayTabsEntranceOnDeepScreenExit).
+
+@Composable
+private fun TabsEntranceReplaySection() {
+    val c = LocalAppColors.current
+    val enabled by AnimPrefs.replayTabsEntranceOnDeepScreenExit.collectAsState()
+
+    Column {
+        Text(
+            text = "По умолчанию выключено: Files/Bells и так остаются " +
+                "смонтированными под Schedule/Settings/DebugSettings, повторно " +
+                "\"влетать\" им незачем. Включи, если всё же хочется вернуть " +
+                "старый эффект.",
+            color = c.textSub,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Реплей каскада при выходе",
+                color = c.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = enabled,
+                onCheckedChange = { AnimPrefs.setReplayTabsEntranceOnDeepScreenExit(it) },
             )
         }
     }
