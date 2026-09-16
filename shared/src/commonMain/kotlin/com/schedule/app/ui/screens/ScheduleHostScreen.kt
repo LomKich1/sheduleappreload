@@ -198,6 +198,12 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         springDamping = springDamping,
         springStiffness = springStiffness,
         dragEnabled = !activePairsOpen,
+        // Оверскролл-дисмисс — только на экране групп (index 0, "слева"),
+        // не на преподах: см. подробный комментарий у dismissEnabled в
+        // rememberSwipableProgress. onBack — тот же коллбэк, что и у кнопки
+        // "назад"/системного back в шапке пикера (см. ScheduleScreen.kt).
+        dismissEnabled = true,
+        onDismiss = onBack,
         // Сброс каскада карточек пикера — на старте направления жеста, не на
         // завершении свайпа (см. подробный комментарий в rememberSwipableProgress
         // и аналогичное подключение в AppScaffold для Files/Bells). idx здесь —
@@ -214,7 +220,14 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         },
     )
 
-    Column(modifier = Modifier.fillMaxSize().background(c.bg)) {
+    // Раньше .background(c.bg) стоял прямо на этом Column — теперь он должен
+    // ехать ВМЕСТЕ с оверскролл-дисмиссом (см. dismissEnabled/graphicsLayer
+    // ниже на содержимом), иначе ровно тот же баг, что чинили в самом начале
+    // (см. историю правок PairsOverlay в ScheduleScreen.kt): фон остаётся на
+    // месте, контент едет — и Files/Bells под ним не проступают, потому что
+    // непрозрачный фон-то как раз никуда не делся. Поэтому background теперь
+    // внутри Box ниже, ПОСЛЕ graphicsLayer, а не тут.
+    Column(modifier = Modifier.fillMaxSize()) {
 
         // ── Шапка и тумблер "Ученики/Преподаватели" ─────────────────────────
         // Раньше рисовались здесь, в хосте, единым общим экземпляром на оба
@@ -256,7 +269,17 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                 .weight(1f)
                 .clipToBounds()
                 .onSizeChanged { widthPx = it.width.toFloat() }
-                .then(swipable.dragModifier),
+                .then(swipable.dragModifier)
+                // Живой оверскролл-дисмисс с экрана групп (см. dismissEnabled
+                // выше) — тащит ВЕСЬ этот Box (обе половины Ученики/Преподы
+                // разом, они внутри) вслед за пальцем, поверх уже
+                // смонтированных Files/Bells под этим NavHost-экраном (тот же
+                // принцип, что у swipeToDismiss в SettingsScreen.kt).
+                .graphicsLayer { translationX = widthPx * swipable.dismissProgress }
+                // background — ПОСЛЕ graphicsLayer (внутри translate), иначе
+                // фон остаётся на месте, а едет только контент — см.
+                // комментарий у Column выше.
+                .background(c.bg),
         ) {
             val studentActive = mode == ScheduleMode.STUDENT
             val progress = swipable.progress

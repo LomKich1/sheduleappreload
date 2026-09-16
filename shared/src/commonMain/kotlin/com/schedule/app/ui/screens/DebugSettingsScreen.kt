@@ -27,10 +27,13 @@ import com.schedule.app.data.prefs.AnimPrefs
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.data.repository.DebugFileStore
+import com.schedule.app.ui.components.rememberSwipeDismissState
+import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
+import com.schedule.app.util.BackHandler
 import com.schedule.app.util.PickedTextFile
 import com.schedule.app.util.rememberJsonFilePicker
 import kotlin.math.roundToInt
@@ -45,13 +48,25 @@ import kotlin.math.roundToInt
 // Внутри — тонкая настройка анимации переключения вкладок, и тестовый
 // прогон JSON-файлов расписания через JsonScheduleParser (см. JsonTestSection
 // ниже) — без сети, без Я.Диска/GitHub, просто локальный файл с телефона.
+//
+// Живой свайп-закрытие — см. аналогичный комментарий в SettingsScreen.kt,
+// тот же приём (rememberSwipeDismissState/swipeToDismiss), тот же принцип:
+// под этим экраном всегда смонтированы Files/Bells, ничего специально
+// готовить для "естественного" раскрытия не нужно.
 
 @Composable
 fun DebugSettingsScreen(onBack: () -> Unit) {
     val c = LocalAppColors.current
+    val dismissState = rememberSwipeDismissState(onDismissed = onBack)
+    BackHandler { dismissState.dismiss() }
 
-    Column(modifier = Modifier.fillMaxSize().background(c.bg)) {
-        DebugSettingsHeader(onBack)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .swipeToDismiss(dismissState)
+            .background(c.bg),
+    ) {
+        DebugSettingsHeader(onBack = { dismissState.dismiss() })
 
         Column(
             modifier = Modifier

@@ -37,12 +37,15 @@ import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.components.ScheduleMode
 import com.schedule.app.ui.components.ScheduleModeToggle
+import com.schedule.app.ui.components.rememberSwipeDismissState
+import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppColors
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.LocalAppColors
 import com.schedule.app.ui.theme.ThemePreset
 import com.schedule.app.ui.theme.colorsFor
+import com.schedule.app.util.BackHandler
 import com.schedule.app.util.IsDebugBuild
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -52,6 +55,14 @@ import kotlinx.coroutines.launch
 // AppPrefs. Поля URL/группы — локальный буфер редактирования, который коммитится
 // в AppPrefs по кнопке «Сохранить». Тема переключается мгновенно, без ожидания
 // сохранения — как и договаривались в плане.
+//
+// Живой свайп-закрытие (см. rememberSwipeDismissState/swipeToDismiss) — тот же
+// Telegram-style жест, что уже был у PairsOverlay в расписании (см.
+// ScheduleScreen.kt). Здесь он проще: под этим экраном НЕТ второго "слоя"
+// внутри самого SettingsScreen (в отличие от Picker/Pairs) — снизу просто
+// постоянно смонтированные Files/Bells из AppScaffold (NavHost рисуется
+// поверх них), так что естественная "раскрывающаяся" картинка получается
+// бесплатно, без какой-либо специальной подготовки на этом экране.
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onNavigateToDebug: () -> Unit = {}) {
@@ -71,13 +82,17 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToDebug: () -> Unit = {}) {
 
     val canSave       = urlField.isNotBlank()
 
+    val dismissState = rememberSwipeDismissState(onDismissed = onBack)
+    BackHandler { dismissState.dismiss() }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .swipeToDismiss(dismissState)
                 .background(c.bg),
         ) {
-            SettingsHeader(onBack = onBack)
+            SettingsHeader(onBack = { dismissState.dismiss() })
 
             Column(
                 modifier = Modifier
@@ -209,7 +224,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToDebug: () -> Unit = {}) {
                         onClick = {
                             AppPrefs.saveYandexUrl(urlField)
                             showToast = true
-                            scope.launch { delay(900); onBack() }
+                            scope.launch { delay(900); dismissState.dismiss() }
                         },
                     )
                 }

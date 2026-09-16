@@ -102,9 +102,23 @@ fun rememberSwipableProgress(
     springStiffness: Float,
     dragEnabled: Boolean = true,
     onDragTowardPage: ((Int) -> Unit)? = null,
+    // ── Оверскролл-дисмисс на index 0 ────────────────────────────────────────
+    // По просьбе из чата: экран групп (index 0, "слева") свободен от жеста в
+    // направлении "ещё правее" — там и так просто упор в стену (progress
+    // клампится в 0, дальше тянуть некуда). Раньше это было мёртвой зоной,
+    // теперь, если dismissEnabled — тот же самый жест, что тянет в стену,
+    // после упора продолжает копиться отдельно (dismissProgress, см.
+    // SwipableProgressState) и на отпускании за порогом дистанции/скорости
+    // зовёт onDismiss — тем же движением, каким целиком закрывается сам
+    // ScheduleHostScreen. На index 1 (преподы) этот жест не заводится вообще
+    // (см. "activeIndex == 0" ниже) — там правый край и так уже означает
+    // "назад к группам" через обычный shouldRetreat, дублировать нечего.
+    dismissEnabled: Boolean = false,
+    onDismiss: (() -> Unit)? = null,
 ): SwipableProgressState {
     val targetProgress = activeIndex.toFloat()
     val animatable = remember { Animatable(targetProgress) }
+    val dismissAnimatable = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
     // Скорость флика, "отложенная" до следующего срабатывания LaunchedEffect
@@ -203,6 +217,14 @@ fun rememberSwipableProgress(
                     var totalDy = 0f
                     val slop = viewConfiguration.touchSlop
 
+                    // Некламповая "сырая" позиция — стартует от текущего
+                    // animatable.value и дальше двигается ТОЙ ЖЕ формулой, что
+                    // и newValue ниже, но БЕЗ coerceIn. Пока activeIndex == 0 и
+                    // тянут вправо (rawPosition уходит < 0), эта утечённая "за
+                    // стену" дистанция и есть оверскролл-дисмисс — см.
+                    // dismissEnabled в комментарии у параметров функции.
+                    var rawPosition = animatable.value
+
                     while (true) {
                         val event = awaitPointerEvent(pass = PointerEventPass.Initial)
                         val change = event.changes.firstOrNull { it.id == pointerId } ?: break
@@ -249,8 +271,14 @@ fun rememberSwipableProgress(
                             }
 
                             val delta = dx / widthPx
-                            val newValue = (animatable.value - delta).coerceIn(0f, 1f)
+                            rawPosition -= delta
+                            val newValue = rawPosition.coerceIn(0f, 1f)
                             scope.launch { animatable.snapTo(newValue) }
+
+                            if (dismissEnabled && activeIndex == 0) {
+                                val dismissRaw = (-rawPosition).coerceIn(0f, 1.5f)
+                                scope.launch { dismissAnimatable.snapTo(dismissRaw) }
+                            }
                         }
                     }
 
@@ -281,9 +309,33 @@ fun rememberSwipableProgress(
                         val shouldRetreat = activeIndex == 1 &&
                             (movedFromActive < -distanceThreshold || velocityPxPerSec > flickThresholdPxPerSec)
 
+                        // Оверскролл-дисмисс (см. dismissEnabled в комментарии
+                        // у параметров) — та же пара порогов, дистанция/скорость,
+                        // только в противоположном направлении и относительно
+                        // dismissAnimatable, а не относительно activeIndex.
+                        val shouldDismiss = dismissEnabled && activeIndex == 0 &&
+                            (dismissAnimatable.value > distanceThreshold || velocityPxPerSec > flickThresholdPxPerSec)
+
                         // Доезд/откат — В ЛЮБОМ случае с реальной скоростью
                         // пальца на выходе, а не с нуля.
                         when {
+                            shouldDismiss -> scope.launch {
+                                // Те же spring-параметры, что и у
+                                // SwipeDismissState.settleDismiss (см.
+                                // SwipeDismiss.kt) — чтобы "доезд" ощущался
+                                // одинаково что тут, что у PairsOverlay/
+                                // Settings/DebugSettings. onDismiss зовём
+                                // только ПОСЛЕ доезда, не раньше.
+                                dismissAnimatable.animateTo(
+                                    targetValue     = 1.5f,
+                                    animationSpec   = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness    = Spring.StiffnessMedium,
+                                    ),
+                                    initialVelocity = velocityPxPerSec / widthPx,
+                                )
+                                onDismiss?.invoke()
+                            }
                             shouldAdvance -> {
                                 pendingVelocity = velocityProgressPerSec
                                 onSwitch(1)
@@ -295,6 +347,9 @@ fun rememberSwipableProgress(
                             else -> scope.launch {
                                 animatable.animateTo(targetProgress, animSpec, initialVelocity = velocityProgressPerSec)
                             }
+                        }
+                        if (!shouldDismiss && dismissAnimatable.value != 0f) {
+                            scope.launch { dismissAnimatable.animateTo(0f, animSpec) }
                         }
                     } else {
                         // Жест оказался вертикальным (settled) или палец
@@ -310,10 +365,20 @@ fun rememberSwipableProgress(
             }
         }
 
-    return SwipableProgressState(progress = animatable.value, dragModifier = dragModifier)
+    return SwipableProgressState(
+        progress = animatable.value,
+        dismissProgress = dismissAnimatable.value,
+        dragModifier = dragModifier,
+    )
 }
 
 data class SwipableProgressState(
     val progress: Float,
+    // 0..~1.5 — сколько "лишнего" утянули вправо на index 0, сверх обычного
+    // progress (который на этой стороне уже упёрся в 0). Не 0 только когда
+    // dismissEnabled=true и реально идёт живой оверскролл-жест — используется
+    // хостом, чтобы визуально тащить весь экран вслед за пальцем ДО того, как
+    // будет вызван onDismiss (см. ScheduleHostScreen).
+    val dismissProgress: Float = 0f,
     val dragModifier: Modifier,
 )
