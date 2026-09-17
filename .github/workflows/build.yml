@@ -329,31 +329,46 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        # Обёрнуто в retry: 17.09 релиз падал не из-за бага в конфиге, а
+        # потому что GitHub Upload API на аплоаде .deb/.msi (89–95 МБ)
+        # вернул не JSON, а свою внутреннюю HTML-страницу с ошибкой
+        # ("Unicorn!") — транзиентный 5xx на стороне GitHub (в том же ране
+        # ВСЕ остальные джобы сыпали "Cache service responded with 400" —
+        # явный признак общего временного сбоя инфраструктуры, не нашего
+        # workflow). softprops/action-gh-release сам не ретраит, поэтому
+        # такой одиночный сбой валил весь релиз, хотя сборки уже были
+        # готовы. overwrite_files: true уже стоит ниже — повторный запуск
+        # идемпотентен (просто перезалит те же файлы), так что ретрай
+        # безопасен.
+        uses: Wandalen/wretry.action@v3
         with:
-          tag_name: "v${{ needs.prepare.outputs.app-version }}"
-          name: "ScheduleApp v${{ needs.prepare.outputs.app-version }}"
-          generate_release_notes: true
-          body: |
-            ## 📥 Установка
+          action: softprops/action-gh-release@v2
+          attempt_limit: 3
+          attempt_delay: 15000
+          with: |
+            tag_name: "v${{ needs.prepare.outputs.app-version }}"
+            name: "ScheduleApp v${{ needs.prepare.outputs.app-version }}"
+            generate_release_notes: true
+            body: |
+              ## 📥 Установка
 
-            **Android:** скачай `.apk`, разреши "Неизвестные источники", установи.
-            **Windows:** скачай `.msi`, запусти — ставится и обновляется поверх старой версии автоматически.
-            **Linux (deb-based):** `sudo dpkg -i ScheduleApp-*.deb`
-            **macOS:** открой `.dmg`, перенеси ScheduleApp в Applications и запусти его.
+              **Android:** скачай `.apk`, разреши "Неизвестные источники", установи.
+              **Windows:** скачай `.msi`, запусти — ставится и обновляется поверх старой версии автоматически.
+              **Linux (deb-based):** `sudo dpkg -i ScheduleApp-*.deb`
+              **macOS:** открой `.dmg`, перенеси ScheduleApp в Applications и запусти его.
 
-            | Файл | Платформа |
-            |------|-----------|
-            | `...-debug.apk` | Android, тестовый (debug-ключ) |
-            | `...apk` (без суффикса) | Android, релиз (подписан, только если настроен keystore) |
-            | `...msi` | Windows |
-            | `...deb` | Linux (Debian/Ubuntu) |
-            | `...dmg` | macOS |
+              | Файл | Платформа |
+              |------|-----------|
+              | `...-debug.apk` | Android, тестовый (debug-ключ) |
+              | `...apk` (без суффикса) | Android, релиз (подписан, только если настроен keystore) |
+              | `...msi` | Windows |
+              | `...deb` | Linux (Debian/Ubuntu) |
+              | `...dmg` | macOS |
 
-            ---
+              ---
 
-            ${{ steps.stats.outputs.block }}
-          files: dist/*
-          make_latest: true
+              ${{ steps.stats.outputs.block }}
+            files: dist/*
+            make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
