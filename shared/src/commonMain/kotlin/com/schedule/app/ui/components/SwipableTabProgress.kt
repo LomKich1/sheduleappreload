@@ -51,7 +51,7 @@ private const val PROGRESS_VISIBILITY_THRESHOLD = 0.0001f
  * направление: больше мс → меньше stiffness → мягче и медленнее, как и
  * ожидается от слайдера "длительность".
  */
-private fun durationMsToStiffness(durationMs: Int): Float {
+fun durationMsToStiffness(durationMs: Int): Float {
     val seconds = durationMs.coerceAtLeast(1) / 1000f
     val omega = (2f * kotlin.math.PI.toFloat()) / seconds
     return omega * omega
@@ -225,6 +225,20 @@ fun rememberSwipableProgress(
                     // dismissEnabled в комментарии у параметров функции.
                     var rawPosition = animatable.value
 
+                    // Баг из чата: как только rawPosition уходил < 0 (зона
+                    // дисмисса) и пользователь, НЕ отпуская палец, вёл его
+                    // обратно влево дальше исходной точки — rawPosition
+                    // возвращался в честные положительные 0..1 и жест тут же
+                    // трактовался как обычное переключение на Преподов, хотя
+                    // это был один непрерывный "дисмисс-или-отмена" жест.
+                    // Фикс: как только один раз попали в зону дисмисса —
+                    // дальше ДО ОТПУСКАНИЯ пальца этот жест "заперт" в ней;
+                    // сам tab-progress (animatable) больше не двигаем вообще
+                    // (замораживаем на 0, где он и был на момент входа в
+                    // зону) — реагирует только dismissAnimatable, в обе
+                    // стороны (тянуть дальше/отпускать обратно к 0).
+                    var dismissLocked = false
+
                     while (true) {
                         val event = awaitPointerEvent(pass = PointerEventPass.Initial)
                         val change = event.changes.firstOrNull { it.id == pointerId } ?: break
@@ -272,12 +286,15 @@ fun rememberSwipableProgress(
 
                             val delta = dx / widthPx
                             rawPosition -= delta
-                            val newValue = rawPosition.coerceIn(0f, 1f)
-                            scope.launch { animatable.snapTo(newValue) }
 
-                            if (dismissEnabled && activeIndex == 0) {
+                            if (dismissEnabled && activeIndex == 0 && (dismissLocked || rawPosition < 0f)) {
+                                dismissLocked = true
                                 val dismissRaw = (-rawPosition).coerceIn(0f, 1.5f)
                                 scope.launch { dismissAnimatable.snapTo(dismissRaw) }
+                                // animatable/tab-progress НЕ трогаем — заморожен.
+                            } else {
+                                val newValue = rawPosition.coerceIn(0f, 1f)
+                                scope.launch { animatable.snapTo(newValue) }
                             }
                         }
                     }
@@ -304,7 +321,7 @@ fun rememberSwipableProgress(
                         val distanceThreshold = 0.35f
                         val flickThresholdPxPerSec = 800f
 
-                        val shouldAdvance = activeIndex == 0 &&
+                        val shouldAdvance = activeIndex == 0 && !dismissLocked &&
                             (movedFromActive > distanceThreshold || velocityPxPerSec < -flickThresholdPxPerSec)
                         val shouldRetreat = activeIndex == 1 &&
                             (movedFromActive < -distanceThreshold || velocityPxPerSec > flickThresholdPxPerSec)

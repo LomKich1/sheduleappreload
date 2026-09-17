@@ -1,11 +1,13 @@
 package com.schedule.app.ui.components
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,6 +21,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
+import com.schedule.app.data.prefs.AnimPrefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -53,6 +56,12 @@ private val DEAD_ZONE = 24.dp
  */
 class SwipeDismissState internal constructor(
     private val scope: CoroutineScope,
+    // settleBackSpec — вычисляется лениво в момент вызова (лямбда, а не
+    // готовый AnimationSpec), чтобы читать актуальное значение debug-тумблера
+    // (AnimPrefs.swipeDismissSpring) на момент отпускания пальца, а не
+    // "заморозить" его на момент создания SwipeDismissState. См.
+    // rememberSwipeDismissState ниже.
+    private val settleBackSpec: () -> AnimationSpec<Float>,
     private val onDismissed: () -> Unit,
 ) {
     internal val offsetX = Animatable(0f)
@@ -79,13 +88,7 @@ class SwipeDismissState internal constructor(
 
     internal fun settleBack() {
         scope.launch {
-            offsetX.animateTo(
-                targetValue   = 0f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness    = Spring.StiffnessLow,
-                ),
-            )
+            offsetX.animateTo(targetValue = 0f, animationSpec = settleBackSpec())
         }
     }
 
@@ -106,9 +109,37 @@ class SwipeDismissState internal constructor(
 
 @Composable
 fun rememberSwipeDismissState(onDismissed: () -> Unit): SwipeDismissState {
-    val scope         = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
     val latestOnDismissed by rememberUpdatedState(onDismissed)
-    return remember { SwipeDismissState(scope) { latestOnDismissed() } }
+
+    // "Отскок назад" (settleBack — свайп отпустили, не доведя до конца) по
+    // просьбе из чата сделан переключаемым: по умолчанию (false) — тот же
+    // некруглый Default-характер, что и у переключения вкладок (см.
+    // durationMsToStiffness/AnimPrefs.durationMs в SwipableTabProgress.kt —
+    // сознательно переиспользуем ту же настройку длительности, чтобы не
+    // плодить ещё один слайдер). true — прежний, заметно пружинящий вариант.
+    // Один тумблер сразу на PairsOverlay/SettingsScreen/DebugSettingsScreen —
+    // они и так делят один и тот же SwipeDismissState-механизм.
+    val useSpring by AnimPrefs.swipeDismissSpring.collectAsState()
+    val defaultDurationMs by AnimPrefs.durationMs.collectAsState()
+    val latestUseSpring by rememberUpdatedState(useSpring)
+    val latestDurationMs by rememberUpdatedState(defaultDurationMs)
+
+    return remember {
+        SwipeDismissState(
+            scope = scope,
+            settleBackSpec = {
+                if (latestUseSpring)
+                    spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                else
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness    = durationMsToStiffness(latestDurationMs),
+                    )
+            },
+            onDismissed = { latestOnDismissed() },
+        )
+    }
 }
 
 /**

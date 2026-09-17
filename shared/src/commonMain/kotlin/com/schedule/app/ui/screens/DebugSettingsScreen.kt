@@ -95,6 +95,13 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
 
+            SettingsSectionLabel("Отскок при отмене свайпа-дисмисса")
+            SettingsCard {
+                SwipeDismissSpringSection()
+            }
+
+            Spacer(Modifier.height(20.dp))
+
             SettingsSectionLabel("Анимация перехода между экранами")
             SettingsCard {
                 NavAnimDebugSection()
@@ -286,6 +293,48 @@ private fun TabsEntranceReplaySection() {
             Switch(
                 checked = enabled,
                 onCheckedChange = { AnimPrefs.setReplayTabsEntranceOnDeepScreenExit(it) },
+            )
+        }
+    }
+}
+
+// ─── Отскок при отмене свайпа-дисмисса ──────────────────────────────────────
+// По просьбе из чата: если свайп-дисмисс (PairsOverlay/SettingsScreen/
+// DebugSettingsScreen — все три делят один SwipeDismissState.settleBack, см.
+// SwipeDismiss.kt) отпустить, не доведя до конца, экран заметно пружинит
+// обратно. По умолчанию выключено — тот же некруглый Default-характер, что и
+// у переключения вкладок (переиспользует ту же длительность из "Анимация
+// вкладок" выше, отдельного слайдера для этого не заводили).
+
+@Composable
+private fun SwipeDismissSpringSection() {
+    val c = LocalAppColors.current
+    val spring by AnimPrefs.swipeDismissSpring.collectAsState()
+
+    Column {
+        Text(
+            text = "Действует сразу на расписание группы/препода, настройки и " +
+                "этот дебаг-экран — у них общий механизм свайпа-дисмисса.",
+            color = c.textSub,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Пружинить при отмене (Spring)",
+                color = c.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = spring,
+                onCheckedChange = { AnimPrefs.setSwipeDismissSpring(it) },
             )
         }
     }

@@ -27,6 +27,7 @@ object AnimPrefs {
     private const val KEY_NAV_MS          = "nav_anim_duration_ms"
     private const val KEY_DISABLE_SCHEDULE_MODE_PARALLAX = "disable_schedule_mode_parallax"
     private const val KEY_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT = "replay_tabs_entrance_on_deep_exit"
+    private const val KEY_SWIPE_DISMISS_SPRING = "swipe_dismiss_settle_back_spring"
 
     // Дефолты подобраны в этом чате: DEFAULT_MS — как было в проекте изначально,
     // SPRING/PARALLAX — то, что мы вместе настроили и на чём остановились.
@@ -51,6 +52,14 @@ object AnimPrefs {
     // дублирующим уже видимое состояние резким скачком. Тумблер оставлен на
     // случай, если старый эффект всё же захочется вернуть.
     const val DEFAULT_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT = false
+    // По умолчанию ВЫКЛЮЧЕН (Default, не Spring) — по просьбе из чата: "отскок
+    // назад" (settleBack — когда свайп-дисмисс отпустили, не доведя до конца)
+    // у PairsOverlay/SettingsScreen/DebugSettingsScreen раньше всегда был на
+    // заметно пружинящем spring(MediumBouncy, StiffnessLow). Общий тумблер
+    // сразу на все три экрана — они и так делят один и тот же
+    // SwipeDismissState/settleBack (см. SwipeDismiss.kt), отдельного смысла
+    // дробить на три флага нет.
+    const val DEFAULT_SWIPE_DISMISS_SPRING = false
 
     private var initialized = false
 
@@ -77,6 +86,9 @@ object AnimPrefs {
 
     private val _replayTabsEntranceOnDeepScreenExit = MutableStateFlow(DEFAULT_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT)
     val replayTabsEntranceOnDeepScreenExit: StateFlow<Boolean> = _replayTabsEntranceOnDeepScreenExit.asStateFlow()
+
+    private val _swipeDismissSpring = MutableStateFlow(DEFAULT_SWIPE_DISMISS_SPRING)
+    val swipeDismissSpring: StateFlow<Boolean> = _swipeDismissSpring.asStateFlow()
 
     /** Вызывается вместе с AppPrefs.init() — PrefsStorage.init() уже идемпотентен. */
     fun init(platformHandle: Any?) {
@@ -121,6 +133,10 @@ object AnimPrefs {
                 DEFAULT_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT.toString(),
             ).toBoolean()
         }.getOrDefault(DEFAULT_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT)
+
+        _swipeDismissSpring.value = runCatching {
+            PrefsStorage.getString(KEY_SWIPE_DISMISS_SPRING, DEFAULT_SWIPE_DISMISS_SPRING.toString()).toBoolean()
+        }.getOrDefault(DEFAULT_SWIPE_DISMISS_SPRING)
     }
 
     fun setMode(newMode: TabAnimMode) {
@@ -163,6 +179,11 @@ object AnimPrefs {
         PrefsStorage.putString(KEY_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT, v.toString())
     }
 
+    fun setSwipeDismissSpring(v: Boolean) {
+        _swipeDismissSpring.value = v
+        PrefsStorage.putString(KEY_SWIPE_DISMISS_SPRING, v.toString())
+    }
+
     /** Сброс всех крутилок к значениям по умолчанию (кнопка в дебаг-панели). */
     fun resetToDefaults() {
         setMode(DEFAULT_MODE)
@@ -173,5 +194,6 @@ object AnimPrefs {
         setNavDurationMs(DEFAULT_NAV_DURATION_MS)
         setDisableScheduleModeParallax(DEFAULT_DISABLE_SCHEDULE_MODE_PARALLAX)
         setReplayTabsEntranceOnDeepScreenExit(DEFAULT_REPLAY_TABS_ENTRANCE_ON_DEEP_EXIT)
+        setSwipeDismissSpring(DEFAULT_SWIPE_DISMISS_SPRING)
     }
 }
