@@ -24,11 +24,17 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.util.lerp
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
+import dev.chrisbanes.haze.rememberHazeState
+import androidx.compose.ui.graphics.Color
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.schedule.app.data.prefs.AnimPrefs
+import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.AppHeader
 import com.schedule.app.ui.components.rememberSwipableProgress
@@ -128,6 +134,10 @@ fun AppScaffold() {
     val springStiffness by AnimPrefs.springStiffness.collectAsState()
     val parallaxPower by AnimPrefs.parallaxPower.collectAsState()
 
+    // ── DEBUG: полноэкранный Haze-блюр (перф-тест, см. AppPrefs.debugFullscreenBlur) ──
+    val debugFullscreenBlur by AppPrefs.debugFullscreenBlur.collectAsState()
+    val hazeState = rememberHazeState()
+
     val activeIndex = if (activeTab == Screen.Files.route) 0 else 1
 
     val swipable = rememberSwipableProgress(
@@ -152,7 +162,12 @@ fun AppScaffold() {
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg)
-            .systemBarsPadding(),
+            .systemBarsPadding()
+            // Источник для Haze — весь контент ниже (шапка/вкладки/NavHost)
+            // захватывается для блюра. Модификатор ничего не стоит, пока
+            // hazeChild нигде не подключен — включаем сам оверлей отдельно
+            // ниже, флагом из debug-экрана.
+            .haze(hazeState),
     ) {
         // ── Единая шапка ("Расписание" ↔ "Звонки" через flip) ───────────────
         // AppHeader всегда остаётся в композиции, а NavHost рисуется поверх него.
@@ -348,6 +363,26 @@ fun AppScaffold() {
                     onBack = { navController.popBackStack() },
                 )
             }
+        }
+
+        // ── DEBUG: полноэкранный блюр поверх ВСЕГО (шапка/пилл/NavHost) ─────
+        // Грубый перф-щуп перед тем, как тащить frosted-glass конкретно в
+        // шапку/бар (см. обсуждение блюра шапки Telegram в чате). Намеренно
+        // блюрит буквально всё дерево разом — не пытается изобразить
+        // финальный дизайн, только проверить, не проседают ли кадры на
+        // скролле/свайпе, пока Haze реально работает realtime.
+        if (debugFullscreenBlur) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .hazeChild(
+                        state = hazeState,
+                        style = HazeStyle(
+                            blurRadius = 20.dp,
+                            tint = Color.Black.copy(alpha = 0.35f),
+                        ),
+                    ),
+            )
         }
     }
 }

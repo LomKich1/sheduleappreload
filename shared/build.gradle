@@ -46,6 +46,19 @@ kotlin {
             // remains on Kotlin 2.1.20, so use the compatible 2.9.0 KMP release.
             api "org.jetbrains.androidx.navigation:navigation-compose:2.9.0"
 
+            // Haze — realtime blur (frosted-glass) для Compose Multiplatform.
+            // ВАЖНО: намеренно НЕ последняя 2.0.0-beta0x — та тянет Kotlin 2.4.20
+            // и Compose Multiplatform 1.12.0, а проект запинен на Kotlin 2.1.20
+            // (см. комментарий у navigation-compose выше про iOS-клибы) и
+            // Compose 1.8.2. 1.6.0-beta02 — последняя версия СТАРОГО API
+            // (Modifier.haze + Modifier.hazeChild), собранная под compose.ui
+            // 1.7.3 / kotlin-stdlib 2.1.0 — совместима с нашим тулчейном без
+            // даунгрейда Kotlin. Если позже поднимем Kotlin до 2.4+ (когда и
+            // iOS-клибы это позволят) — можно мигрировать на Haze 2.0 и новый
+            // API (hazeSource/hazeBlur), см. https://chrisbanes.github.io/haze/migrating-2.0/
+            implementation "dev.chrisbanes.haze:haze:1.6.0-beta02"
+            implementation "dev.chrisbanes.haze:haze-materials:1.6.0-beta02"
+
         }
         androidMain.dependencies {
             implementation "androidx.core:core-ktx:1.13.1"

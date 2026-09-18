@@ -74,6 +74,18 @@ object AppPrefs {
         _debugTransparentOverlayBg.value = enabled
     }
 
+    // ── DEBUG: полноэкранный Haze-блюр поверх всего контента приложения ──
+    // Перф-прощупывание перед тем, как тащить frosted-glass в шапку/бар
+    // (см. чат про блюр шапки Telegram). НЕ персистится — чисто для того,
+    // чтобы прямо на устройстве пощупать, тормозит realtime-блюр на скролле
+    // или нет, прежде чем возиться с hazeSource/hazeBlur в самом AppScaffold.
+    private val _debugFullscreenBlur = MutableStateFlow(false)
+    val debugFullscreenBlur: StateFlow<Boolean> = _debugFullscreenBlur.asStateFlow()
+
+    fun setDebugFullscreenBlur(enabled: Boolean) {
+        _debugFullscreenBlur.value = enabled
+    }
+
     // ── Какой вид открывается первым на экране файла: Ученики или Преподаватели ──
     private val _defaultScheduleMode = MutableStateFlow(DEFAULT_SCHEDULE_MODE)
     val defaultScheduleMode: StateFlow<ScheduleMode> = _defaultScheduleMode.asStateFlow()

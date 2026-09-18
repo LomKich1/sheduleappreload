@@ -121,6 +121,13 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
                 RenderDebugSection()
             }
 
+            Spacer(Modifier.height(20.dp))
+
+            SettingsSectionLabel("Блюр (Haze)")
+            SettingsCard {
+                FullscreenBlurDebugSection()
+            }
+
             Spacer(Modifier.height(80.dp))
         }
     }
@@ -202,6 +209,51 @@ private fun RenderDebugSection() {
             Switch(
                 checked = transparentBg,
                 onCheckedChange = { AppPrefs.setDebugTransparentOverlayBg(it) },
+            )
+        }
+    }
+}
+
+// ─── Полноэкранный Haze-блюр — перф-тест ────────────────────────────────────
+// Грубый тумблер, чтобы прямо на устройстве пощупать, тормозит ли realtime-
+// блюр на скролле/свайпе, ДО того как возиться с внедрением его конкретно
+// в шапку/бар (см. чат про блюр шапки Telegram — там подтверждено видео с
+// реальным устройством, что эффект честный, не завязан на прогресс скролла).
+// Блюрит буквально весь Box в AppScaffold разом — см. AppPrefs.
+// debugFullscreenBlur. НЕ персистится, как и остальные тумблеры на этом
+// экране — сбрасывается при каждом перезапуске.
+
+@Composable
+private fun FullscreenBlurDebugSection() {
+    val c = LocalAppColors.current
+    val blurEnabled by AppPrefs.debugFullscreenBlur.collectAsState()
+
+    Column {
+        Text(
+            text = "Включает Haze realtime-блюр поверх ВСЕГО экрана (шапка, пилл-нав, " +
+                "контент) — грубый перф-щуп перед тем, как встраивать блюр именно в " +
+                "шапку/бар. Смотри на плавность скролла списка групп/преподов и свайпа " +
+                "Ученики/Преподаватели, пока включено.",
+            color = c.textSub,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Полноэкранный блюр",
+                color = c.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = blurEnabled,
+                onCheckedChange = { AppPrefs.setDebugFullscreenBlur(it) },
             )
         }
     }
