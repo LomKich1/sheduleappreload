@@ -25,6 +25,7 @@ import androidx.compose.ui.util.lerp
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
 import dev.chrisbanes.haze.rememberHazeState
@@ -379,7 +380,7 @@ fun AppScaffold() {
                         state = hazeState,
                         style = HazeStyle(
                             blurRadius = 20.dp,
-                            tint = Color.Black.copy(alpha = 0.35f),
+                            tint = HazeTint(Color.Black.copy(alpha = 0.35f)),
                         ),
                     ),
             )
