@@ -18,7 +18,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -128,6 +131,13 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
                 FullscreenBlurDebugSection()
             }
 
+            Spacer(Modifier.height(20.dp))
+
+            SettingsSectionLabel("Диагностика: сырой Modifier.blur() без Haze")
+            SettingsCard {
+                NativeBlurDiagnosticSection()
+            }
+
             Spacer(Modifier.height(80.dp))
         }
     }
@@ -209,6 +219,73 @@ private fun RenderDebugSection() {
             Switch(
                 checked = transparentBg,
                 onCheckedChange = { AppPrefs.setDebugTransparentOverlayBg(it) },
+            )
+        }
+    }
+}
+
+// ─── Диагностика: голый Modifier.blur() (без Haze) ──────────────────────────
+// Если на Nord 5 не виден даже блюр Haze — надо понять, работает ли вообще
+// RenderEffect (API 31+) на этом железе/прошивке, ДО того как копаться
+// дальше в потрохах Haze. Modifier.blur() — родной для Compose, тонкая
+// обёртка прямо над android.graphics.RenderEffect, без сторонней либы.
+// Он блюрит СВОЁ СОБСТВЕННОЕ содержимое (не backdrop, как нужно для шапки),
+// но для диагностики этого достаточно: цветной паттерн внутри одного и того
+// же Box — если размывается, значит RenderEffect на устройстве в принципе
+// работает и проблема локализована в Haze. Если нет — проблема глубже.
+// Локальный toggle, ничего в AppPrefs не пишет — чисто одноразовая проверка.
+
+@Composable
+private fun NativeBlurDiagnosticSection() {
+    val c = LocalAppColors.current
+    var enabled by remember { mutableStateOf(false) }
+
+    Column {
+        Text(
+            text = "Размывает цветной паттерн НИЖЕ напрямую через Modifier.blur() — " +
+                "минуя Haze полностью. Если на устройстве, где Haze выше молчал, тут " +
+                "тоже пусто — дело не в Haze, а в том, что RenderEffect не отрабатывает " +
+                "на этом железе/прошивке вообще.",
+            color = c.textSub,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Размыть паттерн",
+                color = c.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(checked = enabled, onCheckedChange = { enabled = it })
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(90.dp)
+                .clip(AppRadius.card)
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFFFF3D7F), Color(0xFF3D7FFF), Color(0xFFFFD23D)),
+                    ),
+                )
+                .then(if (enabled) Modifier.blur(24.dp) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "ТЕСТ",
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black,
             )
         }
     }
