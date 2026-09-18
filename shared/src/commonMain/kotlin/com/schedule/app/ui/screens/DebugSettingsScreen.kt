@@ -324,6 +324,7 @@ private fun IsolatedHazeDiagnosticSection() {
                         .hazeChild(
                             state = hazeState,
                             style = HazeStyle(
+                                backgroundColor = c.bg,
                                 blurRadius = 20.dp,
                                 tint = HazeTint(Color.Black.copy(alpha = 0.15f)),
                             ),
