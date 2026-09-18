@@ -39,6 +39,11 @@ import com.schedule.app.ui.theme.ThemePreset
 import com.schedule.app.util.BackHandler
 import com.schedule.app.util.PickedTextFile
 import com.schedule.app.util.rememberJsonFilePicker
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
+import dev.chrisbanes.haze.rememberHazeState
 import kotlin.math.roundToInt
 
 // ─── DebugSettingsScreen ──────────────────────────────────────────────────────
@@ -138,6 +143,13 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
                 NativeBlurDiagnosticSection()
             }
 
+            Spacer(Modifier.height(20.dp))
+
+            SettingsSectionLabel("Диагностика: изолированный Haze-тест")
+            SettingsCard {
+                IsolatedHazeDiagnosticSection()
+            }
+
             Spacer(Modifier.height(80.dp))
         }
     }
@@ -220,6 +232,104 @@ private fun RenderDebugSection() {
                 checked = transparentBg,
                 onCheckedChange = { AppPrefs.setDebugTransparentOverlayBg(it) },
             )
+        }
+    }
+}
+
+// ─── Диагностика: изолированный Haze-тест (канонический паттерн) ───────────
+// Раз голый Modifier.blur() подтвердил, что RenderEffect на устройстве
+// работает (см. чат — текст "ТЕСТ" пропал в блюре на Nord 5), а Haze
+// в AppScaffold молчит — нужно понять: Haze вообще не заводится в этом
+// проекте, или ломается именно в сложном дереве AppScaffold (шапка + свайп +
+// NavHost + пилл-нав). Здесь — минимальный пример 1-в-1 по документации
+// Haze: .haze(state) висит прямо на контенте (Column с текстом), а
+// .hazeChild(state) — на плашке-СИБЛИНГЕ, перекрывающей НИЖНУЮ половину
+// того же контента. Если Haze жива — строки текста в нижней половине должны
+// стать нечитаемыми/размытыми, а в верхней остаться чёткими, в ОДНОМ кадре,
+// без переключения между экранами — так сразу видно разницу без сомнений
+// "мне показалось или нет".
+@Composable
+private fun IsolatedHazeDiagnosticSection() {
+    val c = LocalAppColors.current
+    var enabled by remember { mutableStateOf(false) }
+    val hazeState = rememberHazeState()
+
+    Column {
+        Text(
+            text = "Канонический паттерн Haze 1-в-1 по докам: .haze() на контенте, " +
+                ".hazeChild() на плашке-сиблинге поверх нижней половины ТОГО ЖЕ " +
+                "текста. Если верх остаётся чётким, а низ размывается — Haze жива, " +
+                "проблема именно в дереве AppScaffold. Если размытия нет нигде — " +
+                "Haze не заводится в проекте вообще, тогда придётся писать backdrop " +
+                "вручную.",
+            color = c.textSub,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Плашка поверх низа",
+                color = c.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(checked = enabled, onCheckedChange = { enabled = it })
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp)
+                .clip(AppRadius.card),
+        ) {
+            // Источник — контент, который будет виден ЧАСТИЧНО размытым.
+            // .haze() висит прямо здесь, как и требует канон Haze.
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color(0xFFFF3D7F), Color(0xFF3D7FFF), Color(0xFFFFD23D)),
+                        ),
+                    )
+                    .haze(hazeState)
+                    .padding(horizontal = 14.dp),
+                verticalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                repeat(4) { i ->
+                    Text(
+                        text = "СТРОКА ТЕКСТА №${i + 1} ДЛЯ ПРОВЕРКИ БЛЮРА",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
+            }
+
+            // Плашка-сиблинг поверх НИЖНОЙ половины — читает ТОТ ЖЕ hazeState.
+            if (enabled) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp)
+                        .align(Alignment.BottomCenter)
+                        .hazeChild(
+                            state = hazeState,
+                            style = HazeStyle(
+                                blurRadius = 20.dp,
+                                tint = HazeTint(Color.Black.copy(alpha = 0.15f)),
+                            ),
+                        ),
+                )
+            }
         }
     }
 }
