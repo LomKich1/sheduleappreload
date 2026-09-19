@@ -362,13 +362,27 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
 // синхронизации. Каждый вызов обязан быть непрозрачным (свой
 // .background(c.surface)) — иначе при наложении был бы виден слой снизу
 // сквозь едущий верхний.
+//
+// hazeModifier/opaqueBackground — добавлено для frosted-glass шапки ПИКЕРА
+// (см. чат про блюр шапки Telegram). Дефолты (opaqueBackground = true,
+// hazeModifier = Modifier) сохраняют СТАРОЕ поведение один-в-один — оба
+// вызова из PairsOverlay (ScheduleScreen.kt/TeacherScheduleScreen.kt) НЕ
+// трогаются и остаются полностью непрозрачными, как и требует комментарий
+// выше про наложение слоёв при свайпе. Блюр включают ТОЛЬКО вызовы из
+// пикера, передавая opaqueBackground = false + свой .hazeChild(...).
 @Composable
-fun ScheduleHeaderRow(header: ScheduleHeaderInfo, modifier: Modifier = Modifier) {
+fun ScheduleHeaderRow(
+    header: ScheduleHeaderInfo,
+    modifier: Modifier = Modifier,
+    hazeModifier: Modifier = Modifier,
+    opaqueBackground: Boolean = true,
+) {
     val c = LocalAppColors.current
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(c.surface)
+            .then(if (opaqueBackground) Modifier.background(c.surface) else Modifier)
+            .then(hazeModifier)
             // vertical = 12.dp — как в AppHeader (было 14.dp): вместе с фикс.
             // размером шрифта ниже это выравнивает высоту "чистой" шапки (без
             // подстрочника даты) с шапкой Files/Bells.

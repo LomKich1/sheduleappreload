@@ -67,6 +67,14 @@ fun ScheduleModeToggle(
     // своей пружины (та же логика, что и в FloatingPillNav — см. комментарий
     // там про рассинхрон от двух независимых источников движения).
     progress: Float? = null,
+    // hazeModifier/opaqueBackground — frosted-glass для ФОНА капсулы (см.
+    // чат про блюр шапки Telegram). Дефолты сохраняют старое поведение
+    // один-в-один — вызов из Settings не трогается. Скользящий индикатор
+    // (Box.background(c.pillActive) ниже) НАМЕРЕННО остаётся непрозрачным
+    // всегда — по просьбе из чата размывать только фон капсулы, а не сам
+    // индикатор выбора.
+    hazeModifier: Modifier = Modifier,
+    opaqueBackground: Boolean = true,
 ) {
     val c = LocalAppColors.current
 
@@ -75,7 +83,8 @@ fun ScheduleModeToggle(
             .fillMaxWidth()
             .height(46.dp)
             .clip(AppRadius.capsule)
-            .background(c.pillBg)
+            .then(if (opaqueBackground) Modifier.background(c.pillBg) else Modifier)
+            .then(hazeModifier)
             .border(1.dp, c.border, AppRadius.capsule)
             .padding(4.dp),
     ) {

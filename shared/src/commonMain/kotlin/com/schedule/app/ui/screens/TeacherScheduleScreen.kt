@@ -56,6 +56,11 @@ import com.schedule.app.ui.components.rememberSwipeDismissState
 import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
+import dev.chrisbanes.haze.rememberHazeState
 
 // Та же длительность, что и SUBSCREEN_ANIM_MS в ScheduleScreen.kt — переходы
 // пикер преподавателя ↔ расписание пар должны визуально совпадать.
@@ -171,6 +176,7 @@ fun TeacherScheduleScreen(
     val uiState  by vm.uiState.collectAsState()
     val progress by vm.progress.collectAsState()
     val debugTransparentBg by AppPrefs.debugTransparentOverlayBg.collectAsState()
+    val hazeState = rememberHazeState()
 
     LaunchedEffect(file.name) { vm.load(file) }
 
@@ -203,7 +209,10 @@ fun TeacherScheduleScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(0f)
-                .background(if (debugTransparentBg) Color.Transparent else c.bg),
+                .background(if (debugTransparentBg) Color.Transparent else c.bg)
+                // Источник Haze — см. подробный комментарий у аналогичного
+                // места в ScheduleScreen.kt.
+                .haze(hazeState),
         ) {
             // См. подробный комментарий у аналогичного места в ScheduleScreen.kt
             // про counterTranslationX — тот же приём здесь, зеркально.
@@ -224,7 +233,18 @@ fun TeacherScheduleScreen(
                     progress      = progress,
                     onBack        = onBack,
                 )
-                ScheduleHeaderRow(header = pickerHeader)
+                ScheduleHeaderRow(
+                    header = pickerHeader,
+                    opaqueBackground = false,
+                    hazeModifier = Modifier.hazeChild(
+                        state = hazeState,
+                        style = HazeStyle(
+                            backgroundColor = c.bg,
+                            blurRadius = 20.dp,
+                            tint = HazeTint(c.surface.copy(alpha = 0.55f)),
+                        ),
+                    ),
+                )
                 if (pickerHeader.isLoading) {
                     LinearProgressIndicator(
                         progress   = { pickerHeader.progress },
@@ -240,6 +260,15 @@ fun TeacherScheduleScreen(
                     onSelect = onModeSelect,
                     progress = modeSwipeProgress,
                     modifier = Modifier.padding(horizontal = 18.dp),
+                    opaqueBackground = false,
+                    hazeModifier = Modifier.hazeChild(
+                        state = hazeState,
+                        style = HazeStyle(
+                            backgroundColor = c.bg,
+                            blurRadius = 20.dp,
+                            tint = HazeTint(c.pillBg.copy(alpha = 0.5f)),
+                        ),
+                    ),
                 )
                 Spacer(Modifier.height(4.dp))
             }
@@ -466,6 +495,8 @@ private fun TeacherPickerScreen(
 @Composable
 private fun TeacherPickerHint(count: Int) {
     val c = LocalAppColors.current
+    val showHint by AppPrefs.debugShowPickerHint.collectAsState()
+    if (!showHint) return
     Column(
         modifier = Modifier
             .fillMaxWidth()

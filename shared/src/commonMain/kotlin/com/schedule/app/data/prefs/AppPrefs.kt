@@ -86,6 +86,17 @@ object AppPrefs {
         _debugFullscreenBlur.value = enabled
     }
 
+    // ── DEBUG: текст-подсказка "Найдено N групп/преподавателей..." над
+    // списком в пикере. По итогам обсуждения в чате — убираем из обычного
+    // вида (шапка+блюр несут туже информацию по смыслу лучше), но оставляем
+    // возможность включить обратно для отладки. Дефолт — false (скрыт).
+    private val _debugShowPickerHint = MutableStateFlow(false)
+    val debugShowPickerHint: StateFlow<Boolean> = _debugShowPickerHint.asStateFlow()
+
+    fun setDebugShowPickerHint(enabled: Boolean) {
+        _debugShowPickerHint.value = enabled
+    }
+
     // ── Какой вид открывается первым на экране файла: Ученики или Преподаватели ──
     private val _defaultScheduleMode = MutableStateFlow(DEFAULT_SCHEDULE_MODE)
     val defaultScheduleMode: StateFlow<ScheduleMode> = _defaultScheduleMode.asStateFlow()

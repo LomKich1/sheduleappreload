@@ -58,6 +58,11 @@ import com.schedule.app.ui.components.rememberSwipeDismissState
 import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
+import dev.chrisbanes.haze.rememberHazeState
 
 // Длительность анимации переключения между "под-экранами" ScheduleScreen —
 // то же значение, что и NAV_ANIM_MS в AppScaffold для переходов
@@ -221,6 +226,7 @@ fun ScheduleScreen(
     val uiState  by vm.uiState.collectAsState()
     val progress by vm.progress.collectAsState()
     val debugTransparentBg by AppPrefs.debugTransparentOverlayBg.collectAsState()
+    val hazeState = rememberHazeState()
 
     LaunchedEffect(file.name) { vm.load(file) }
 
@@ -265,7 +271,18 @@ fun ScheduleScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(0f)
-                .background(if (debugTransparentBg) Color.Transparent else c.bg),
+                .background(if (debugTransparentBg) Color.Transparent else c.bg)
+                // Источник для блюра шапки/капсулы пикера — вся эта Column
+                // (шапка+тумблер+список), т.е. канонический паттерн Haze
+                // "source оборачивает контент, который частично читают его
+                // же дети через hazeChild" (проверено и подтверждено рабочим
+                // на изолированном debug-тесте, см. чат). Специально НЕ на
+                // корневом Box уровнем выше — там, в AppScaffold, лежит
+                // NavHost, чьи graphicsLayer от Navigation-анимаций ломали
+                // захват Haze (было пусто ВЕЗДЕ, даже на цветных экранах,
+                // пока не сузили источник). Тут NavHost нет вообще, так что
+                // это не тот случай.
+                .haze(hazeState),
         ) {
             // Шапка пикера + тумблер — обёрнуты в компенсирующий
             // translationX (см. counterTranslationX выше), поэтому остаются
@@ -293,7 +310,18 @@ fun ScheduleScreen(
                     progress      = progress,
                     onBack        = onBack,
                 )
-                ScheduleHeaderRow(header = pickerHeader)
+                ScheduleHeaderRow(
+                    header = pickerHeader,
+                    opaqueBackground = false,
+                    hazeModifier = Modifier.hazeChild(
+                        state = hazeState,
+                        style = HazeStyle(
+                            backgroundColor = c.bg,
+                            blurRadius = 20.dp,
+                            tint = HazeTint(c.surface.copy(alpha = 0.55f)),
+                        ),
+                    ),
+                )
                 if (pickerHeader.isLoading) {
                     LinearProgressIndicator(
                         progress   = { pickerHeader.progress },
@@ -309,6 +337,15 @@ fun ScheduleScreen(
                     onSelect = onModeSelect,
                     progress = modeSwipeProgress,
                     modifier = Modifier.padding(horizontal = 18.dp),
+                    opaqueBackground = false,
+                    hazeModifier = Modifier.hazeChild(
+                        state = hazeState,
+                        style = HazeStyle(
+                            backgroundColor = c.bg,
+                            blurRadius = 20.dp,
+                            tint = HazeTint(c.pillBg.copy(alpha = 0.5f)),
+                        ),
+                    ),
                 )
                 Spacer(Modifier.height(4.dp))
             }
@@ -500,6 +537,7 @@ private fun GroupPickerScreen(
     val rememberOn     by AppPrefs.rememberGroup.collectAsState()
     val pinnedGroup    by AppPrefs.pinnedGroup.collectAsState()
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
+    val showHint       by AppPrefs.debugShowPickerHint.collectAsState()
 
     // Подсвечиваем только если rememberGroup ON + группа реально есть в этом файле
     val pinnedInFile = if (rememberOn && pinnedGroup.isNotBlank() && pinnedGroup in groups)
@@ -514,22 +552,25 @@ private fun GroupPickerScreen(
     else groups
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Подсказка — без дублирующего заголовка "Выберите вашу группу": он и так
-        // виден в шапке экрана прямо над этим блоком. Оставили только то, что
-        // реально несёт новую информацию — сколько групп и что выбор сохранится.
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-        ) {
-            Text(
-                text = if (pinnedInFile != null)
-                    "Найдено ${groups.size} групп · запомненная — вверху"
-                else
-                    "Найдено ${groups.size} групп · выбор сохранится автоматически",
-                color = c.textSub,
-                fontSize = 11.5.sp,
-            )
+        // Подсказка — по умолчанию скрыта (см. чат: шапка+капсула теперь
+        // блюрные, повторять "сколько групп/что сохранится" текстом под
+        // ними избыточно). Включается обратно через debug-тумблер
+        // "Показывать подсказку" для отладки/сравнения.
+        if (showHint) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+            ) {
+                Text(
+                    text = if (pinnedInFile != null)
+                        "Найдено ${groups.size} групп · запомненная — вверху"
+                    else
+                        "Найдено ${groups.size} групп · выбор сохранится автоматически",
+                    color = c.textSub,
+                    fontSize = 11.5.sp,
+                )
+            }
         }
 
         // Как и в FilesList: короткий список групп (1-3) центрируем по вертикали

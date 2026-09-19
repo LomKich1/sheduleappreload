@@ -204,6 +204,7 @@ private fun DebugSettingsHeader(onBack: () -> Unit) {
 private fun RenderDebugSection() {
     val c = LocalAppColors.current
     val transparentBg by AppPrefs.debugTransparentOverlayBg.collectAsState()
+    val showHint by AppPrefs.debugShowPickerHint.collectAsState()
 
     Column {
         Text(
@@ -231,6 +232,36 @@ private fun RenderDebugSection() {
             Switch(
                 checked = transparentBg,
                 onCheckedChange = { AppPrefs.setDebugTransparentOverlayBg(it) },
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Text(
+            text = "Текст \"Найдено N групп/преподавателей...\" над списком в пикере — " +
+                "убран из обычного вида (шапка+капсула теперь блюрные, дублировать " +
+                "смысл текстом под ними избыточно). Включи обратно, если нужно сравнить " +
+                "или для отладки.",
+            color = c.textSub,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Показывать подсказку над списком",
+                color = c.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = showHint,
+                onCheckedChange = { AppPrefs.setDebugShowPickerHint(it) },
             )
         }
     }
