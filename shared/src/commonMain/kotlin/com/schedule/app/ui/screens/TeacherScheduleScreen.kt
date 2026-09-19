@@ -38,8 +38,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -204,8 +206,13 @@ fun TeacherScheduleScreen(
         selection = TeacherPairsSelection(id = selectionCounter, bytes = bytes, file = pickedFile, teacher = teacher)
     }
 
+    // headerBlockHeightPx — см. подробный комментарий у аналогичного места
+    // в ScheduleScreen.kt.
+    var headerBlockHeightPx by remember { mutableStateOf(0) }
+    val headerBlockHeightDp = with(LocalDensity.current) { headerBlockHeightPx.toDp() }
+
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(0f)
@@ -214,11 +221,64 @@ fun TeacherScheduleScreen(
                 // места в ScheduleScreen.kt.
                 .haze(hazeState),
         ) {
-            // См. подробный комментарий у аналогичного места в ScheduleScreen.kt
-            // про counterTranslationX — тот же приём здесь, зеркально.
+            LaunchedEffect(selection) { onPairsOpenChanged(selection != null) }
+
+            // Список — от самого верха, шапка floating поверх него. См.
+            // подробный комментарий у аналогичного места в ScheduleScreen.kt.
+            AnimatedContent(
+                targetState = uiState,
+                modifier    = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    // Пикер посещается строго вперёд — см. подробный
+                    // комментарий у аналогичного места в ScheduleScreen.kt.
+                    val isSkeletonToPicker =
+                        initialState is TeacherPickerUiState.Loading && targetState is TeacherPickerUiState.Ready
+                    val isInitialLoad = initialState is TeacherPickerUiState.Idle
+
+                    if (isSkeletonToPicker || isInitialLoad) {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    } else {
+                        (slideInHorizontally(
+                            initialOffsetX = { it },
+                            animationSpec  = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                        ) + fadeIn(tween(TEACHER_SUBSCREEN_ANIM_MS - 60))) togetherWith
+                            (slideOutHorizontally(
+                                targetOffsetX = { -it / 4 },
+                                animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                            ) + fadeOut(tween(TEACHER_SUBSCREEN_ANIM_MS - 60)))
+                    }
+                },
+                label = "teacherPickerSubscreen",
+            ) { state ->
+                when (state) {
+                    is TeacherPickerUiState.Idle -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
+                        TeacherSchedLoading()
+                    }
+                    is TeacherPickerUiState.Loading -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
+                        TeacherPickerLoading(entranceTrigger = transitionSeq)
+                    }
+                    is TeacherPickerUiState.Ready   -> TeacherPickerScreen(
+                        teachers          = state.teachers,
+                        onSelect          = onSelectTeacher,
+                        entranceTrigger   = transitionSeq,
+                        entranceEdge      = pickerRevealEdgeOverride ?: CascadeEdge.BOTTOM,
+                        topContentPadding = headerBlockHeightDp,
+                    )
+                    is TeacherPickerUiState.Error -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
+                        TeacherSchedError(
+                            message = state.message,
+                            onRetry = { vm.load(file) },
+                        )
+                    }
+                }
+            }
+
+            // Шапка+тумблер — floating-слой поверх списка. См. подробный
+            // комментарий у аналогичного места в ScheduleScreen.kt.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onGloballyPositioned { headerBlockHeightPx = it.size.height }
                     .graphicsLayer { translationX = -counterTranslationX },
             ) {
                 val pickerHeader = ScheduleHeaderInfo(
@@ -271,49 +331,6 @@ fun TeacherScheduleScreen(
                     ),
                 )
                 Spacer(Modifier.height(4.dp))
-            }
-
-            LaunchedEffect(selection) { onPairsOpenChanged(selection != null) }
-
-            AnimatedContent(
-                targetState = uiState,
-                modifier    = Modifier.weight(1f),
-                transitionSpec = {
-                    // Пикер посещается строго вперёд — см. подробный
-                    // комментарий у аналогичного места в ScheduleScreen.kt.
-                    val isSkeletonToPicker =
-                        initialState is TeacherPickerUiState.Loading && targetState is TeacherPickerUiState.Ready
-                    val isInitialLoad = initialState is TeacherPickerUiState.Idle
-
-                    if (isSkeletonToPicker || isInitialLoad) {
-                        EnterTransition.None togetherWith ExitTransition.None
-                    } else {
-                        (slideInHorizontally(
-                            initialOffsetX = { it },
-                            animationSpec  = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                        ) + fadeIn(tween(TEACHER_SUBSCREEN_ANIM_MS - 60))) togetherWith
-                            (slideOutHorizontally(
-                                targetOffsetX = { -it / 4 },
-                                animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                            ) + fadeOut(tween(TEACHER_SUBSCREEN_ANIM_MS - 60)))
-                    }
-                },
-                label = "teacherPickerSubscreen",
-            ) { state ->
-                when (state) {
-                    is TeacherPickerUiState.Idle    -> TeacherSchedLoading()
-                    is TeacherPickerUiState.Loading -> TeacherPickerLoading(entranceTrigger = transitionSeq)
-                    is TeacherPickerUiState.Ready   -> TeacherPickerScreen(
-                        teachers        = state.teachers,
-                        onSelect        = onSelectTeacher,
-                        entranceTrigger = transitionSeq,
-                        entranceEdge    = pickerRevealEdgeOverride ?: CascadeEdge.BOTTOM,
-                    )
-                    is TeacherPickerUiState.Error   -> TeacherSchedError(
-                        message = state.message,
-                        onRetry = { vm.load(file) },
-                    )
-                }
             }
         }
 
@@ -427,12 +444,16 @@ private fun TeacherPickerScreen(
     onSelect: (String) -> Unit,
     entranceTrigger: Any,
     entranceEdge: CascadeEdge,
+    // topContentPadding — см. подробный комментарий у аналогичного параметра
+    // в GroupPickerScreen (ScheduleScreen.kt).
+    topContentPadding: Dp = 0.dp,
 ) {
     val c = LocalAppColors.current
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
+    val showHint by AppPrefs.debugShowPickerHint.collectAsState()
 
     if (teachers.isEmpty()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().padding(top = topContentPadding)) {
             TeacherPickerHint(count = 0)
             Column(
                 modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -451,7 +472,7 @@ private fun TeacherPickerScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TeacherPickerHint(count = teachers.size)
+        TeacherPickerHint(count = teachers.size, topPadding = topContentPadding)
 
         // Как и в GroupPickerScreen/FilesList: короткий список (1-3 преподавателя)
         // центрируем по вертикали вместо прилипания к верху.
@@ -471,7 +492,14 @@ private fun TeacherPickerScreen(
                 .fillMaxSize()
                 .onGloballyPositioned { viewportBoundsPx = it.boundsInWindow() }
                 .verticalScroll(rememberScrollState())
-                .padding(start = 14.dp, end = 14.dp, bottom = 80.dp, top = 2.dp),
+                .padding(
+                    start = 14.dp,
+                    end = 14.dp,
+                    bottom = 80.dp,
+                    // См. подробный комментарий у аналогичного места в
+                    // GroupPickerScreen (ScheduleScreen.kt).
+                    top = if (showHint) 2.dp else topContentPadding + 2.dp,
+                ),
             verticalArrangement = if (isShort)
                 Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
             else
@@ -493,13 +521,14 @@ private fun TeacherPickerScreen(
 }
 
 @Composable
-private fun TeacherPickerHint(count: Int) {
+private fun TeacherPickerHint(count: Int, topPadding: Dp = 0.dp) {
     val c = LocalAppColors.current
     val showHint by AppPrefs.debugShowPickerHint.collectAsState()
     if (!showHint) return
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(top = topPadding)
             .padding(horizontal = 18.dp, vertical = 14.dp),
     ) {
         // Заголовок "Выберите преподавателя" уже есть в шапке экрана
