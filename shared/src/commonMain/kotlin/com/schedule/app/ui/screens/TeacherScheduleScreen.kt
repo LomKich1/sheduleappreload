@@ -35,13 +35,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -58,6 +58,7 @@ import com.schedule.app.ui.components.rememberSwipeDismissState
 import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
+import kotlin.math.roundToInt
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.haze
@@ -279,7 +280,12 @@ fun TeacherScheduleScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .onGloballyPositioned { headerBlockHeightPx = it.size.height }
-                    .graphicsLayer { translationX = -counterTranslationX },
+                    // См. подробный комментарий у аналогичного места в
+                    // ScheduleScreen.kt — graphicsLayer заменён на offset{}
+                    // из-за фоллбэка Haze на "просто тинт без блюра" при
+                    // наличии постороннего graphicsLayer между источником и
+                    // hazeChild (chrisbanes/haze#117).
+                    .offset { IntOffset(x = (-counterTranslationX).roundToInt(), y = 0) },
             ) {
                 val pickerHeader = ScheduleHeaderInfo(
                     title         = "",

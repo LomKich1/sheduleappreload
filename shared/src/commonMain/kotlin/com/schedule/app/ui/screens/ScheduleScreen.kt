@@ -36,7 +36,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -44,6 +43,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -60,6 +60,7 @@ import com.schedule.app.ui.components.rememberSwipeDismissState
 import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
+import kotlin.math.roundToInt
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.haze
@@ -382,7 +383,18 @@ fun ScheduleScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .onGloballyPositioned { headerBlockHeightPx = it.size.height }
-                    .graphicsLayer { translationX = -counterTranslationX },
+                    // Было .graphicsLayer { translationX = -counterTranslationX }
+                    // — заменено на layout-фазовый offset{} (см. чат: блюр
+                    // капсулы/шапки показывал только просвечивание без
+                    // реального размытия — Haze на Android иногда молча
+                    // уходит в "unsupported"-фоллбэк just-tint без блюра,
+                    // если между источником и hazeChild есть ЧУЖОЙ
+                    // graphicsLayer/RenderNode, см. issue chrisbanes/haze#117
+                    // про этот фоллбэк-путь). offset{} двигает через систему
+                    // layout, а не через отдельный композит-слой поверх
+                    // RenderNode — визуально идентично, но не создаёт
+                    // промежуточный слой, который мог сбивать Haze с толку.
+                    .offset { IntOffset(x = (-counterTranslationX).roundToInt(), y = 0) },
             ) {
                 val pickerHeader = ScheduleHeaderInfo(
                     title         = "",
