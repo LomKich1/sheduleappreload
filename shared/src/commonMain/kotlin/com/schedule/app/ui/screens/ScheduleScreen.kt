@@ -289,85 +289,85 @@ fun ScheduleScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(0f)
-                .background(if (debugTransparentBg) Color.Transparent else c.bg)
-                // Источник для блюра шапки/капсулы пикера — весь этот Box
-                // (шапка+тумблер+список), т.е. канонический паттерн Haze
-                // "source оборачивает контент, который частично читают его
-                // же дети через hazeChild" (проверено и подтверждено рабочим
-                // на изолированном debug-тесте, см. чат). Специально НЕ на
-                // корневом Box уровнем выше — там, в AppScaffold, лежит
-                // NavHost, чьи graphicsLayer от Navigation-анимаций ломали
-                // захват Haze (было пусто ВЕЗДЕ, даже на цветных экранах,
-                // пока не сузили источник). Тут NavHost нет вообще, так что
-                // это не тот случай.
-                .haze(hazeState),
+                .background(if (debugTransparentBg) Color.Transparent else c.bg),
         ) {
             // Хосту нужен только факт "открыт ли сейчас экран пар" (см.
             // onPairsOpenChanged в комментарии к параметрам выше).
             LaunchedEffect(selection) { onPairsOpenChanged(selection != null) }
 
-            // ── Список — от самого верха экрана, а не "после шапки" ─────────
-            // Раньше шапка+тумблер и список были соседями в одном Column —
-            // список просто ехал после них, высота шапки автоматически
-            // вычиталась потоком. Теперь список занимает fillMaxSize() целиком
-            // от Y=0, а top-инсет (headerBlockHeightDp) живёт ВНУТРИ его
-            // собственного contentPadding (см. GroupPickerScreen) — именно
-            // поэтому при скролле карточки реально проезжают ПОД шапкой, а не
-            // останавливаются перед ней. Шапка рисуется НИЖЕ по коду (значит
-            // выше по Z-order — последний child в Box побеждает), поверх
-            // списка, как floating-слой.
-            AnimatedContent(
-                targetState = uiState,
-                modifier    = Modifier.fillMaxSize(),
-                transitionSpec = {
-                    // Пикер теперь посещается СТРОГО вперёд: Idle→Loading→Ready,
-                    // либо Error→Loading→Ready при повторе. Раньше тут был ещё
-                    // goingBack-переход (LEFT-слайд при возврате с экрана пар),
-                    // но с оверлеем возврат больше не трогает состояние пикера
-                    // вообще — PairsOverlay просто закрывается, а пикер под ним
-                    // как был отрисован, так и остаётся. Отдельная "обратная"
-                    // ветка тут больше не нужна.
-                    val isSkeletonToPicker =
-                        initialState is PickerUiState.Loading && targetState is PickerUiState.Ready
-                    val isInitialLoad = initialState is PickerUiState.Idle
+            // ── Источник Haze — ТОЛЬКО список, шапка ему СОСЕД ───────────────
+            // В Haze 1.6 hazeChild, у которого есть предок-источник с тем же
+            // state, рисует лишь области с zIndex СТРОГО меньше zIndex этого
+            // предка (HazeEffectNode.updateEffect). При дефолтных нулях условие
+            // 0 < 0 ложно — список областей пуст, блюрить нечего, и остаётся
+            // один тинт ("просвечивание без размытия"). Поэтому .haze() висит
+            // на обёртке вокруг списка, а шапка+тумблер (hazeChild) лежат ниже
+            // в том же Box как СИБЛИНГ — канонический паттерн, тот же, что в
+            // AppScaffold (debug-блюр) и IsolatedHazeDiagnosticSection.
+            Box(modifier = Modifier.fillMaxSize().haze(hazeState)) {
+                // ── Список — от самого верха экрана, а не "после шапки" ─────────
+                // Раньше шапка+тумблер и список были соседями в одном Column —
+                // список просто ехал после них, высота шапки автоматически
+                // вычиталась потоком. Теперь список занимает fillMaxSize() целиком
+                // от Y=0, а top-инсет (headerBlockHeightDp) живёт ВНУТРИ его
+                // собственного contentPadding (см. GroupPickerScreen) — именно
+                // поэтому при скролле карточки реально проезжают ПОД шапкой, а не
+                // останавливаются перед ней. Шапка рисуется НИЖЕ по коду (значит
+                // выше по Z-order — последний child в Box побеждает), поверх
+                // списка, как floating-слой.
+                AnimatedContent(
+                    targetState = uiState,
+                    modifier    = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        // Пикер теперь посещается СТРОГО вперёд: Idle→Loading→Ready,
+                        // либо Error→Loading→Ready при повторе. Раньше тут был ещё
+                        // goingBack-переход (LEFT-слайд при возврате с экрана пар),
+                        // но с оверлеем возврат больше не трогает состояние пикера
+                        // вообще — PairsOverlay просто закрывается, а пикер под ним
+                        // как был отрисован, так и остаётся. Отдельная "обратная"
+                        // ветка тут больше не нужна.
+                        val isSkeletonToPicker =
+                            initialState is PickerUiState.Loading && targetState is PickerUiState.Ready
+                        val isInitialLoad = initialState is PickerUiState.Idle
 
-                    if (isSkeletonToPicker || isInitialLoad) {
-                        EnterTransition.None togetherWith ExitTransition.None
-                    } else {
-                        (slideInHorizontally(
-                            initialOffsetX = { it },
-                            animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                        ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
-                            (slideOutHorizontally(
-                                targetOffsetX = { -it / 4 },
-                                animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                            ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
-                    }
-                },
-                label = "pickerSubscreen",
-            ) { state ->
-                when (state) {
-                    // Idle/Loading/Error — не скроллятся, поэтому top-инсет тут
-                    // обычный статичный padding СНАРУЖИ, а не contentPadding
-                    // внутри скролла (в отличие от Ready/GroupPickerScreen ниже).
-                    is PickerUiState.Idle -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
-                        SchedLoading()
-                    }
-                    is PickerUiState.Loading -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
-                        GroupPickerLoading(entranceTrigger = transitionSeq)
-                    }
-                    is PickerUiState.Ready -> GroupPickerScreen(
-                        groups            = state.groups,
-                        onSelect          = onSelectGroup,
-                        entranceTrigger   = transitionSeq,
-                        entranceEdge      = pickerRevealEdgeOverride ?: CascadeEdge.BOTTOM,
-                        topContentPadding = headerBlockHeightDp,
-                    )
-                    is PickerUiState.Error -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
-                        SchedError(
-                            message = state.message,
-                            onRetry = { vm.load(file) },
+                        if (isSkeletonToPicker || isInitialLoad) {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        } else {
+                            (slideInHorizontally(
+                                initialOffsetX = { it },
+                                animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                            ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
+                                (slideOutHorizontally(
+                                    targetOffsetX = { -it / 4 },
+                                    animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                                ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
+                        }
+                    },
+                    label = "pickerSubscreen",
+                ) { state ->
+                    when (state) {
+                        // Idle/Loading/Error — не скроллятся, поэтому top-инсет тут
+                        // обычный статичный padding СНАРУЖИ, а не contentPadding
+                        // внутри скролла (в отличие от Ready/GroupPickerScreen ниже).
+                        is PickerUiState.Idle -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
+                            SchedLoading()
+                        }
+                        is PickerUiState.Loading -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
+                            GroupPickerLoading(entranceTrigger = transitionSeq)
+                        }
+                        is PickerUiState.Ready -> GroupPickerScreen(
+                            groups            = state.groups,
+                            onSelect          = onSelectGroup,
+                            entranceTrigger   = transitionSeq,
+                            entranceEdge      = pickerRevealEdgeOverride ?: CascadeEdge.BOTTOM,
+                            topContentPadding = headerBlockHeightDp,
                         )
+                        is PickerUiState.Error -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
+                            SchedError(
+                                message = state.message,
+                                onRetry = { vm.load(file) },
+                            )
+                        }
                     }
                 }
             }

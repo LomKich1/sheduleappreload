@@ -217,59 +217,60 @@ fun TeacherScheduleScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(0f)
-                .background(if (debugTransparentBg) Color.Transparent else c.bg)
-                // Источник Haze — см. подробный комментарий у аналогичного
-                // места в ScheduleScreen.kt.
-                .haze(hazeState),
+                .background(if (debugTransparentBg) Color.Transparent else c.bg),
         ) {
             LaunchedEffect(selection) { onPairsOpenChanged(selection != null) }
 
-            // Список — от самого верха, шапка floating поверх него. См.
-            // подробный комментарий у аналогичного места в ScheduleScreen.kt.
-            AnimatedContent(
-                targetState = uiState,
-                modifier    = Modifier.fillMaxSize(),
-                transitionSpec = {
-                    // Пикер посещается строго вперёд — см. подробный
-                    // комментарий у аналогичного места в ScheduleScreen.kt.
-                    val isSkeletonToPicker =
-                        initialState is TeacherPickerUiState.Loading && targetState is TeacherPickerUiState.Ready
-                    val isInitialLoad = initialState is TeacherPickerUiState.Idle
+            // Источник Haze — только список; шапка+тумблер ниже — его СОСЕД,
+            // а не потомок (см. подробный комментарий в ScheduleScreen.kt).
+            Box(modifier = Modifier.fillMaxSize().haze(hazeState)) {
+                // Список — от самого верха, шапка floating поверх него. См.
+                // подробный комментарий у аналогичного места в ScheduleScreen.kt.
+                AnimatedContent(
+                    targetState = uiState,
+                    modifier    = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        // Пикер посещается строго вперёд — см. подробный
+                        // комментарий у аналогичного места в ScheduleScreen.kt.
+                        val isSkeletonToPicker =
+                            initialState is TeacherPickerUiState.Loading && targetState is TeacherPickerUiState.Ready
+                        val isInitialLoad = initialState is TeacherPickerUiState.Idle
 
-                    if (isSkeletonToPicker || isInitialLoad) {
-                        EnterTransition.None togetherWith ExitTransition.None
-                    } else {
-                        (slideInHorizontally(
-                            initialOffsetX = { it },
-                            animationSpec  = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                        ) + fadeIn(tween(TEACHER_SUBSCREEN_ANIM_MS - 60))) togetherWith
-                            (slideOutHorizontally(
-                                targetOffsetX = { -it / 4 },
-                                animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                            ) + fadeOut(tween(TEACHER_SUBSCREEN_ANIM_MS - 60)))
-                    }
-                },
-                label = "teacherPickerSubscreen",
-            ) { state ->
-                when (state) {
-                    is TeacherPickerUiState.Idle -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
-                        TeacherSchedLoading()
-                    }
-                    is TeacherPickerUiState.Loading -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
-                        TeacherPickerLoading(entranceTrigger = transitionSeq)
-                    }
-                    is TeacherPickerUiState.Ready   -> TeacherPickerScreen(
-                        teachers          = state.teachers,
-                        onSelect          = onSelectTeacher,
-                        entranceTrigger   = transitionSeq,
-                        entranceEdge      = pickerRevealEdgeOverride ?: CascadeEdge.BOTTOM,
-                        topContentPadding = headerBlockHeightDp,
-                    )
-                    is TeacherPickerUiState.Error -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
-                        TeacherSchedError(
-                            message = state.message,
-                            onRetry = { vm.load(file) },
+                        if (isSkeletonToPicker || isInitialLoad) {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        } else {
+                            (slideInHorizontally(
+                                initialOffsetX = { it },
+                                animationSpec  = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                            ) + fadeIn(tween(TEACHER_SUBSCREEN_ANIM_MS - 60))) togetherWith
+                                (slideOutHorizontally(
+                                    targetOffsetX = { -it / 4 },
+                                    animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                                ) + fadeOut(tween(TEACHER_SUBSCREEN_ANIM_MS - 60)))
+                        }
+                    },
+                    label = "teacherPickerSubscreen",
+                ) { state ->
+                    when (state) {
+                        is TeacherPickerUiState.Idle -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
+                            TeacherSchedLoading()
+                        }
+                        is TeacherPickerUiState.Loading -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
+                            TeacherPickerLoading(entranceTrigger = transitionSeq)
+                        }
+                        is TeacherPickerUiState.Ready   -> TeacherPickerScreen(
+                            teachers          = state.teachers,
+                            onSelect          = onSelectTeacher,
+                            entranceTrigger   = transitionSeq,
+                            entranceEdge      = pickerRevealEdgeOverride ?: CascadeEdge.BOTTOM,
+                            topContentPadding = headerBlockHeightDp,
                         )
+                        is TeacherPickerUiState.Error -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
+                            TeacherSchedError(
+                                message = state.message,
+                                onRetry = { vm.load(file) },
+                            )
+                        }
                     }
                 }
             }
