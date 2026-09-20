@@ -27,7 +27,9 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import dev.chrisbanes.haze.rememberHazeState
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AnimPrefs
@@ -304,9 +306,19 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    // Горизонтальный сдвиг слоя — через layout-фазовый offset{}, а НЕ
+                    // через graphicsLayer.translationX. Haze узнаёт позицию источника
+                    // (списка) через onGloballyPositioned, а тот НЕ вызывается, когда
+                    // меняется только transform слоя: позиция списка соседнего экрана
+                    // «застревала» на значении с середины анимации/недосвайпа, и его
+                    // контент (например, имя преподавателя) просвечивал сквозь блюр
+                    // шапки не там, где должен (в правом углу вместо левого). Тот же
+                    // приём, что и у counterTranslationX в шапке (см. ScheduleScreen).
+                    // Scale/alpha (PARALLAX) остаются в graphicsLayer — на позицию
+                    // левого верхнего угла они не влияют.
                     .zIndex(if (studentActive) 1f else 0f)
+                    .offset { IntOffset(x = studentOffset.roundToInt(), y = 0) }
                     .graphicsLayer {
-                        translationX = studentOffset
                         scaleX = studentScale
                         scaleY = studentScale
                         alpha = studentAlpha
@@ -332,8 +344,9 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(if (!studentActive) 1f else 0f)
+                    // Сдвиг через offset{} — см. комментарий у слоя Student выше.
+                    .offset { IntOffset(x = teacherOffset.roundToInt(), y = 0) }
                     .graphicsLayer {
-                        translationX = teacherOffset
                         scaleX = teacherScale
                         scaleY = teacherScale
                         alpha = teacherAlpha
@@ -390,6 +403,12 @@ fun ScheduleHeaderRow(
             .fillMaxWidth()
             .then(if (opaqueBackground) Modifier.background(c.surface) else Modifier)
             .then(hazeModifier)
+            // statusBarsPadding — ПОСЛЕ фона и hazeModifier, поэтому и c.surface
+            // (opaqueBackground), и hazeChild-блюр занимают ВСЮ высоту шапки
+            // вместе с зоной статус-бара/камеры, а сам контент шапки сдвинут
+            // ниже неё. Корень AppScaffold верхний инсет больше не применяет
+            // (см. комментарий там), экраны расписания рисуются от y=0.
+            .statusBarsPadding()
             // vertical = 12.dp — как в AppHeader (было 14.dp): вместе с фикс.
             // размером шрифта ниже это выравнивает высоту "чистой" шапки (без
             // подстрочника даты) с шапкой Files/Bells.

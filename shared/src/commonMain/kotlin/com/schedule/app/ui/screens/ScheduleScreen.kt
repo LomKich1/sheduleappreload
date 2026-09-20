@@ -675,7 +675,11 @@ private fun GroupPickerScreen(
                 .padding(
                     start = 14.dp,
                     end = 14.dp,
-                    bottom = 80.dp,
+                    // + инсет навбара: экран расписания рисуется под жестовой
+                    // полосой (корень AppScaffold нижний инсет не применяет), и
+                    // последняя карточка при скролле до конца не должна в неё
+                    // упираться.
+                    bottom = 80.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
                     // Если подсказка показана (debug-тумблер) — она уже сама
                     // получила topContentPadding выше по коду, тут достаточно
                     // обычного 2.dp. Если подсказки нет (дефолт) — список сам
@@ -800,7 +804,7 @@ private fun SchedContent(day: ScheduleDay, clockMin: Int, entranceTrigger: Any) 
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 100.dp),
+        contentPadding = PaddingValues(bottom = 100.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
     ) {
         if (currentLesson != null && currentStatus != null) {
             item { LiveBar(lesson = currentLesson, status = currentStatus) }

@@ -163,7 +163,17 @@ fun AppScaffold() {
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg)
-            .systemBarsPadding(),
+            // Вертикальные инсеты (статус-бар сверху, навбар/жестовая полоса
+            // снизу) СНЯТЫ с корня и раздаются точечно: вкладки Files/Bells,
+            // пилл-навигатор, Settings и Debug получают их сами (см. ниже), а
+            // экраны расписания (ScheduleHostScreen) — нет: их шапка рисуется
+            // ПОД статус-баром (см. ScheduleHeaderRow), а списки скроллятся
+            // под жестовую полосу снизу (нижний инсет заложен в их нижний
+            // отступ). Раньше отступы жили тут, и вся композиция — включая
+            // NavHost, который к тому же клипается AnimatedContent — влезала
+            // только в область между барами. Остаются только боковые инсеты
+            // (вырезы/навбар в ландшафте).
+            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
     ) {
         // ── Единая шапка ("Расписание" ↔ "Звонки" через flip) ───────────────
         // AppHeader всегда остаётся в композиции, а NavHost рисуется поверх него.
@@ -182,7 +192,12 @@ fun AppScaffold() {
         // теста: проверять эффект надо, вернувшись на вкладку Files/Bells,
         // а не оставаясь на самом Debug-экране (он живёт внутри NavHost,
         // то есть физически перекрывает эту Column, а не входит в неё).
-        Column(modifier = Modifier.fillMaxSize().haze(hazeState)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))
+                .haze(hazeState),
+        ) {
             AppHeader(
                 activeRoute = activeTab,
                 onSettingsClick = { navController.navigate(Screen.Settings.route) },
@@ -300,6 +315,7 @@ fun AppScaffold() {
             progress = swipable.progress,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
                 .padding(bottom = 20.dp),
         )
 
@@ -363,16 +379,20 @@ fun AppScaffold() {
             }
 
             composable(Screen.Settings.route) {
-                SettingsScreen(
-                    onBack = { navController.popBackStack() },
-                    onNavigateToDebug = { navController.navigate(Screen.DebugSettings.route) },
-                )
+                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))) {
+                    SettingsScreen(
+                        onBack = { navController.popBackStack() },
+                        onNavigateToDebug = { navController.navigate(Screen.DebugSettings.route) },
+                    )
+                }
             }
 
             composable(Screen.DebugSettings.route) {
-                DebugSettingsScreen(
-                    onBack = { navController.popBackStack() },
-                )
+                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))) {
+                    DebugSettingsScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
         }
 
@@ -387,6 +407,7 @@ fun AppScaffold() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))
                     .hazeChild(
                         state = hazeState,
                         style = HazeStyle(

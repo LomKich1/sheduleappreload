@@ -510,7 +510,8 @@ private fun TeacherPickerScreen(
                 .padding(
                     start = 14.dp,
                     end = 14.dp,
-                    bottom = 80.dp,
+                    // + инсет навбара — см. комментарий у GroupPickerScreen.
+                    bottom = 80.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
                     // См. подробный комментарий у аналогичного места в
                     // GroupPickerScreen (ScheduleScreen.kt).
                     top = if (showHint) 2.dp else topContentPadding + 2.dp,
@@ -640,7 +641,7 @@ private fun TeacherSchedContent(day: TeacherDay, clockMin: Int, entranceTrigger:
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 100.dp),
+        contentPadding = PaddingValues(bottom = 100.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
     ) {
         item {
             Text(
