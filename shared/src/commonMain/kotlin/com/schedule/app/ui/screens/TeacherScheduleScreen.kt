@@ -59,6 +59,7 @@ import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
 import kotlin.math.roundToInt
+import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.haze
@@ -174,12 +175,19 @@ fun TeacherScheduleScreen(
     onPairsOpenChanged: (Boolean) -> Unit = {},
     // См. counterTranslationX в ScheduleScreen.kt — тот же принцип.
     counterTranslationX: Float = 0f,
+    // Общий HazeState ХОСТА (см. ScheduleHostScreen): оба экрана — Ученики и
+    // Преподаватели — регистрируют свои списки как источники в ОДНОМ state.
+    // Шапка/тумблер стоят на месте (counterTranslationX), а слои под ними
+    // едут при переключении/свайпе, поэтому собственный список экрана
+    // покрывает шапку лишь частично — недостающую часть блюра шапка берёт из
+    // списка СОСЕДНЕГО экрана, который в этот момент как раз заезжает под неё.
+    // Дефолт — на случай вызова экрана вне хоста (тогда всё как раньше).
+    hazeState: HazeState = rememberHazeState(),
 ) {
     val c        = LocalAppColors.current
     val uiState  by vm.uiState.collectAsState()
     val progress by vm.progress.collectAsState()
     val debugTransparentBg by AppPrefs.debugTransparentOverlayBg.collectAsState()
-    val hazeState = rememberHazeState()
 
     LaunchedEffect(file.name) { vm.load(file) }
 

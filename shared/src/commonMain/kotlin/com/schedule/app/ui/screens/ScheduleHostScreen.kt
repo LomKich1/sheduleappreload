@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
+import dev.chrisbanes.haze.rememberHazeState
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AnimPrefs
 import com.schedule.app.data.prefs.AppPrefs
@@ -98,6 +99,10 @@ data class ScheduleHeaderInfo(
 fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
     val c = LocalAppColors.current
     val defaultMode by AppPrefs.defaultScheduleMode.collectAsState()
+    // ОДИН HazeState на оба экрана — иначе при переключении/свайпе блюр шапки
+    // берёт контент только из «своего» списка, который уехал вместе со слоем,
+    // и блюр покрывает шапку не на всю ширину (см. hazeState в ScheduleScreen).
+    val hazeState = rememberHazeState()
 
     // Стартовый режим берём из настроек ровно один раз при открытии ЭТОГО
     // файла (rememberSaveable(file.name) пересоздаст состояние для другого
@@ -319,6 +324,7 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     modeSwipeProgress  = swipable.progress,
                     onPairsOpenChanged = { studentPairsOpen = it },
                     counterTranslationX = studentOffset,
+                    hazeState          = hazeState,
                 )
             }
 
@@ -345,6 +351,7 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     modeSwipeProgress  = swipable.progress,
                     onPairsOpenChanged = { teacherPairsOpen = it },
                     counterTranslationX = teacherOffset,
+                    hazeState          = hazeState,
                 )
             }
         }
