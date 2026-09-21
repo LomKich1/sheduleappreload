@@ -4,8 +4,11 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -15,6 +18,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -203,4 +207,34 @@ fun Modifier.swipeToDismiss(state: SwipeDismissState, enabled: Boolean = true): 
                 }
             }
         }
+}
+
+// ─── DismissDimScrim (Telegram-style дим фона под свайп-дисмиссом) ───────────
+//
+// Экран, который тянут свайпом, физически уже лежит НАД тем, что под ним
+// (Files/Bells, пикер группы/препода и т.п.) — тот всегда смонтирован и
+// просто проступает по мере того, как верхний слой уезжает (см. комментарий
+// у swipeToDismiss выше и историю в ScheduleHostScreen/AppScaffold). Раньше
+// нижний слой был просто "чистым" всё это время — по просьбе из чата (тот же
+// приём, что и в Telegram) теперь он слегка притемнён, пока верхний экран
+// на месте, и линейно светлеет по мере того, как палец утаскивает верхний
+// слой к краю.
+//
+// progress здесь — 0 (верхний слой на месте, дим максимальный) .. 1 (верхний
+// слой уехал за край, дим нулевой). Три места, где это используется, сами
+// приводят свой прогресс к этой шкале (offsetX/widthPx у SwipeDismissState,
+// dismissProgress у SwipableProgressState) — см. их комментарии.
+private const val DISMISS_DIM_MAX_ALPHA = 0.35f
+
+@Composable
+fun DismissDimScrim(progress: Float, modifier: Modifier = Modifier) {
+    val alpha = DISMISS_DIM_MAX_ALPHA * (1f - progress.coerceIn(0f, 1f))
+    // alpha == 0f всё ещё рисуем (а не gate'им через if) — иначе Box то
+    // появляется, то исчезает из дерева каждый кадр на самой границе 0/1,
+    // что дороже, чем просто отрисовать прозрачный слой.
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = alpha)),
+    )
 }

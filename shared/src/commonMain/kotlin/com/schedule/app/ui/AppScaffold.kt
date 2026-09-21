@@ -24,20 +24,14 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.util.lerp
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.haze
-import dev.chrisbanes.haze.hazeChild
-import dev.chrisbanes.haze.rememberHazeState
-import androidx.compose.ui.graphics.Color
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.schedule.app.data.prefs.AnimPrefs
-import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.AppHeader
+import com.schedule.app.ui.components.DismissDimScrim
 import com.schedule.app.ui.components.rememberSwipableProgress
 import com.schedule.app.ui.navigation.FloatingPillNav
 import com.schedule.app.ui.navigation.NavigationHolder
@@ -117,6 +111,19 @@ fun AppScaffold() {
     // каскада (см. LaunchedEffect ниже) — а вот отдельный showPill/if-гейт
     // на саму FloatingPillNav убран, см. комментарий у неё самой.
 
+    // ── Дим Files/Bells под живым свайп-дисмиссом (Telegram-style) ─────────
+    // Settings и ScheduleHostScreen (экран групп) — два РАЗНЫХ NavHost-
+    // назначения, никогда не смонтированы одновременно, поэтому им достаточно
+    // одной общей переменной: какой из двух сейчас открыт, тот в неё и пишет
+    // (см. onDismissProgressChanged у обоих ниже). Стартуем с 1f (=дим
+    // нулевой) — на самом первом кадре приложения (пока startDestination ещё
+    // TABS_PLACEHOLDER, ни Settings, ни Schedule даже не смонтированы) писать
+    // прогресс некому, а дефолтный 0f дал бы затемнённые Files прямо на
+    // холодном старте. Как только любой из двух экранов реально смонтируется,
+    // их собственный SideEffect (см. ScheduleHostScreen.kt/SettingsScreen.kt)
+    // тут же перезапишет это на честный 0f.
+    var deepScreenDismissProgress by remember { mutableStateOf(1f) }
+
     // Системная кнопка «назад»: если открыта вкладка Bells и нет глубокого
     // экрана сверху — возвращаем на Files, а не выходим из приложения.
     BackHandler(enabled = !deepScreenOpen && activeTab == Screen.Bells.route) {
@@ -134,10 +141,6 @@ fun AppScaffold() {
     val springDamping by AnimPrefs.springDamping.collectAsState()
     val springStiffness by AnimPrefs.springStiffness.collectAsState()
     val parallaxPower by AnimPrefs.parallaxPower.collectAsState()
-
-    // ── DEBUG: полноэкранный Haze-блюр (перф-тест, см. AppPrefs.debugFullscreenBlur) ──
-    val debugFullscreenBlur by AppPrefs.debugFullscreenBlur.collectAsState()
-    val hazeState = rememberHazeState()
 
     val activeIndex = if (activeTab == Screen.Files.route) 0 else 1
 
@@ -163,41 +166,11 @@ fun AppScaffold() {
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg)
-            // Вертикальные инсеты (статус-бар сверху, навбар/жестовая полоса
-            // снизу) СНЯТЫ с корня и раздаются точечно: вкладки Files/Bells,
-            // пилл-навигатор, Settings и Debug получают их сами (см. ниже), а
-            // экраны расписания (ScheduleHostScreen) — нет: их шапка рисуется
-            // ПОД статус-баром (см. ScheduleHeaderRow), а списки скроллятся
-            // под жестовую полосу снизу (нижний инсет заложен в их нижний
-            // отступ). Раньше отступы жили тут, и вся композиция — включая
-            // NavHost, который к тому же клипается AnimatedContent — влезала
-            // только в область между барами. Остаются только боковые инсеты
-            // (вырезы/навбар в ландшафте).
-            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
+            .systemBarsPadding(),
     ) {
         // ── Единая шапка ("Расписание" ↔ "Звонки" через flip) ───────────────
         // AppHeader всегда остаётся в композиции, а NavHost рисуется поверх него.
-        //
-        // .haze(hazeState) — ИСТОЧНИК для блюра — висит именно тут, на
-        // Column с шапкой+вкладками, а НЕ на корневом Box. Раньше было на
-        // корневом Box (оборачивал в т.ч. NavHost) — блюр молчал ВЕЗДЕ,
-        // даже на ярких цветных экранах, что не объяснялось низким
-        // контрастом. Подозрение: у каждого пункта назначения NavHost свой
-        // graphicsLayer для slide/fade-анимаций Navigation-Compose — это
-        // отдельный аппаратный слой, через который Haze на Android местами
-        // не может нормально прочитать контент. Плюс архитектурно шапке и
-        // будущей строке поиска и не нужно видеть, что творится внутри
-        // NavHost (Расписание/Настройки/Debug — это отдельные полноэкранные
-        // "поверх всего" экраны) — только вкладки Files/Bells. ВАЖНО для
-        // теста: проверять эффект надо, вернувшись на вкладку Files/Bells,
-        // а не оставаясь на самом Debug-экране (он живёт внутри NavHost,
-        // то есть физически перекрывает эту Column, а не входит в неё).
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))
-                .haze(hazeState),
-        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
             AppHeader(
                 activeRoute = activeTab,
                 onSettingsClick = { navController.navigate(Screen.Settings.route) },
@@ -315,9 +288,15 @@ fun AppScaffold() {
             progress = swipable.progress,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
                 .padding(bottom = 20.dp),
         )
+
+        // ── Дим Files/Bells/пилла под живым свайп-дисмиссом Settings/групп ──
+        // Физически лежит МЕЖДУ пиллом и NavHost — так и сам пилл затемняется
+        // вместе с вкладками (он тоже часть "фона", который сейчас прикрыт),
+        // а сдвигающийся живым свайпом NavHost-контент всегда рисуется поверх
+        // этого слоя. См. DismissDimScrim в SwipeDismiss.kt.
+        DismissDimScrim(progress = deepScreenDismissProgress)
 
         // ── Глубокие экраны: Schedule, Settings — Telegram-стиль слайда ─────
         val navDurationMs by AnimPrefs.navDurationMs.collectAsState()
@@ -374,49 +353,24 @@ fun AppScaffold() {
                     ScheduleHostScreen(
                         file = file,
                         onBack = { navController.popBackStack() },
+                        onDismissProgressChanged = { deepScreenDismissProgress = it },
                     )
                 }
             }
 
             composable(Screen.Settings.route) {
-                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))) {
-                    SettingsScreen(
-                        onBack = { navController.popBackStack() },
-                        onNavigateToDebug = { navController.navigate(Screen.DebugSettings.route) },
-                    )
-                }
+                SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToDebug = { navController.navigate(Screen.DebugSettings.route) },
+                    onDismissProgressChanged = { deepScreenDismissProgress = it },
+                )
             }
 
             composable(Screen.DebugSettings.route) {
-                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))) {
-                    DebugSettingsScreen(
-                        onBack = { navController.popBackStack() },
-                    )
-                }
+                DebugSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                )
             }
-        }
-
-        // ── DEBUG: полноэкранный блюр поверх вкладок Files/Bells ────────────
-        // Перф-щуп перед тем, как тащить frosted-glass конкретно в шапку/бар
-        // (см. обсуждение блюра шапки Telegram в чате). Источник — только
-        // Column с шапкой+вкладками (см. .haze() выше), НЕ NavHost — так что
-        // проверять эффект нужно НА вкладке Files/Bells, а не оставаясь на
-        // самом Debug-экране (он отдельный экран внутри NavHost и эту
-        // Column физически перекрывает собой).
-        if (debugFullscreenBlur) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))
-                    .hazeChild(
-                        state = hazeState,
-                        style = HazeStyle(
-                            backgroundColor = c.bg,
-                            blurRadius = 20.dp,
-                            tint = HazeTint(Color.Black.copy(alpha = 0.35f)),
-                        ),
-                    ),
-            )
         }
     }
 }

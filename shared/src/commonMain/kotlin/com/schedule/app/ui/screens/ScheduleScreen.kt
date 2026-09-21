@@ -36,14 +36,12 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -56,17 +54,12 @@ import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.components.ScheduleMode
 import com.schedule.app.ui.components.ScheduleModeToggle
+import com.schedule.app.ui.components.DismissDimScrim
+import com.schedule.app.ui.components.SwipeDismissState
 import com.schedule.app.ui.components.rememberSwipeDismissState
 import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
-import kotlin.math.roundToInt
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.haze
-import dev.chrisbanes.haze.hazeChild
-import dev.chrisbanes.haze.rememberHazeState
 
 // Длительность анимации переключения между "под-экранами" ScheduleScreen —
 // то же значение, что и NAV_ANIM_MS в AppScaffold для переходов
@@ -225,14 +218,6 @@ fun ScheduleScreen(
     // дрейф, т.к. масштаб родителя чуть подрастягивает саму компенсацию —
     // на глаз почти незаметно, но не идеально ноль.
     counterTranslationX: Float = 0f,
-    // Общий HazeState ХОСТА (см. ScheduleHostScreen): оба экрана — Ученики и
-    // Преподаватели — регистрируют свои списки как источники в ОДНОМ state.
-    // Шапка/тумблер стоят на месте (counterTranslationX), а слои под ними
-    // едут при переключении/свайпе, поэтому собственный список экрана
-    // покрывает шапку лишь частично — недостающую часть блюра шапка берёт из
-    // списка СОСЕДНЕГО экрана, который в этот момент как раз заезжает под неё.
-    // Дефолт — на случай вызова экрана вне хоста (тогда всё как раньше).
-    hazeState: HazeState = rememberHazeState(),
 ) {
     val c        = LocalAppColors.current
     val uiState  by vm.uiState.collectAsState()
@@ -277,132 +262,26 @@ fun ScheduleScreen(
         selection = PairsSelection(id = selectionCounter, bytes = bytes, file = pickedFile, group = group)
     }
 
-    // headerBlockHeightPx — высота шапки+тумблера, измеряется живьём через
-    // onGloballyPositioned (тот же приём, что уже используется чуть ниже для
-    // viewportBoundsPx в GroupPickerScreen — устоявшийся в этой кодовой базе
-    // паттерн). Нужна, чтобы прокинуть её как top-инсет в список: теперь
-    // шапка — floating-слой ПОВЕРХ списка (см. комментарий у Box ниже), а не
-    // элемент того же вертикального потока, поэтому список должен САМ знать,
-    // на сколько отступить сверху, чтобы первая карточка визуально начиналась
-    // там же, где раньше — и чтобы это было ЧАСТЬЮ прокрутки (contentPadding
-    // внутри verticalScroll), а не статичным отступом снаружи неё — иначе
-    // карточки не будут физически заезжать под шапку при скролле, и Haze
-    // будет размывать пустоту (см. историю в чате про "фон темы вместо
-    // блюра").
-    var headerBlockHeightPx by remember { mutableStateOf(0) }
-    val headerBlockHeightDp = with(LocalDensity.current) { headerBlockHeightPx.toDp() }
-
     Box(modifier = Modifier.fillMaxSize()) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(0f)
                 .background(if (debugTransparentBg) Color.Transparent else c.bg),
         ) {
-            // Хосту нужен только факт "открыт ли сейчас экран пар" (см.
-            // onPairsOpenChanged в комментарии к параметрам выше).
-            LaunchedEffect(selection) { onPairsOpenChanged(selection != null) }
-
-            // ── Источник Haze — ТОЛЬКО список, шапка ему СОСЕД ───────────────
-            // В Haze 1.6 hazeChild, у которого есть предок-источник с тем же
-            // state, рисует лишь области с zIndex СТРОГО меньше zIndex этого
-            // предка (HazeEffectNode.updateEffect). При дефолтных нулях условие
-            // 0 < 0 ложно — список областей пуст, блюрить нечего, и остаётся
-            // один тинт ("просвечивание без размытия"). Поэтому .haze() висит
-            // на обёртке вокруг списка, а шапка+тумблер (hazeChild) лежат ниже
-            // в том же Box как СИБЛИНГ — канонический паттерн, тот же, что в
-            // AppScaffold (debug-блюр) и IsolatedHazeDiagnosticSection.
-            Box(modifier = Modifier.fillMaxSize().haze(hazeState)) {
-                // ── Список — от самого верха экрана, а не "после шапки" ─────────
-                // Раньше шапка+тумблер и список были соседями в одном Column —
-                // список просто ехал после них, высота шапки автоматически
-                // вычиталась потоком. Теперь список занимает fillMaxSize() целиком
-                // от Y=0, а top-инсет (headerBlockHeightDp) живёт ВНУТРИ его
-                // собственного contentPadding (см. GroupPickerScreen) — именно
-                // поэтому при скролле карточки реально проезжают ПОД шапкой, а не
-                // останавливаются перед ней. Шапка рисуется НИЖЕ по коду (значит
-                // выше по Z-order — последний child в Box побеждает), поверх
-                // списка, как floating-слой.
-                AnimatedContent(
-                    targetState = uiState,
-                    modifier    = Modifier.fillMaxSize(),
-                    transitionSpec = {
-                        // Пикер теперь посещается СТРОГО вперёд: Idle→Loading→Ready,
-                        // либо Error→Loading→Ready при повторе. Раньше тут был ещё
-                        // goingBack-переход (LEFT-слайд при возврате с экрана пар),
-                        // но с оверлеем возврат больше не трогает состояние пикера
-                        // вообще — PairsOverlay просто закрывается, а пикер под ним
-                        // как был отрисован, так и остаётся. Отдельная "обратная"
-                        // ветка тут больше не нужна.
-                        val isSkeletonToPicker =
-                            initialState is PickerUiState.Loading && targetState is PickerUiState.Ready
-                        val isInitialLoad = initialState is PickerUiState.Idle
-
-                        if (isSkeletonToPicker || isInitialLoad) {
-                            EnterTransition.None togetherWith ExitTransition.None
-                        } else {
-                            (slideInHorizontally(
-                                initialOffsetX = { it },
-                                animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                            ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
-                                (slideOutHorizontally(
-                                    targetOffsetX = { -it / 4 },
-                                    animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                                ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
-                        }
-                    },
-                    label = "pickerSubscreen",
-                ) { state ->
-                    when (state) {
-                        // Idle/Loading/Error — не скроллятся, поэтому top-инсет тут
-                        // обычный статичный padding СНАРУЖИ, а не contentPadding
-                        // внутри скролла (в отличие от Ready/GroupPickerScreen ниже).
-                        is PickerUiState.Idle -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
-                            SchedLoading()
-                        }
-                        is PickerUiState.Loading -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
-                            GroupPickerLoading(entranceTrigger = transitionSeq)
-                        }
-                        is PickerUiState.Ready -> GroupPickerScreen(
-                            groups            = state.groups,
-                            onSelect          = onSelectGroup,
-                            entranceTrigger   = transitionSeq,
-                            entranceEdge      = pickerRevealEdgeOverride ?: CascadeEdge.BOTTOM,
-                            topContentPadding = headerBlockHeightDp,
-                        )
-                        is PickerUiState.Error -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
-                            SchedError(
-                                message = state.message,
-                                onRetry = { vm.load(file) },
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Шапка пикера + тумблер — floating-слой ПОВЕРХ списка (см.
-            // комментарий выше). Обёрнуты в компенсирующий translationX (см.
-            // counterTranslationX выше), поэтому остаются неподвижными на
-            // экране во время свайпа/тумблера Ученики↔Преподаватели, хотя
-            // физически являются частью этого же слоя пикера (и потому
-            // корректно закрываются/проступают вместе с ним при свайпе
-            // Picker↔Pairs — см. комментарий у ScheduleHostScreen).
+            // Шапка пикера + тумблер — обёрнуты в компенсирующий
+            // translationX (см. counterTranslationX выше), поэтому остаются
+            // неподвижными на экране во время свайпа/тумблера Ученики↔
+            // Преподаватели, хотя физически являются частью этого же слоя
+            // пикера (и потому корректно закрываются/проступают вместе с
+            // ним при свайпе Picker↔Pairs — см. комментарий у
+            // ScheduleHostScreen). Список групп ниже (AnimatedContent) эту
+            // компенсацию не получает — он-то как раз честно едет вместе со
+            // своим слоем, как и раньше.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onGloballyPositioned { headerBlockHeightPx = it.size.height }
-                    // Было .graphicsLayer { translationX = -counterTranslationX }
-                    // — заменено на layout-фазовый offset{} (см. чат: блюр
-                    // капсулы/шапки показывал только просвечивание без
-                    // реального размытия — Haze на Android иногда молча
-                    // уходит в "unsupported"-фоллбэк just-tint без блюра,
-                    // если между источником и hazeChild есть ЧУЖОЙ
-                    // graphicsLayer/RenderNode, см. issue chrisbanes/haze#117
-                    // про этот фоллбэк-путь). offset{} двигает через систему
-                    // layout, а не через отдельный композит-слой поверх
-                    // RenderNode — визуально идентично, но не создаёт
-                    // промежуточный слой, который мог сбивать Haze с толку.
-                    .offset { IntOffset(x = (-counterTranslationX).roundToInt(), y = 0) },
+                    .graphicsLayer { translationX = -counterTranslationX },
             ) {
                 val pickerHeader = ScheduleHeaderInfo(
                     title         = "",
@@ -416,18 +295,7 @@ fun ScheduleScreen(
                     progress      = progress,
                     onBack        = onBack,
                 )
-                ScheduleHeaderRow(
-                    header = pickerHeader,
-                    opaqueBackground = false,
-                    hazeModifier = Modifier.hazeChild(
-                        state = hazeState,
-                        style = HazeStyle(
-                            backgroundColor = c.bg,
-                            blurRadius = 20.dp,
-                            tint = HazeTint(c.surface.copy(alpha = 0.55f)),
-                        ),
-                    ),
-                )
+                ScheduleHeaderRow(header = pickerHeader)
                 if (pickerHeader.isLoading) {
                     LinearProgressIndicator(
                         progress   = { pickerHeader.progress },
@@ -443,29 +311,85 @@ fun ScheduleScreen(
                     onSelect = onModeSelect,
                     progress = modeSwipeProgress,
                     modifier = Modifier.padding(horizontal = 18.dp),
-                    opaqueBackground = false,
-                    hazeModifier = Modifier.hazeChild(
-                        state = hazeState,
-                        style = HazeStyle(
-                            backgroundColor = c.bg,
-                            blurRadius = 20.dp,
-                            tint = HazeTint(c.pillBg.copy(alpha = 0.5f)),
-                        ),
-                    ),
                 )
                 Spacer(Modifier.height(4.dp))
+            }
+
+            // Хосту нужен только факт "открыт ли сейчас экран пар" (см.
+            // onPairsOpenChanged в комментарии к параметрам выше).
+            LaunchedEffect(selection) { onPairsOpenChanged(selection != null) }
+
+            AnimatedContent(
+                targetState = uiState,
+                modifier    = Modifier.weight(1f),
+                transitionSpec = {
+                    // Пикер теперь посещается СТРОГО вперёд: Idle→Loading→Ready,
+                    // либо Error→Loading→Ready при повторе. Раньше тут был ещё
+                    // goingBack-переход (LEFT-слайд при возврате с экрана пар),
+                    // но с оверлеем возврат больше не трогает состояние пикера
+                    // вообще — PairsOverlay просто закрывается, а пикер под ним
+                    // как был отрисован, так и остаётся. Отдельная "обратная"
+                    // ветка тут больше не нужна.
+                    val isSkeletonToPicker =
+                        initialState is PickerUiState.Loading && targetState is PickerUiState.Ready
+                    val isInitialLoad = initialState is PickerUiState.Idle
+
+                    if (isSkeletonToPicker || isInitialLoad) {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    } else {
+                        (slideInHorizontally(
+                            initialOffsetX = { it },
+                            animationSpec  = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                        ) + fadeIn(tween(SUBSCREEN_ANIM_MS - 60))) togetherWith
+                            (slideOutHorizontally(
+                                targetOffsetX = { -it / 4 },
+                                animationSpec = tween(SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                            ) + fadeOut(tween(SUBSCREEN_ANIM_MS - 60)))
+                    }
+                },
+                label = "pickerSubscreen",
+            ) { state ->
+                when (state) {
+                    is PickerUiState.Idle    -> SchedLoading()
+                    is PickerUiState.Loading -> GroupPickerLoading(entranceTrigger = transitionSeq)
+                    is PickerUiState.Ready   -> GroupPickerScreen(
+                        groups          = state.groups,
+                        onSelect        = onSelectGroup,
+                        entranceTrigger = transitionSeq,
+                        entranceEdge    = pickerRevealEdgeOverride ?: CascadeEdge.BOTTOM,
+                    )
+                    is PickerUiState.Error   -> SchedError(
+                        message = state.message,
+                        onRetry = { vm.load(file) },
+                    )
+                }
             }
         }
 
         selection?.let { sel ->
+            // dismissState теперь создаётся ЗДЕСЬ, а не внутри PairsOverlay —
+            // нужен ещё и снаружи самого оверлея, чтобы прогресс дошёл до
+            // DismissDimScrim (см. её комментарий в SwipeDismiss.kt), который
+            // рисуется МЕЖДУ пикером (zIndex 0f выше) и самим оверлеем.
+            val dismissState = rememberSwipeDismissState(
+                onDismissed = {
+                    AppPrefs.clearGroupName()
+                    selection = null
+                },
+            )
+            val dismissProgress =
+                (dismissState.offsetX.value / dismissState.widthPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
+
+            DismissDimScrim(
+                progress = dismissProgress,
+                modifier = Modifier.zIndex(0.5f),
+            )
+
             Box(modifier = Modifier.fillMaxSize().zIndex(1f)) {
                 PairsOverlay(
-                    selection   = sel,
-                    active      = active,
-                    onDismissed = {
-                        AppPrefs.clearGroupName()
-                        selection = null
-                    },
+                    selection    = sel,
+                    active       = active,
+                    dismissState = dismissState,
                 )
             }
         }
@@ -489,7 +413,9 @@ private class PairsSelection(
 private fun PairsOverlay(
     selection: PairsSelection,
     active: Boolean,
-    onDismissed: () -> Unit,
+    // dismissState — поднят наверх, в ScheduleScreen (см. комментарий там):
+    // нужен ещё и снаружи этого оверлея, для DismissDimScrim над пикером.
+    dismissState: SwipeDismissState,
 ) {
     val c  = LocalAppColors.current
     val vm: PairsViewModel = viewModel(key = "pairs-${selection.id}") { PairsViewModel() }
@@ -501,8 +427,6 @@ private fun PairsOverlay(
 
     var transitionSeq by remember { mutableStateOf(0) }
     LaunchedEffect(uiState) { transitionSeq++ }
-
-    val dismissState = rememberSwipeDismissState(onDismissed = onDismissed)
 
     // Системный back — та же анимация, что и живой свайп, не мгновенное
     // исчезновение. "&& active" — пока эта половина Student/Teacher сдвинута
@@ -588,18 +512,11 @@ private fun GroupPickerScreen(
     onSelect: (String) -> Unit,
     entranceTrigger: Any,
     entranceEdge: CascadeEdge,
-    // topContentPadding — высота floating-шапки+тумблера сверху (см. Box-
-    // перестройку в ScheduleScreen выше). Идёт ИМЕННО в contentPadding
-    // скроллящегося списка ниже, а не статичным отступом снаружи — иначе
-    // карточки не будут физически заезжать под шапку при скролле, и Haze
-    // будет размывать пустоту вместо них.
-    topContentPadding: Dp = 0.dp,
 ) {
     val c              = LocalAppColors.current
     val rememberOn     by AppPrefs.rememberGroup.collectAsState()
     val pinnedGroup    by AppPrefs.pinnedGroup.collectAsState()
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
-    val showHint       by AppPrefs.debugShowPickerHint.collectAsState()
 
     // Подсвечиваем только если rememberGroup ON + группа реально есть в этом файле
     val pinnedInFile = if (rememberOn && pinnedGroup.isNotBlank() && pinnedGroup in groups)
@@ -614,26 +531,22 @@ private fun GroupPickerScreen(
     else groups
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Подсказка — по умолчанию скрыта (см. чат: шапка+капсула теперь
-        // блюрные, повторять "сколько групп/что сохранится" текстом под
-        // ними избыточно). Включается обратно через debug-тумблер
-        // "Показывать подсказку" для отладки/сравнения.
-        if (showHint) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = topContentPadding)
-                    .padding(horizontal = 18.dp, vertical = 14.dp),
-            ) {
-                Text(
-                    text = if (pinnedInFile != null)
-                        "Найдено ${groups.size} групп · запомненная — вверху"
-                    else
-                        "Найдено ${groups.size} групп · выбор сохранится автоматически",
-                    color = c.textSub,
-                    fontSize = 11.5.sp,
-                )
-            }
+        // Подсказка — без дублирующего заголовка "Выберите вашу группу": он и так
+        // виден в шапке экрана прямо над этим блоком. Оставили только то, что
+        // реально несёт новую информацию — сколько групп и что выбор сохранится.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+        ) {
+            Text(
+                text = if (pinnedInFile != null)
+                    "Найдено ${groups.size} групп · запомненная — вверху"
+                else
+                    "Найдено ${groups.size} групп · выбор сохранится автоматически",
+                color = c.textSub,
+                fontSize = 11.5.sp,
+            )
         }
 
         // Как и в FilesList: короткий список групп (1-3) центрируем по вертикали
@@ -672,22 +585,7 @@ private fun GroupPickerScreen(
                 .fillMaxSize()
                 .onGloballyPositioned { viewportBoundsPx = it.boundsInWindow() }
                 .verticalScroll(rememberScrollState())
-                .padding(
-                    start = 14.dp,
-                    end = 14.dp,
-                    // + инсет навбара: экран расписания рисуется под жестовой
-                    // полосой (корень AppScaffold нижний инсет не применяет), и
-                    // последняя карточка при скролле до конца не должна в неё
-                    // упираться.
-                    bottom = 80.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-                    // Если подсказка показана (debug-тумблер) — она уже сама
-                    // получила topContentPadding выше по коду, тут достаточно
-                    // обычного 2.dp. Если подсказки нет (дефолт) — список сам
-                    // отвечает за отступ под шапку, и он ОБЯЗАН быть частью
-                    // contentPadding (внутри verticalScroll), а не снаружи —
-                    // иначе карточки не будут заезжать под шапку при скролле.
-                    top = if (showHint) 2.dp else topContentPadding + 2.dp,
-                ),
+                .padding(start = 14.dp, end = 14.dp, bottom = 80.dp, top = 2.dp),
             verticalArrangement = if (isShort)
                 Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
             else
@@ -804,7 +702,7 @@ private fun SchedContent(day: ScheduleDay, clockMin: Int, entranceTrigger: Any) 
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 100.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
+        contentPadding = PaddingValues(bottom = 100.dp),
     ) {
         if (currentLesson != null && currentStatus != null) {
             item { LiveBar(lesson = currentLesson, status = currentStatus) }

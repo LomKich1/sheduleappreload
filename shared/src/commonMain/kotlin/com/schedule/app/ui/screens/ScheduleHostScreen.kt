@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,10 +28,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
-import kotlin.math.roundToInt
-import dev.chrisbanes.haze.rememberHazeState
 import com.schedule.app.data.model.ScheduleFile
 import com.schedule.app.data.prefs.AnimPrefs
 import com.schedule.app.data.prefs.AppPrefs
@@ -98,13 +96,16 @@ data class ScheduleHeaderInfo(
 // Шапка, тумблер и полоса загрузки живут внутри каждого под-экрана (см.
 // ScheduleHeaderInfo/ScheduleHeaderRow) — хост их не рисует и не дублирует.
 @Composable
-fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
+fun ScheduleHostScreen(
+    file: ScheduleFile,
+    onBack: () -> Unit,
+    // См. комментарий у одноимённого параметра в SettingsScreen.kt — тот же
+    // приём: наружу в AppScaffold уходит только готовый 0..1 прогресс дима,
+    // сам жест (dismissProgress ниже, из swipable) остаётся внутри.
+    onDismissProgressChanged: (Float) -> Unit = {},
+) {
     val c = LocalAppColors.current
     val defaultMode by AppPrefs.defaultScheduleMode.collectAsState()
-    // ОДИН HazeState на оба экрана — иначе при переключении/свайпе блюр шапки
-    // берёт контент только из «своего» списка, который уехал вместе со слоем,
-    // и блюр покрывает шапку не на всю ширину (см. hazeState в ScheduleScreen).
-    val hazeState = rememberHazeState()
 
     // Стартовый режим берём из настроек ровно один раз при открытии ЭТОГО
     // файла (rememberSaveable(file.name) пересоздаст состояние для другого
@@ -227,6 +228,13 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
         },
     )
 
+    // swipable.dismissProgress ходит 0..1.5 (см. комментарий у SwipableProgressState —
+    // "лишнее" утягивание сверх упора нужно самому хосту для живого драга всего
+    // экрана). Для дима наружу берём честный 0..1 — дальше 1 экран уже практически
+    // не виден, дальнейший "перетяг" на затемнение никак не влияет.
+    val hostDismissProgress = swipable.dismissProgress.coerceIn(0f, 1f)
+    SideEffect { onDismissProgressChanged(hostDismissProgress) }
+
     // Раньше .background(c.bg) стоял прямо на этом Column — теперь он должен
     // ехать ВМЕСТЕ с оверскролл-дисмиссом (см. dismissEnabled/graphicsLayer
     // ниже на содержимом), иначе ровно тот же баг, что чинили в самом начале
@@ -306,19 +314,9 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    // Горизонтальный сдвиг слоя — через layout-фазовый offset{}, а НЕ
-                    // через graphicsLayer.translationX. Haze узнаёт позицию источника
-                    // (списка) через onGloballyPositioned, а тот НЕ вызывается, когда
-                    // меняется только transform слоя: позиция списка соседнего экрана
-                    // «застревала» на значении с середины анимации/недосвайпа, и его
-                    // контент (например, имя преподавателя) просвечивал сквозь блюр
-                    // шапки не там, где должен (в правом углу вместо левого). Тот же
-                    // приём, что и у counterTranslationX в шапке (см. ScheduleScreen).
-                    // Scale/alpha (PARALLAX) остаются в graphicsLayer — на позицию
-                    // левого верхнего угла они не влияют.
                     .zIndex(if (studentActive) 1f else 0f)
-                    .offset { IntOffset(x = studentOffset.roundToInt(), y = 0) }
                     .graphicsLayer {
+                        translationX = studentOffset
                         scaleX = studentScale
                         scaleY = studentScale
                         alpha = studentAlpha
@@ -336,7 +334,6 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     modeSwipeProgress  = swipable.progress,
                     onPairsOpenChanged = { studentPairsOpen = it },
                     counterTranslationX = studentOffset,
-                    hazeState          = hazeState,
                 )
             }
 
@@ -344,9 +341,8 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(if (!studentActive) 1f else 0f)
-                    // Сдвиг через offset{} — см. комментарий у слоя Student выше.
-                    .offset { IntOffset(x = teacherOffset.roundToInt(), y = 0) }
                     .graphicsLayer {
+                        translationX = teacherOffset
                         scaleX = teacherScale
                         scaleY = teacherScale
                         alpha = teacherAlpha
@@ -364,7 +360,6 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     modeSwipeProgress  = swipable.progress,
                     onPairsOpenChanged = { teacherPairsOpen = it },
                     counterTranslationX = teacherOffset,
-                    hazeState          = hazeState,
                 )
             }
         }
@@ -382,33 +377,13 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
 // синхронизации. Каждый вызов обязан быть непрозрачным (свой
 // .background(c.surface)) — иначе при наложении был бы виден слой снизу
 // сквозь едущий верхний.
-//
-// hazeModifier/opaqueBackground — добавлено для frosted-glass шапки ПИКЕРА
-// (см. чат про блюр шапки Telegram). Дефолты (opaqueBackground = true,
-// hazeModifier = Modifier) сохраняют СТАРОЕ поведение один-в-один — оба
-// вызова из PairsOverlay (ScheduleScreen.kt/TeacherScheduleScreen.kt) НЕ
-// трогаются и остаются полностью непрозрачными, как и требует комментарий
-// выше про наложение слоёв при свайпе. Блюр включают ТОЛЬКО вызовы из
-// пикера, передавая opaqueBackground = false + свой .hazeChild(...).
 @Composable
-fun ScheduleHeaderRow(
-    header: ScheduleHeaderInfo,
-    modifier: Modifier = Modifier,
-    hazeModifier: Modifier = Modifier,
-    opaqueBackground: Boolean = true,
-) {
+fun ScheduleHeaderRow(header: ScheduleHeaderInfo, modifier: Modifier = Modifier) {
     val c = LocalAppColors.current
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (opaqueBackground) Modifier.background(c.surface) else Modifier)
-            .then(hazeModifier)
-            // statusBarsPadding — ПОСЛЕ фона и hazeModifier, поэтому и c.surface
-            // (opaqueBackground), и hazeChild-блюр занимают ВСЮ высоту шапки
-            // вместе с зоной статус-бара/камеры, а сам контент шапки сдвинут
-            // ниже неё. Корень AppScaffold верхний инсет больше не применяет
-            // (см. комментарий там), экраны расписания рисуются от y=0.
-            .statusBarsPadding()
+            .background(c.surface)
             // vertical = 12.dp — как в AppHeader (было 14.dp): вместе с фикс.
             // размером шрифта ниже это выравнивает высоту "чистой" шапки (без
             // подстрочника даты) с шапкой Files/Bells.
