@@ -2,6 +2,7 @@ package com.schedule.app.data.prefs
 
 import com.schedule.app.data.repository.ScheduleRepository
 import com.schedule.app.ui.components.ScheduleMode
+import com.schedule.app.ui.components.ScheduleTogglePlacement
 import com.schedule.app.ui.theme.ThemePreset
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,7 @@ object AppPrefs {
     private const val KEY_PINNED_GROUP   = "pinned_group"
     private const val KEY_LIST_ENTRANCE_ANIM = "list_entrance_anim"
     private const val KEY_DEFAULT_SCHEDULE_MODE = "default_schedule_mode"
+    private const val KEY_TOGGLE_PLACEMENT = "schedule_toggle_placement"
 
     const val DEFAULT_YANDEX_URL = "https://disk.yandex.ru/d/mjhoc7kysmQEuQ"
     const val DEFAULT_GROUP_NAME = ""   // пусто → новый пользователь сразу видит пикер
@@ -101,6 +103,12 @@ object AppPrefs {
     private val _defaultScheduleMode = MutableStateFlow(DEFAULT_SCHEDULE_MODE)
     val defaultScheduleMode: StateFlow<ScheduleMode> = _defaultScheduleMode.asStateFlow()
 
+    // ── DEBUG: где стоит тумблер Ученики/Преподаватели (сверху под шапкой или
+    // внизу экрана). Персистится — чтобы можно было походить с ним пару дней
+    // и решить, оставлять или нет.
+    private val _scheduleTogglePlacement = MutableStateFlow(ScheduleTogglePlacement.TOP)
+    val scheduleTogglePlacement: StateFlow<ScheduleTogglePlacement> = _scheduleTogglePlacement.asStateFlow()
+
     // Дёргается вручную («Обновить список файлов» в настройках), даже если URL
     // не менялся — например, в той же папке на Я.Диске появились новые файлы.
     private val _refreshTick = MutableStateFlow(0)
@@ -124,6 +132,11 @@ object AppPrefs {
         _defaultScheduleMode.value = runCatching {
             ScheduleMode.valueOf(PrefsStorage.getString(KEY_DEFAULT_SCHEDULE_MODE, DEFAULT_SCHEDULE_MODE.name))
         }.getOrDefault(DEFAULT_SCHEDULE_MODE)
+        _scheduleTogglePlacement.value = runCatching {
+            ScheduleTogglePlacement.valueOf(
+                PrefsStorage.getString(KEY_TOGGLE_PLACEMENT, ScheduleTogglePlacement.TOP.name)
+            )
+        }.getOrDefault(ScheduleTogglePlacement.TOP)
     }
 
     /** Мгновенно применяет и сохраняет тему — без ожидания «Сохранить». */
@@ -195,5 +208,11 @@ object AppPrefs {
     fun setDefaultScheduleMode(mode: ScheduleMode) {
         _defaultScheduleMode.value = mode
         PrefsStorage.putString(KEY_DEFAULT_SCHEDULE_MODE, mode.name)
+    }
+
+    /** Положение тумблера Ученики/Преподаватели на экранах пикера (debug). */
+    fun setScheduleTogglePlacement(placement: ScheduleTogglePlacement) {
+        _scheduleTogglePlacement.value = placement
+        PrefsStorage.putString(KEY_TOGGLE_PLACEMENT, placement.name)
     }
 }

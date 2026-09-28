@@ -65,7 +65,17 @@ import kotlinx.coroutines.launch
 // бесплатно, без какой-либо специальной подготовки на этом экране.
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onNavigateToDebug: () -> Unit = {}) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onNavigateToDebug: () -> Unit = {},
+    // onDismissProgressChanged — наружу, в AppScaffold: там рисуется
+    // DismissDimScrim НАД уже смонтированными Files/Bells (см. комментарий
+    // в AppScaffold.kt), а сам SwipeDismissState живёт здесь, внутри экрана.
+    // SideEffect (не прямой вызов в теле composable) — чтобы это был честный
+    // "публикуем значение после успешной композиции", а не запись в чужой
+    // State прямо во время композиции этого экрана.
+    onDismissProgressChanged: (Float) -> Unit = {},
+) {
     val c = LocalAppColors.current
     val scope = rememberCoroutineScope()
 
@@ -84,6 +94,12 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToDebug: () -> Unit = {}) {
 
     val dismissState = rememberSwipeDismissState(onDismissed = onBack)
     BackHandler { dismissState.dismiss() }
+
+    // 0 — экран на месте (дим под ним максимальный), 1 — уехал за край
+    // (дим нулевой). widthPx==0 бывает только в первом кадре до layout —
+    // coerceAtLeast(1f) просто не даёт делить на ноль, offsetX там и так 0.
+    val dismissProgress = (dismissState.offsetX.value / dismissState.widthPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
+    SideEffect { onDismissProgressChanged(dismissProgress) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(

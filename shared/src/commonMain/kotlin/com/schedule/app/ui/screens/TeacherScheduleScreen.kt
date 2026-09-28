@@ -35,15 +35,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.schedule.app.data.model.ScheduleFile
@@ -54,17 +56,20 @@ import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.CascadeEntranceItem
 import com.schedule.app.ui.components.ScheduleMode
 import com.schedule.app.ui.components.ScheduleModeToggle
+import com.schedule.app.ui.components.DismissDimScrim
+import com.schedule.app.ui.components.SwipeDismissState
+import com.schedule.app.ui.components.ScheduleTogglePlacement
+import com.schedule.app.ui.components.PickerSearchState
+import com.schedule.app.ui.components.SearchHeaderZone
+import com.schedule.app.ui.components.SEARCH_SHIFT
+import com.schedule.app.ui.components.SearchResultsLayer
+import com.schedule.app.ui.components.blockTouches
+import com.schedule.app.ui.components.rememberHideKeyboard
+import com.schedule.app.ui.components.rememberSearchProgress
 import com.schedule.app.ui.components.rememberSwipeDismissState
 import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppRadius
 import com.schedule.app.ui.theme.LocalAppColors
-import kotlin.math.roundToInt
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.haze
-import dev.chrisbanes.haze.hazeChild
-import dev.chrisbanes.haze.rememberHazeState
 
 // Та же длительность, что и SUBSCREEN_ANIM_MS в ScheduleScreen.kt — переходы
 // пикер преподавателя ↔ расписание пар должны визуально совпадать.
@@ -93,24 +98,7 @@ private fun TeacherPickerLoading(entranceTrigger: Any) {
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-        ) {
-            Text(
-                text = "Выберите преподавателя",
-                color = c.text,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "Загружаем список преподавателей…",
-                color = c.textSub,
-                fontSize = 11.5.sp,
-                modifier = Modifier.padding(top = 3.dp),
-            )
-        }
+        Spacer(Modifier.height(14.dp))
 
         Column(
             modifier = Modifier
@@ -175,19 +163,24 @@ fun TeacherScheduleScreen(
     onPairsOpenChanged: (Boolean) -> Unit = {},
     // См. counterTranslationX в ScheduleScreen.kt — тот же принцип.
     counterTranslationX: Float = 0f,
-    // Общий HazeState ХОСТА (см. ScheduleHostScreen): оба экрана — Ученики и
-    // Преподаватели — регистрируют свои списки как источники в ОДНОМ state.
-    // Шапка/тумблер стоят на месте (counterTranslationX), а слои под ними
-    // едут при переключении/свайпе, поэтому собственный список экрана
-    // покрывает шапку лишь частично — недостающую часть блюра шапка берёт из
-    // списка СОСЕДНЕГО экрана, который в этот момент как раз заезжает под неё.
-    // Дефолт — на случай вызова экрана вне хоста (тогда всё как раньше).
+    // search — состояние поиска, общее на оба вида (см. PickerSearch.kt), поднято
+    // в ScheduleHostScreen. Дефолт — только чтобы превью/одиночный вызов компилились.
+    search: PickerSearchState = remember { PickerSearchState() },
     hazeState: HazeState = rememberHazeState(),
 ) {
     val c        = LocalAppColors.current
     val uiState  by vm.uiState.collectAsState()
     val progress by vm.progress.collectAsState()
     val debugTransparentBg by AppPrefs.debugTransparentOverlayBg.collectAsState()
+    val searchProgress = rememberSearchProgress(search)
+    val hideKeyboard = rememberHideKeyboard()
+    val searchShiftPx = with(LocalDensity.current) { SEARCH_SHIFT.toPx() }
+
+    // Системный back закрывает поиск (если клавиатура открыта — её прячет сам
+    // Android до того, как back долетит сюда). Регистрируется РАНЬШЕ
+    // BackHandler'а оверлея пар, поэтому при открытых парах back сначала
+    // закрывает их, а не поиск.
+    BackHandler(enabled = active && search.active) { search.close() }
 
     LaunchedEffect(file.name) { vm.load(file) }
 
@@ -215,146 +208,132 @@ fun TeacherScheduleScreen(
         selection = TeacherPairsSelection(id = selectionCounter, bytes = bytes, file = pickedFile, teacher = teacher)
     }
 
-    // headerBlockHeightPx — см. подробный комментарий у аналогичного места
-    // в ScheduleScreen.kt.
-    var headerBlockHeightPx by remember { mutableStateOf(0) }
-    val headerBlockHeightDp = with(LocalDensity.current) { headerBlockHeightPx.toDp() }
-
     Box(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
+        LaunchedEffect(selection) { onPairsOpenChanged(selection != null) }
+
+        val pickerHeader = ScheduleHeaderInfo(
+            title         = "",
+            placeholder   = if (uiState is TeacherPickerUiState.Loading)
+                "Загружаем список преподавателей…"
+            else
+                "Выберите преподавателя",
+            dateText      = file.dateLabel,
+            isPairsScreen = false,
+            isLoading     = uiState is TeacherPickerUiState.Loading,
+            progress      = progress,
+            onBack        = onBack,
+        )
+
+        // Шапка/поле поиска/тумблер — плавающие оверлеи с Haze поверх списка
+        // (список — источник блюра на весь экран). Вся раскладка, инсеты и
+        // поведение тумблера TOP/BOTTOM живут в PickerScaffold.
+        PickerScaffold(
+            modifier            = Modifier
                 .zIndex(0f)
                 .background(if (debugTransparentBg) Color.Transparent else c.bg),
-        ) {
-            LaunchedEffect(selection) { onPairsOpenChanged(selection != null) }
+            hazeState           = hazeState,
+            search              = search,
+            searchProgress      = searchProgress,
+            isVisibleHalf       = active,
+            header              = pickerHeader,
+            mode                = mode,
+            onModeSelect        = onModeSelect,
+            modeSwipeProgress   = modeSwipeProgress,
+            counterTranslationX = counterTranslationX,
+        ) { pad ->
+            AnimatedContent(
+                targetState = uiState,
+                modifier    = Modifier
+                    .fillMaxSize()
+                    // Обычный список при поиске гаснет и чуть уезжает вверх — то же
+                    // смещение, что и у шапки (SEARCH_SHIFT).
+                    .graphicsLayer {
+                        val p = searchProgress.value
+                        alpha = 1f - p
+                        translationY = -searchShiftPx * p
+                    }
+                    .blockTouches(search.active),
+                transitionSpec = {
+                    // Пикер посещается строго вперёд — см. подробный
+                    // комментарий у аналогичного места в ScheduleScreen.kt.
+                    val isSkeletonToPicker =
+                        initialState is TeacherPickerUiState.Loading && targetState is TeacherPickerUiState.Ready
+                    val isInitialLoad = initialState is TeacherPickerUiState.Idle
 
-            // Источник Haze — только список; шапка+тумблер ниже — его СОСЕД,
-            // а не потомок (см. подробный комментарий в ScheduleScreen.kt).
-            Box(modifier = Modifier.fillMaxSize().haze(hazeState)) {
-                // Список — от самого верха, шапка floating поверх него. См.
-                // подробный комментарий у аналогичного места в ScheduleScreen.kt.
-                AnimatedContent(
-                    targetState = uiState,
-                    modifier    = Modifier.fillMaxSize(),
-                    transitionSpec = {
-                        // Пикер посещается строго вперёд — см. подробный
-                        // комментарий у аналогичного места в ScheduleScreen.kt.
-                        val isSkeletonToPicker =
-                            initialState is TeacherPickerUiState.Loading && targetState is TeacherPickerUiState.Ready
-                        val isInitialLoad = initialState is TeacherPickerUiState.Idle
-
-                        if (isSkeletonToPicker || isInitialLoad) {
-                            EnterTransition.None togetherWith ExitTransition.None
-                        } else {
-                            (slideInHorizontally(
-                                initialOffsetX = { it },
-                                animationSpec  = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                            ) + fadeIn(tween(TEACHER_SUBSCREEN_ANIM_MS - 60))) togetherWith
-                                (slideOutHorizontally(
-                                    targetOffsetX = { -it / 4 },
-                                    animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
-                                ) + fadeOut(tween(TEACHER_SUBSCREEN_ANIM_MS - 60)))
-                        }
-                    },
-                    label = "teacherPickerSubscreen",
-                ) { state ->
-                    when (state) {
-                        is TeacherPickerUiState.Idle -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
-                            TeacherSchedLoading()
-                        }
-                        is TeacherPickerUiState.Loading -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
-                            TeacherPickerLoading(entranceTrigger = transitionSeq)
-                        }
-                        is TeacherPickerUiState.Ready   -> TeacherPickerScreen(
-                            teachers          = state.teachers,
-                            onSelect          = onSelectTeacher,
-                            entranceTrigger   = transitionSeq,
-                            entranceEdge      = pickerRevealEdgeOverride ?: CascadeEdge.BOTTOM,
-                            topContentPadding = headerBlockHeightDp,
+                    if (isSkeletonToPicker || isInitialLoad) {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    } else {
+                        (slideInHorizontally(
+                            initialOffsetX = { it },
+                            animationSpec  = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                        ) + fadeIn(tween(TEACHER_SUBSCREEN_ANIM_MS - 60))) togetherWith
+                            (slideOutHorizontally(
+                                targetOffsetX = { -it / 4 },
+                                animationSpec = tween(TEACHER_SUBSCREEN_ANIM_MS, easing = FastOutSlowInEasing),
+                            ) + fadeOut(tween(TEACHER_SUBSCREEN_ANIM_MS - 60)))
+                    }
+                },
+                label = "teacherPickerSubscreen",
+            ) { state ->
+                when (state) {
+                    is TeacherPickerUiState.Idle    -> Box(Modifier.fillMaxSize().padding(top = pad.listTop)) {
+                        TeacherSchedLoading()
+                    }
+                    is TeacherPickerUiState.Loading -> Box(Modifier.fillMaxSize().padding(top = pad.listTop)) {
+                        TeacherPickerLoading(entranceTrigger = transitionSeq)
+                    }
+                    is TeacherPickerUiState.Ready   -> TeacherPickerScreen(
+                        teachers        = state.teachers,
+                        onSelect        = onSelectTeacher,
+                        entranceTrigger = transitionSeq,
+                        entranceEdge    = pickerRevealEdgeOverride ?: CascadeEdge.BOTTOM,
+                        topContentPadding    = pad.listTop,
+                        bottomContentPadding = pad.listBottom,
+                    )
+                    is TeacherPickerUiState.Error   -> Box(Modifier.fillMaxSize().padding(top = pad.listTop)) {
+                        TeacherSchedError(
+                            message = state.message,
+                            onRetry = { vm.load(file) },
                         )
-                        is TeacherPickerUiState.Error -> Box(Modifier.fillMaxSize().padding(top = headerBlockHeightDp)) {
-                            TeacherSchedError(
-                                message = state.message,
-                                onRetry = { vm.load(file) },
-                            )
-                        }
                     }
                 }
             }
 
-            // Шапка+тумблер — floating-слой поверх списка. См. подробный
-            // комментарий у аналогичного места в ScheduleScreen.kt.
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onGloballyPositioned { headerBlockHeightPx = it.size.height }
-                    // См. подробный комментарий у аналогичного места в
-                    // ScheduleScreen.kt — graphicsLayer заменён на offset{}
-                    // из-за фоллбэка Haze на "просто тинт без блюра" при
-                    // наличии постороннего graphicsLayer между источником и
-                    // hazeChild (chrisbanes/haze#117).
-                    .offset { IntOffset(x = (-counterTranslationX).roundToInt(), y = 0) },
-            ) {
-                val pickerHeader = ScheduleHeaderInfo(
-                    title         = "",
-                    placeholder   = if (uiState is TeacherPickerUiState.Loading)
-                        "Загружаем список преподавателей…"
-                    else
-                        "Выберите преподавателя",
-                    dateText      = file.dateLabel,
-                    isPairsScreen = false,
-                    isLoading     = uiState is TeacherPickerUiState.Loading,
-                    progress      = progress,
-                    onBack        = onBack,
-                )
-                ScheduleHeaderRow(
-                    header = pickerHeader,
-                    opaqueBackground = false,
-                    hazeModifier = Modifier.hazeChild(
-                        state = hazeState,
-                        style = HazeStyle(
-                            backgroundColor = c.bg,
-                            blurRadius = 20.dp,
-                            tint = HazeTint(c.surface.copy(alpha = 0.55f)),
-                        ),
-                    ),
-                )
-                if (pickerHeader.isLoading) {
-                    LinearProgressIndicator(
-                        progress   = { pickerHeader.progress },
-                        modifier   = Modifier.fillMaxWidth().height(2.dp),
-                        color      = c.accent,
-                        trackColor = c.surface2,
-                    )
+            (uiState as? TeacherPickerUiState.Ready)?.let { ready ->
+                SearchResultsLayer(
+                    search   = search,
+                    progress = searchProgress,
+                    items    = ready.teachers,
+                    topInsetPx    = pad.resultsTopPx,
+                    bottomInsetPx = pad.resultsBottomPx,
+                ) { name ->
+                    TeacherCard(name = name) {
+                        hideKeyboard()
+                        onSelectTeacher(name)
+                    }
                 }
-
-                Spacer(Modifier.height(10.dp))
-                ScheduleModeToggle(
-                    selected = mode,
-                    onSelect = onModeSelect,
-                    progress = modeSwipeProgress,
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                    opaqueBackground = false,
-                    hazeModifier = Modifier.hazeChild(
-                        state = hazeState,
-                        style = HazeStyle(
-                            backgroundColor = c.bg,
-                            blurRadius = 20.dp,
-                            tint = HazeTint(c.pillBg.copy(alpha = 0.5f)),
-                        ),
-                    ),
-                )
-                Spacer(Modifier.height(4.dp))
             }
+
         }
 
         selection?.let { sel ->
+            // См. подробный комментарий у аналогичного места в ScheduleScreen.kt —
+            // dismissState поднят сюда, чтобы прогресс дошёл до DismissDimScrim,
+            // который рисуется МЕЖДУ пикером (zIndex 0f выше) и самим оверлеем.
+            val dismissState = rememberSwipeDismissState(onDismissed = { selection = null })
+            val dismissProgress =
+                (dismissState.offsetX.value / dismissState.widthPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
+
+            DismissDimScrim(
+                progress = dismissProgress,
+                modifier = Modifier.zIndex(0.5f),
+            )
+
             Box(modifier = Modifier.fillMaxSize().zIndex(1f)) {
                 TeacherPairsOverlay(
                     selection    = sel,
                     active       = active,
-                    onDismissed  = { selection = null },
+                    dismissState = dismissState,
                 )
             }
         }
@@ -375,7 +354,8 @@ private class TeacherPairsSelection(
 private fun TeacherPairsOverlay(
     selection: TeacherPairsSelection,
     active: Boolean,
-    onDismissed: () -> Unit,
+    // dismissState — поднят наверх, в TeacherScheduleScreen (см. комментарий там).
+    dismissState: SwipeDismissState,
 ) {
     val c  = LocalAppColors.current
     val vm: TeacherPairsViewModel = viewModel(key = "teacher-pairs-${selection.id}") { TeacherPairsViewModel() }
@@ -387,8 +367,6 @@ private fun TeacherPairsOverlay(
 
     var transitionSeq by remember { mutableStateOf(0) }
     LaunchedEffect(uiState) { transitionSeq++ }
-
-    val dismissState = rememberSwipeDismissState(onDismissed = onDismissed)
 
     BackHandler(enabled = active) { dismissState.dismiss() }
 
@@ -459,9 +437,9 @@ private fun TeacherPickerScreen(
     onSelect: (String) -> Unit,
     entranceTrigger: Any,
     entranceEdge: CascadeEdge,
-    // topContentPadding — см. подробный комментарий у аналогичного параметра
-    // в GroupPickerScreen (ScheduleScreen.kt).
+    // См. комментарий у аналогичных параметров GroupPickerScreen.
     topContentPadding: Dp = 0.dp,
+    bottomContentPadding: Dp = 0.dp,
 ) {
     val c = LocalAppColors.current
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
@@ -510,10 +488,7 @@ private fun TeacherPickerScreen(
                 .padding(
                     start = 14.dp,
                     end = 14.dp,
-                    // + инсет навбара — см. комментарий у GroupPickerScreen.
-                    bottom = 80.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-                    // См. подробный комментарий у аналогичного места в
-                    // GroupPickerScreen (ScheduleScreen.kt).
+                    bottom = bottomContentPadding,
                     top = if (showHint) 2.dp else topContentPadding + 2.dp,
                 ),
             verticalArrangement = if (isShort)

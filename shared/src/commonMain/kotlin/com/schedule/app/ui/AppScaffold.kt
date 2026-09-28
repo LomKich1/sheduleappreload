@@ -38,6 +38,7 @@ import com.schedule.app.data.prefs.AnimPrefs
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.AppHeader
+import com.schedule.app.ui.components.DismissDimScrim
 import com.schedule.app.ui.components.rememberSwipableProgress
 import com.schedule.app.ui.navigation.FloatingPillNav
 import com.schedule.app.ui.navigation.NavigationHolder
@@ -74,6 +75,11 @@ fun AppScaffold() {
     // пересоздаются при каждом переключении, они всегда в композиции —
     // переключение это просто анимация translationX (см. BoxWithConstraints).
     var activeTab by rememberSaveable { mutableStateOf(Screen.Files.route) }
+
+    // Прогресс живого свайп-дисмисса глубокого экрана (Schedule/Settings):
+    // 0 — экран на месте (дим под ним максимальный), 1 — уехал (дим нулевой).
+    // Стартуем с 1f = без дима. Сам дим рисуется ниже, МЕЖДУ пиллом и NavHost.
+    var deepScreenDismissProgress by remember { mutableStateOf(1f) }
 
     // ── Триггеры каскадной анимации появления ────────────────────────────────
     var filesEntranceTrigger by rememberSaveable { mutableStateOf(0) }
@@ -320,6 +326,11 @@ fun AppScaffold() {
         )
 
         // ── Глубокие экраны: Schedule, Settings — Telegram-стиль слайда ─────
+        // Дим Files/Bells/пилла под живым свайп-дисмиссом Settings/групп.
+        // Лежит МЕЖДУ пиллом и NavHost — пилл затемняется вместе с вкладками,
+        // а едущее содержимое NavHost всегда рисуется поверх. См. DismissDimScrim.
+        DismissDimScrim(progress = deepScreenDismissProgress)
+
         val navDurationMs by AnimPrefs.navDurationMs.collectAsState()
         NavHost(
             navController = navController,
@@ -374,6 +385,7 @@ fun AppScaffold() {
                     ScheduleHostScreen(
                         file = file,
                         onBack = { navController.popBackStack() },
+                        onDismissProgressChanged = { deepScreenDismissProgress = it },
                     )
                 }
             }
@@ -383,6 +395,7 @@ fun AppScaffold() {
                     SettingsScreen(
                         onBack = { navController.popBackStack() },
                         onNavigateToDebug = { navController.navigate(Screen.DebugSettings.route) },
+                        onDismissProgressChanged = { deepScreenDismissProgress = it },
                     )
                 }
             }

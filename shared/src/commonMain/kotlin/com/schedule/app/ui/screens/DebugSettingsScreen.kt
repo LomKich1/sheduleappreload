@@ -30,6 +30,7 @@ import com.schedule.app.data.prefs.AnimPrefs
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.data.repository.DebugFileStore
+import com.schedule.app.ui.components.ScheduleTogglePlacement
 import com.schedule.app.ui.components.rememberSwipeDismissState
 import com.schedule.app.ui.components.swipeToDismiss
 import com.schedule.app.ui.theme.AppRadius
@@ -124,6 +125,13 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
 
+            SettingsSectionLabel("Положение тумблера Ученики/Преподаватели")
+            SettingsCard {
+                TogglePlacementSection()
+            }
+
+            Spacer(Modifier.height(20.dp))
+
             SettingsSectionLabel("Отладка рендера Picker/Pairs")
             SettingsCard {
                 RenderDebugSection()
@@ -187,6 +195,39 @@ private fun DebugSettingsHeader(onBack: () -> Unit) {
             fontSize = 19.sp,
             fontWeight = FontWeight.Bold,
         )
+    }
+}
+
+// ─── Положение тумблера Ученики/Преподаватели ───────────────────────────────
+// Эксперимент: тумблер под шапкой (TOP, как раньше) или прибитым к низу
+// экрана пикера (BOTTOM) — ближе к большому пальцу. Применяется сразу и
+// сохраняется между запусками, чтобы можно было пожить с вариантом.
+
+@Composable
+private fun TogglePlacementSection() {
+    val c = LocalAppColors.current
+    val placement by AppPrefs.scheduleTogglePlacement.collectAsState()
+
+    Column {
+        Text(
+            text = "Применяется сразу — открой расписание любого файла и посмотри на " +
+                "экран выбора группы/препода.",
+            color = c.textSub,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            AnimModeChip("Сверху", placement == ScheduleTogglePlacement.TOP, Modifier.weight(1f)) {
+                AppPrefs.setScheduleTogglePlacement(ScheduleTogglePlacement.TOP)
+            }
+            AnimModeChip("Снизу", placement == ScheduleTogglePlacement.BOTTOM, Modifier.weight(1f)) {
+                AppPrefs.setScheduleTogglePlacement(ScheduleTogglePlacement.BOTTOM)
+            }
+        }
     }
 }
 

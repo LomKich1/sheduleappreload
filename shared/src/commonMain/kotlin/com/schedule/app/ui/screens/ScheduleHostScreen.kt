@@ -9,6 +9,8 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,9 +39,12 @@ import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.FlipTransitionText
+import com.schedule.app.ui.components.PickerSearchState
+import com.schedule.app.ui.components.SEARCH_ANIM_MS
 import com.schedule.app.ui.components.ScheduleMode
 import com.schedule.app.ui.components.rememberSwipableProgress
 import com.schedule.app.ui.theme.LocalAppColors
+import kotlinx.coroutines.delay
 import kotlin.math.pow
 
 // ─── ScheduleHeaderInfo ─────────────────────────────────────────────────────
@@ -98,7 +103,13 @@ data class ScheduleHeaderInfo(
 // Шапка, тумблер и полоса загрузки живут внутри каждого под-экрана (см.
 // ScheduleHeaderInfo/ScheduleHeaderRow) — хост их не рисует и не дублирует.
 @Composable
-fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
+fun ScheduleHostScreen(
+    file: ScheduleFile,
+    onBack: () -> Unit,
+    // Прогресс живого свайп-дисмисса всего экрана (0 — на месте, 1 — уехал) —
+    // наружу, в AppScaffold: там рисуется DismissDimScrim под NavHost.
+    onDismissProgressChanged: (Float) -> Unit = {},
+) {
     val c = LocalAppColors.current
     val defaultMode by AppPrefs.defaultScheduleMode.collectAsState()
     // ОДИН HazeState на оба экрана — иначе при переключении/свайпе блюр шапки
@@ -157,6 +168,19 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
     }
 
     val onModeSelect: (ScheduleMode) -> Unit = { newMode -> switchMode(newMode, animateReveal = true) }
+
+    // Поиск ОДИН на оба вида (Ученики/Преподаватели): при переключении режима
+    // (тумблер или свайп — свайп при открытом поиске НЕ блокируется) поиск
+    // остаётся открытым, а запрос фильтрует уже другой список. Запрос
+    // сбрасывается после закрытия — с задержкой на анимацию, чтобы список
+    // результатов не «схлопывался» на глазах, пока поле уезжает.
+    val search = remember(file.name) { PickerSearchState() }
+    LaunchedEffect(search.active) {
+        if (!search.active) {
+            delay(SEARCH_ANIM_MS + 40L)
+            if (!search.active) search.query = ""
+        }
+    }
 
     // Прогресс Ученики↔Преподаватели поднят сюда (а не внутрь Box с
     // контентом ниже) — он нужен ещё и ScheduleModeToggle, чтобы индикатор
@@ -226,6 +250,9 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
             }
         },
     )
+
+    val hostDismissProgress = swipable.dismissProgress.coerceIn(0f, 1f)
+    SideEffect { onDismissProgressChanged(hostDismissProgress) }
 
     // Раньше .background(c.bg) стоял прямо на этом Column — теперь он должен
     // ехать ВМЕСТЕ с оверскролл-дисмиссом (см. dismissEnabled/graphicsLayer
@@ -337,6 +364,7 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     onPairsOpenChanged = { studentPairsOpen = it },
                     counterTranslationX = studentOffset,
                     hazeState          = hazeState,
+                    search             = search,
                 )
             }
 
@@ -365,6 +393,7 @@ fun ScheduleHostScreen(file: ScheduleFile, onBack: () -> Unit) {
                     onPairsOpenChanged = { teacherPairsOpen = it },
                     counterTranslationX = teacherOffset,
                     hazeState          = hazeState,
+                    search             = search,
                 )
             }
         }
@@ -396,6 +425,10 @@ fun ScheduleHeaderRow(
     modifier: Modifier = Modifier,
     hazeModifier: Modifier = Modifier,
     opaqueBackground: Boolean = true,
+    // false — когда statusBarsPadding уже применён ВЫШЕ (PickerScaffold кладёт
+    // его после hazeChild на всю зону шапки+поля поиска, иначе отступ
+    // удвоился бы, а поле поиска в конце анимации не встало бы на место шапки).
+    applyStatusBarsPadding: Boolean = true,
 ) {
     val c = LocalAppColors.current
     Row(
@@ -408,7 +441,7 @@ fun ScheduleHeaderRow(
             // вместе с зоной статус-бара/камеры, а сам контент шапки сдвинут
             // ниже неё. Корень AppScaffold верхний инсет больше не применяет
             // (см. комментарий там), экраны расписания рисуются от y=0.
-            .statusBarsPadding()
+            .then(if (applyStatusBarsPadding) Modifier.statusBarsPadding() else Modifier)
             // vertical = 12.dp — как в AppHeader (было 14.dp): вместе с фикс.
             // размером шрифта ниже это выравнивает высоту "чистой" шапки (без
             // подстрочника даты) с шапкой Files/Bells.
