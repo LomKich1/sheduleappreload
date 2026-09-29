@@ -328,6 +328,41 @@ jobs:
             echo "STATS_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # ── Тело релиза собираем в файл, а не inline в `with:` ────────────────
+      # Wandalen/wretry.action принимает `with:` как СТРОКУ и парсит её как
+      # YAML ВТОРОЙ раз — уже после подстановки ${{ ... }}. Многострочный
+      # блок статистики (с ``` на нулевом отступе) рвал литерал `body: |`
+      # → "end of the stream or a document separator is expected (23:1)".
+      # Через body_path многострочность вообще не попадает в YAML.
+      # Статистика идёт через env, а не подстановкой в скрипт, чтобы
+      # содержимое никогда не интерпретировалось shell'ом.
+      - name: Build release body
+        env:
+          STATS_BLOCK: ${{ steps.stats.outputs.block }}
+        run: |
+          cat > release_body.md <<'BODY_EOF'
+          ## 📥 Установка
+
+          **Android:** скачай `.apk`, разреши "Неизвестные источники", установи.
+          **Windows:** скачай `.msi`, запусти — ставится и обновляется поверх старой версии автоматически.
+          **Linux (deb-based):** `sudo dpkg -i ScheduleApp-*.deb`
+          **macOS:** открой `.dmg`, перенеси ScheduleApp в Applications и запусти его.
+
+          | Файл | Платформа |
+          |------|-----------|
+          | `...-debug.apk` | Android, тестовый (debug-ключ) |
+          | `...apk` (без суффикса) | Android, релиз (подписан, только если настроен keystore) |
+          | `...msi` | Windows |
+          | `...deb` | Linux (Debian/Ubuntu) |
+          | `...dmg` | macOS |
+
+          ---
+
+          BODY_EOF
+          printf '%s\n' "$STATS_BLOCK" >> release_body.md
+          echo "── release_body.md ──"
+          cat release_body.md
+
       - name: Create GitHub Release
         # Обёрнуто в retry: 17.09 релиз падал не из-за бага в конфиге, а
         # потому что GitHub Upload API на аплоаде .deb/.msi (89–95 МБ)
@@ -340,6 +375,8 @@ jobs:
         # готовы. overwrite_files: true уже стоит ниже — повторный запуск
         # идемпотентен (просто перезалит те же файлы), так что ретрай
         # безопасен.
+        # ВАЖНО: в `with:` ниже только ОДНОСТРОЧНЫЕ значения (см. комментарий
+        # выше про двойной YAML-парсинг). Многострочное — только через файл.
         uses: Wandalen/wretry.action@v3
         with:
           action: softprops/action-gh-release@v2
@@ -349,25 +386,7 @@ jobs:
             tag_name: "v${{ needs.prepare.outputs.app-version }}"
             name: "ScheduleApp v${{ needs.prepare.outputs.app-version }}"
             generate_release_notes: true
-            body: |
-              ## 📥 Установка
-
-              **Android:** скачай `.apk`, разреши "Неизвестные источники", установи.
-              **Windows:** скачай `.msi`, запусти — ставится и обновляется поверх старой версии автоматически.
-              **Linux (deb-based):** `sudo dpkg -i ScheduleApp-*.deb`
-              **macOS:** открой `.dmg`, перенеси ScheduleApp в Applications и запусти его.
-
-              | Файл | Платформа |
-              |------|-----------|
-              | `...-debug.apk` | Android, тестовый (debug-ключ) |
-              | `...apk` (без суффикса) | Android, релиз (подписан, только если настроен keystore) |
-              | `...msi` | Windows |
-              | `...deb` | Linux (Debian/Ubuntu) |
-              | `...dmg` | macOS |
-
-              ---
-
-              ${{ steps.stats.outputs.block }}
+            body_path: release_body.md
             files: dist/*
             make_latest: true
         env:
