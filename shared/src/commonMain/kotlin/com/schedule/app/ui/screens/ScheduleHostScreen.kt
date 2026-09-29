@@ -45,6 +45,7 @@ import com.schedule.app.ui.components.ScheduleMode
 import com.schedule.app.ui.components.rememberSwipableProgress
 import com.schedule.app.ui.theme.LocalAppColors
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.pow
 
 // ─── ScheduleHeaderInfo ─────────────────────────────────────────────────────
@@ -177,6 +178,9 @@ fun ScheduleHostScreen(
     val search = remember(file.name) { PickerSearchState() }
     LaunchedEffect(search.active) {
         if (!search.active) {
+            // Поле поиска уезжает обратно под шапку (pull-to-search: по умолчанию
+            // скрыто) одновременно с анимацией закрытия.
+            launch { search.animateRevealTo(0f) }
             delay(SEARCH_ANIM_MS + 40L)
             if (!search.active) search.query = ""
         }

@@ -28,10 +28,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -46,6 +48,7 @@ import com.schedule.app.ui.components.ScheduleModeToggle
 import com.schedule.app.ui.components.ScheduleTogglePlacement
 import com.schedule.app.ui.components.SearchHeaderZone
 import com.schedule.app.ui.components.blockTouches
+import com.schedule.app.ui.components.rememberPullToSearchConnection
 import com.schedule.app.ui.theme.LocalAppColors
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
@@ -72,6 +75,12 @@ import kotlin.math.roundToInt
 //                                         union(navigationBars, ime)
 //
 // Инсеты:
+//  • pull-to-search: поле поиска скрыто, выезжает из-под шапки при протяжке
+//    списка вниз (PullToSearchConnection в PickerSearch.kt). Зона шапки
+//    получает нижний отступ SEARCH_ZONE_BOTTOM_PAD ПОСЛЕ поля — он внутри
+//    hazeChild, поэтому под полем остаётся мягкая плашка блюра, а не срез
+//    по рамке. Список едет вниз вместе с выдвижением: listTop берётся из
+//    live-высоты шапки.
 //  • верх — statusBarsPadding стоит ПОСЛЕ hazeChild, поэтому блюр закрывает
 //    и зону статус-бара/камеры. У самой ScheduleHeaderRow здесь
 //    applyStatusBarsPadding = false — иначе отступ применится дважды и поле
@@ -124,9 +133,18 @@ fun PickerScaffold(
     val placement by AppPrefs.scheduleTogglePlacement.collectAsState()
     val toggleOnTop = placement == ScheduleTogglePlacement.TOP
 
-    // Высота верхнего блока: live — как есть, rest — только когда поиск закрыт.
-    var restTopPx by remember { mutableStateOf(0) }
+    // Высота верхнего блока: live — как есть (меняется с pull-to-search и
+    // схлопыванием шапки), rest — «покоящаяся», только когда поиск полностью
+    // закрыт. Rest обновляется через snapshotFlow, а не в onSizeChanged: конец
+    // анимации reveal и конец анимации поиска не совпадают по кадру, и
+    // onSizeChanged мог бы поймать последнее значение при progress > 0.
+    val restTopPx = remember { mutableStateOf(0) }
     val liveTopPx = remember { mutableStateOf(0) }
+    LaunchedEffect(search, searchProgress) {
+        snapshotFlow { if (!search.active && searchProgress.value == 0f) liveTopPx.value else -1 }
+            .collect { if (it >= 0) restTopPx.value = it }
+    }
+    val pullToSearch = rememberPullToSearchConnection(search)
     // Высота КОНТЕНТА нижнего блока (тумблер + его отступы, без инсетов).
     val bottomChromePx = remember { mutableStateOf(0) }
     LaunchedEffect(toggleOnTop) { if (toggleOnTop) bottomChromePx.value = 0 }
@@ -138,7 +156,7 @@ fun PickerScaffold(
     }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    val listTop = with(density) { restTopPx.toDp() }
+    val listTop = with(density) { restTopPx.value.toDp() }
     val listBottom = if (toggleOnTop) {
         80.dp + navBottom
     } else {
@@ -152,7 +170,9 @@ fun PickerScaffold(
     Box(modifier = modifier.fillMaxSize()) {
 
         // ── Источник блюра ─────────────────────────────────────────────────
-        Box(modifier = Modifier.fillMaxSize().haze(hazeState)) {
+        // nestedScroll стоит ВЫШЕ списка: ловит оверскролл любого скролла внутри
+        // (pull-to-search) и не мешает горизонтальному свайпу режимов.
+        Box(modifier = Modifier.fillMaxSize().nestedScroll(pullToSearch).haze(hazeState)) {
             content(insets)
         }
 
@@ -161,10 +181,7 @@ fun PickerScaffold(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .onSizeChanged { size ->
-                    liveTopPx.value = size.height
-                    if (searchProgress.value == 0f) restTopPx = size.height
-                }
+                .onSizeChanged { size -> liveTopPx.value = size.height }
                 .offset { IntOffset(x = (-counterTranslationX).roundToInt(), y = 0) },
         ) {
             Box(
