@@ -5,7 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -456,7 +456,7 @@ fun ScheduleHeaderRow(
         // Material 3 IconButton вместо самописного круга с фоном.
         androidx.compose.material3.IconButton(onClick = header.onBack) {
             Icon(
-                imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Outlined.ArrowBack,
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                 contentDescription = "Назад",
                 tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
             )
