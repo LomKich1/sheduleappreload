@@ -40,7 +40,7 @@ import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.AppHeader
 import com.schedule.app.ui.components.DismissDimScrim
 import com.schedule.app.ui.components.rememberSwipableProgress
-import com.schedule.app.ui.navigation.AppNavigationBar
+import com.schedule.app.ui.navigation.FloatingPillNav
 import com.schedule.app.ui.navigation.NavigationHolder
 import com.schedule.app.ui.navigation.Screen
 import com.schedule.app.ui.screens.BellsScreen
@@ -219,6 +219,7 @@ fun AppScaffold() {
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .padding(bottom = 76.dp)
                     .clipToBounds()
                     .onSizeChanged { widthPx = it.width.toFloat() }
                     .then(swipable.dragModifier),
@@ -297,15 +298,32 @@ fun AppScaffold() {
                     BellsScreen(entranceTrigger = bellsEntranceTrigger)
                 }
             }
-
-            // ── Нижняя навигация Material 3 ─────────────────────────────────
-            // Лежит в той же Column, что шапка и вкладки (ниже по z-order, чем
-            // NavHost): глубокие экраны Schedule/Settings её закрывают сами.
-            AppNavigationBar(
-                currentRoute = activeTab,
-                onNavigate = { route -> switchTab(route, animateEntrance = true) },
-            )
         }
+
+        // ── Плавающий пилл-навигатор Files/Bells ────────────────────────────
+        // Смонтирован ВСЕГДА (без if (showPill)) и физически лежит НИЖЕ
+        // NavHost по z-order — тот же принцип, что и с тумблером/шапкой в
+        // ScheduleHostScreen (см. историю правок там): раньше видимость
+        // была завязана на дискретное состояние навигации (showPill =
+        // !deepScreenOpen), которое переключается ТОЛЬКО в момент, когда
+        // navController.popBackStack() уже реально отработал — то есть
+        // ПОСЛЕ того как анимация закрытия (что живой свайп, что обычный
+        // tap по "назад") полностью доиграла. Из-за этого пилл-навигация
+        // резко "выскакивала" уже постфактум, хотя сам экран под NavHost
+        // к этому моменту давно был виден и проступал плавно. Теперь пилл
+        // всегда в дереве, и его естественно закрывает/открывает опаковый
+        // фон Schedule/Settings/DebugSettings, ровно синхронно с тем, как
+        // они уезжают — что при живом драге, что при обычном tap-transition
+        // самого NavHost (у него тот же slideOutHorizontally).
+        FloatingPillNav(
+            currentRoute = activeTab,
+            onNavigate = { route -> switchTab(route, animateEntrance = true) },
+            progress = swipable.progress,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 20.dp),
+        )
 
         // ── Глубокие экраны: Schedule, Settings — Telegram-стиль слайда ─────
         // Дим Files/Bells/пилла под живым свайп-дисмиссом Settings/групп.

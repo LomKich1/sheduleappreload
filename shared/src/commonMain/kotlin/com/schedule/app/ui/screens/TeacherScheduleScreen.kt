@@ -27,6 +27,17 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.Icon
+import com.schedule.app.ui.components.PickerSkeletonRow
+import com.schedule.app.ui.components.ScheduleErrorState
+import com.schedule.app.ui.components.PairTimeRow
+import com.schedule.app.ui.components.LessonStatusBadge
+import com.schedule.app.ui.components.ScheduleSectionHeader
+import androidx.compose.material3.Surface
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -35,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
@@ -80,7 +92,6 @@ private const val TEACHER_SUBSCREEN_ANIM_MS = 280
 
 @Composable
 private fun TeacherPickerLoading(entranceTrigger: Any) {
-    val c = LocalAppColors.current
     val alpha by rememberInfiniteTransition(label = "teacherSkel")
         .animateFloat(
             initialValue  = 1f,
@@ -92,19 +103,18 @@ private fun TeacherPickerLoading(entranceTrigger: Any) {
             label = "a",
         )
 
-    // Тот же каскад "с правого края", что и в GroupPickerLoading/BellsScreen —
-    // подробности см. в комментарии там. entranceTrigger приходит снаружи (единый
-    // счётчик переходов из TeacherScheduleScreen), а не создаётся локально —
-    // иначе каждая перекомпозиция скелетона считалась бы новым запуском каскада.
+    // Каскад "с правого края" — тот же приём, что и у карточек BellsScreen.
+    // entranceTrigger приходит снаружи (единый счётчик переходов), а не
+    // создаётся локально — иначе каждая перекомпозиция считалась бы новым запуском.
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(16.dp))
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             repeat(8) { i ->
@@ -114,30 +124,11 @@ private fun TeacherPickerLoading(entranceTrigger: Any) {
                     enabled    = entranceEnabled,
                     edge       = CascadeEdge.RIGHT,
                 ) {
-                    val a = (alpha - i * 0.06f).coerceIn(0.3f, 1f)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(c.surface.copy(alpha = a))
-                            .border(1.dp, c.border, RoundedCornerShape(16.dp))
-                            .padding(horizontal = 14.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(c.surface2.copy(alpha = a)),
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Box(
-                            Modifier
-                                .size(width = 140.dp, height = 12.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(c.surface2.copy(alpha = a)),
-                        )
-                    }
+                    PickerSkeletonRow(
+                        alpha = (alpha - i * 0.06f).coerceIn(0.3f, 1f),
+                        textWidthDp = 140,
+                        showChevron = false,
+                    )
                 }
             }
         }
@@ -456,8 +447,8 @@ private fun TeacherPickerScreen(
             ) {
                 Text(
                     text = "В этом файле не удалось распознать ни одного преподавателя",
-                    color = c.textSub,
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
             }
@@ -487,8 +478,8 @@ private fun TeacherPickerScreen(
                 .onGloballyPositioned { viewportBoundsPx = it.boundsInWindow() }
                 .verticalScroll(rememberScrollState())
                 .padding(
-                    start = 14.dp,
-                    end = 14.dp,
+                    start = 16.dp,
+                    end = 16.dp,
                     bottom = bottomContentPadding,
                     top = if (showHint) 2.dp else topContentPadding + 2.dp,
                 ),
@@ -521,67 +512,65 @@ private fun TeacherPickerHint(count: Int, topPadding: Dp = 0.dp) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = topPadding)
-            .padding(horizontal = 18.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         // Заголовок "Выберите преподавателя" уже есть в шапке экрана
         // (TeacherHeader) — дублировать его тут не нужно, как и в
         // GroupPickerScreen (там тоже только строка с количеством).
         Text(
             text = "Найдено $count преподавателей за этот день",
-            color = c.textSub,
-            fontSize = 11.5.sp,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 // ─── Карточка преподавателя (стиль GroupCard/FileCard) ────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TeacherCard(
     name: String,
     onClick: () -> Unit,
 ) {
-    val c = LocalAppColors.current
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(AppRadius.card)
-            .background(MaterialTheme.colorScheme.surfaceContainer)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    val scheme    = MaterialTheme.colorScheme
+    val container = scheme.surfaceContainer
+    val nameColor = scheme.onSurface
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = container),
     ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(c.surface2),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector        = Icons.Outlined.Person,
-                contentDescription = null,
-                tint               = c.textSub,
-                modifier           = Modifier.size(20.dp),
-            )
-        }
-
-        Spacer(Modifier.width(12.dp))
-
-        Text(
-            text       = name,
-            color      = c.text,
-            fontSize   = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier   = Modifier.weight(1f),
-        )
-
-        Icon(
-            imageVector        = Icons.Outlined.ChevronRight,
-            contentDescription = null,
-            tint               = c.textSub,
-            modifier           = Modifier.size(18.dp),
+        ListItem(
+            colors = ListItemDefaults.colors(
+                containerColor = Color.Transparent,
+                headlineColor  = nameColor,
+            ),
+            leadingContent = {
+                Surface(
+                    shape = CircleShape,
+                    color = scheme.secondaryContainer,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector        = Icons.Outlined.Person,
+                            contentDescription = null,
+                            tint               = scheme.onSecondaryContainer,
+                            modifier           = Modifier.size(22.dp),
+                        )
+                    }
+                }
+            },
+            headlineContent = { Text(name, style = MaterialTheme.typography.titleMedium) },
+            trailingContent = {
+                Icon(
+                    imageVector        = Icons.Outlined.ChevronRight,
+                    contentDescription = null,
+                    tint               = scheme.onSurfaceVariant,
+                )
+            },
         )
     }
 }
@@ -618,16 +607,7 @@ private fun TeacherSchedContent(day: TeacherDay, clockMin: Int, entranceTrigger:
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 100.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
     ) {
-        item {
-            Text(
-                text = day.header,
-                color = c.textSub,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.07.sp,
-                modifier = Modifier.padding(start = 18.dp, top = 14.dp, bottom = 6.dp),
-            )
-        }
+        item { ScheduleSectionHeader(day.header) }
 
         // На "экран пар" попадают только двигаясь вперёд (выбрали преподавателя) —
         // назад сюда не возвращаются, поэтому направление каскада всегда с правого края.
@@ -661,145 +641,87 @@ private data class TeacherLessonStatus(
 
 @Composable
 private fun TeacherPairCard(lesson: TeacherLessonEntry, status: TeacherLessonStatus) {
-    val c = LocalAppColors.current
-
     val scheme = MaterialTheme.colorScheme
-    val bgColor = when {
+    val containerColor = when {
         status.isNow  -> scheme.primaryContainer
         status.isNext -> scheme.tertiaryContainer
         else          -> scheme.surfaceContainer
     }
+    val contentColor = when {
+        status.isNow  -> scheme.onPrimaryContainer
+        status.isNext -> scheme.onTertiaryContainer
+        else          -> scheme.onSurface
+    }
+    val subColor = if (status.isNow || status.isNext) contentColor.copy(alpha = 0.75f) else scheme.onSurfaceVariant
 
-    Box(
+    val isWindow = false
+
+    Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .padding(bottom = 8.dp),
+            .padding(bottom = 8.dp)
+            .then(if (isWindow) Modifier.alpha(0.6f) else Modifier),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = containerColor, contentColor = contentColor),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(MaterialTheme.shapes.large)
-                .background(bgColor),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
+        run {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(
                         text = lesson.num,
-                        color = c.textSub,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 0.05.sp,
-                        modifier = Modifier.width(24.dp).padding(top = 2.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = subColor,
+                        modifier = Modifier.width(28.dp).padding(top = 2.dp),
                     )
-
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         if (status.isNow || status.isNext) {
-                            val badgeColor = if (status.isNow) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
-                            val badgeText  = if (status.isNow) "▶ СЕЙЧАС" else "СЛЕДУЮЩАЯ"
-                            Box(
-                                modifier = Modifier
-                                    .clip(AppRadius.capsule)
-                                    .background(badgeColor)
-                                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                            ) {
-                                Text(badgeText, color = if (status.isNow) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Spacer(Modifier.height(5.dp))
+                            LessonStatusBadge(isNow = status.isNow)
                         }
-
                         // Группа — главная информация в расписании преподавателя
                         Text(
                             text = lesson.group,
-                            color = c.accent,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.03.sp,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (status.isNow || status.isNext) contentColor else scheme.primary,
                         )
                         Text(
                             text = lesson.subject,
-                            color = c.text,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            lineHeight = 19.sp,
-                            modifier = Modifier.padding(top = 1.dp),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = contentColor,
                         )
                     }
-
                     if (status.remainText != null) {
                         Text(
                             text = status.remainText,
-                            color = c.textSub,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 3.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = subColor,
+                            modifier = Modifier.padding(top = 2.dp),
                         )
                     }
                 }
 
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 48.dp, end = 14.dp, bottom = 8.dp),
+                    modifier = Modifier.padding(start = 44.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     if (lesson.timeStart.isNotEmpty()) {
-                        TeacherTimeRow(time = "${lesson.timeStart}–${lesson.timeEnd}", tag = "ПАРА", muted = false)
+                        PairTimeRow(time = "${lesson.timeStart}–${lesson.timeEnd}", tag = "ПАРА", muted = false, contentColor = contentColor)
                     }
                     if (lesson.breakStart != null && lesson.breakEnd != null) {
-                        TeacherTimeRow(time = "${lesson.breakStart}–${lesson.breakEnd}", tag = "ПЕРЕМ", muted = true)
+                        PairTimeRow(time = "${lesson.breakStart}–${lesson.breakEnd}", tag = "ПЕРЕМ", muted = true, contentColor = contentColor)
+                    }
+                    if (lesson.room != null) {
+                        Text(
+                            text = lesson.room,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = subColor,
+                        )
                     }
                 }
-
-                if (lesson.room != null) {
-                    Text(
-                        text = lesson.room,
-                        color = c.textSub,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 48.dp, end = 14.dp, bottom = 12.dp),
-                    )
-                } else {
-                    Spacer(Modifier.height(4.dp))
-                }
             }
-        }
-    }
-}
-
-@Composable
-private fun TeacherTimeRow(time: String, tag: String, muted: Boolean) {
-    val c = LocalAppColors.current
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            text = time,
-            color = if (muted) c.textSub else c.text,
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .background(c.surface3),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = tag,
-                color = c.textSub,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.07.sp,
-                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-            )
         }
     }
 }
@@ -808,8 +730,8 @@ private fun TeacherTimeRow(time: String, tag: String, muted: Boolean) {
 
 @Composable
 private fun TeacherSchedLoading() {
-    val c = LocalAppColors.current
-    val alpha by rememberInfiniteTransition(label = "teacherContentSkel")
+    val scheme = MaterialTheme.colorScheme
+    val alpha by rememberInfiniteTransition(label = "skel")
         .animateFloat(
             initialValue  = 1f,
             targetValue   = 0.4f,
@@ -823,25 +745,25 @@ private fun TeacherSchedLoading() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 18.dp)
-            .padding(top = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
+            .padding(horizontal = 16.dp)
+            .padding(top = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         repeat(5) { i ->
             val a = (alpha - i * 0.08f).coerceIn(0.3f, 1f)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(c.surface.copy(alpha = a))
-                    .padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    .clip(MaterialTheme.shapes.large)
+                    .background(scheme.surfaceContainer.copy(alpha = a))
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(width = 24.dp, height = 40.dp).clip(RoundedCornerShape(4.dp)).background(c.surface2.copy(alpha = a)))
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(width = 100.dp, height = 11.dp).clip(RoundedCornerShape(4.dp)).background(c.surface2.copy(alpha = a)))
-                    Box(Modifier.size(width = 130.dp, height = 12.dp).clip(RoundedCornerShape(4.dp)).background(c.surface2.copy(alpha = a)))
+                Box(Modifier.size(width = 28.dp, height = 40.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.size(width = 130.dp, height = 12.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
+                    Box(Modifier.size(width = 80.dp, height = 10.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
                 }
             }
         }
@@ -852,33 +774,9 @@ private fun TeacherSchedLoading() {
 
 @Composable
 private fun TeacherSchedError(message: String, onRetry: () -> Unit) {
-    val c = LocalAppColors.current
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Box(
-            modifier = Modifier.size(56.dp).clip(CircleShape).background(c.surface2),
-            contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Outlined.WifiOff, null, tint = c.textSub, modifier = Modifier.size(26.dp)) }
-        Spacer(Modifier.height(16.dp))
-        Text("Не удалось загрузить расписание", color = c.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(8.dp))
-        Text(message, color = c.textSub, fontSize = 12.sp, lineHeight = 17.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 12.dp))
-        Spacer(Modifier.height(20.dp))
-        Row(
-            modifier = Modifier
-                .clip(AppRadius.capsule)
-                .background(c.surface2)
-                .border(1.dp, c.border, AppRadius.capsule)
-                .clickable(onClick = onRetry)
-                .padding(horizontal = 20.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(Icons.Outlined.Refresh, null, tint = c.accent, modifier = Modifier.size(18.dp))
-            Text("Повторить", color = c.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        }
-    }
+    ScheduleErrorState(
+        title = "Не удалось загрузить расписание",
+        message = message,
+        onRetry = onRetry,
+    )
 }

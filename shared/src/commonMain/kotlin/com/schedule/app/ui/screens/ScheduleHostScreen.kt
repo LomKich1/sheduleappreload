@@ -178,9 +178,9 @@ fun ScheduleHostScreen(
     val search = remember(file.name) { PickerSearchState() }
     LaunchedEffect(search.active) {
         if (!search.active) {
-            // Поле поиска уезжает обратно под шапку (pull-to-search: по умолчанию
-            // скрыто) одновременно с анимацией закрытия.
-            launch { search.animateRevealTo(0f) }
+            // Поле поиска по умолчанию видно (reveal = 1) — при закрытии оно
+            // остаётся на месте. Прятать его обратно не нужно: оверскролл-жест
+            // (прокрутка вверх прячет, протяжка вниз возвращает) работает как раньше.
             delay(SEARCH_ANIM_MS + 40L)
             if (!search.active) search.query = ""
         }
@@ -471,8 +471,8 @@ fun ScheduleHeaderRow(
             )
             Text(
                 text = header.dateText,
-                color = c.textSub,
-                fontSize = 11.sp,
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 2.dp),
             )
         }

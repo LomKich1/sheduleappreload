@@ -27,6 +27,17 @@ import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.Icon
+import com.schedule.app.ui.components.PickerSkeletonRow
+import com.schedule.app.ui.components.ScheduleErrorState
+import com.schedule.app.ui.components.PairTimeRow
+import com.schedule.app.ui.components.LessonStatusBadge
+import com.schedule.app.ui.components.ScheduleSectionHeader
+import androidx.compose.material3.Surface
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -86,7 +97,6 @@ private const val SUBSCREEN_ANIM_MS = 280
 
 @Composable
 private fun GroupPickerLoading(entranceTrigger: Any) {
-    val c = LocalAppColors.current
     val alpha by rememberInfiniteTransition(label = "groupSkel")
         .animateFloat(
             initialValue  = 1f,
@@ -98,21 +108,18 @@ private fun GroupPickerLoading(entranceTrigger: Any) {
             label = "a",
         )
 
-    // Каскад "с правого края" — тот же приём, что и у карточек BellsScreen при
-    // переключении вкладок. entranceTrigger приходит снаружи, из ScheduleScreen
-    // (единый счётчик переходов между под-экранами) — так вся анимация внутри
-    // ScheduleScreen управляется из одного места и не зависит от того, решит
-    // ли AnimatedContent пересоздать композицию этого экрана заново или нет.
+    // Каскад "с правого края" — тот же приём, что и у карточек BellsScreen.
+    // entranceTrigger приходит снаружи (единый счётчик переходов), а не
+    // создаётся локально — иначе каждая перекомпозиция считалась бы новым запуском.
     val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(16.dp))
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp)
-                .padding(top = 2.dp),
+                .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             repeat(8) { i ->
@@ -122,37 +129,11 @@ private fun GroupPickerLoading(entranceTrigger: Any) {
                     enabled    = entranceEnabled,
                     edge       = CascadeEdge.RIGHT,
                 ) {
-                    val a = (alpha - i * 0.06f).coerceIn(0.3f, 1f)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(c.surface.copy(alpha = a))
-                            .border(1.dp, c.border, RoundedCornerShape(16.dp))
-                            .padding(horizontal = 14.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(c.surface2.copy(alpha = a)),
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Box(
-                            Modifier
-                                .size(width = 90.dp, height = 12.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(c.surface2.copy(alpha = a)),
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Box(
-                            Modifier
-                                .size(width = 8.dp, height = 12.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(c.surface2.copy(alpha = a)),
-                        )
-                    }
+                    PickerSkeletonRow(
+                        alpha = (alpha - i * 0.06f).coerceIn(0.3f, 1f),
+                        textWidthDp = 90,
+                        showChevron = true,
+                    )
                 }
             }
         }
@@ -568,15 +549,15 @@ private fun GroupPickerScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = topContentPadding)
-                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
                 Text(
                     text = if (pinnedInFile != null)
                         "Найдено ${groups.size} групп · запомненная — вверху"
                     else
                         "Найдено ${groups.size} групп · выбор сохранится автоматически",
-                    color = c.textSub,
-                    fontSize = 11.5.sp,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -618,8 +599,8 @@ private fun GroupPickerScreen(
                 .onGloballyPositioned { viewportBoundsPx = it.boundsInWindow() }
                 .verticalScroll(rememberScrollState())
                 .padding(
-                    start = 14.dp,
-                    end = 14.dp,
+                    start = 16.dp,
+                    end = 16.dp,
                     bottom = bottomContentPadding,
                     // Подсказка включена — она сама стоит под шапкой, списку
                     // хватает 2.dp; выключена — списку нужен весь верхний отступ.
@@ -647,63 +628,51 @@ private fun GroupPickerScreen(
 
 // ─── Карточка группы (стиль FileCard: иконка + название + бейдж/шеврон) ──────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GroupCard(
     name: String,
     isPinned: Boolean,
     onClick: () -> Unit,
 ) {
-    val c           = LocalAppColors.current
-    val scheme      = MaterialTheme.colorScheme
-    val bg          = if (isPinned) scheme.primaryContainer else scheme.surfaceContainer
-    val iconBg      = if (isPinned) scheme.primary else scheme.secondaryContainer
-    val iconTint    = if (isPinned) scheme.onPrimary else scheme.onSecondaryContainer
-    val nameColor   = if (isPinned) scheme.onPrimaryContainer else scheme.onSurface
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(AppRadius.card)
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    val scheme    = MaterialTheme.colorScheme
+    val container = if (isPinned) scheme.primaryContainer else scheme.surfaceContainer
+    val nameColor = if (isPinned) scheme.onPrimaryContainer else scheme.onSurface
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = container),
     ) {
-        // Иконка-кружок (как в FileCard)
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(iconBg),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector        = Icons.Outlined.Group,
-                contentDescription = null,
-                tint               = iconTint,
-                modifier           = Modifier.size(20.dp),
-            )
-        }
-
-        Spacer(Modifier.width(12.dp))
-
-        Text(
-            text       = name,
-            color      = nameColor,
-            fontSize   = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier   = Modifier.weight(1f),
-        )
-
-        // Раньше тут был текстовый бейдж "ЗАПОМНЕНА" для запомненной группы —
-        // убрали: карточка и так узнаётся по цвету фона/иконки/текста и более
-        // толстой обводке (borderWidth выше), бейдж поверх этого был избыточен.
-        // Шеврон теперь одинаковый у всех карточек — все они одинаково кликабельны.
-        Icon(
-            imageVector        = Icons.Outlined.ChevronRight,
-            contentDescription = null,
-            tint               = if (isPinned) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
-            modifier           = Modifier.size(18.dp),
+        ListItem(
+            colors = ListItemDefaults.colors(
+                containerColor = Color.Transparent,
+                headlineColor  = nameColor,
+            ),
+            leadingContent = {
+                Surface(
+                    shape = CircleShape,
+                    color = if (isPinned) scheme.primary else scheme.secondaryContainer,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector        = Icons.Outlined.Group,
+                            contentDescription = null,
+                            tint               = if (isPinned) scheme.onPrimary else scheme.onSecondaryContainer,
+                            modifier           = Modifier.size(22.dp),
+                        )
+                    }
+                }
+            },
+            headlineContent = { Text(name, style = MaterialTheme.typography.titleMedium) },
+            trailingContent = {
+                Icon(
+                    imageVector        = Icons.Outlined.ChevronRight,
+                    contentDescription = null,
+                    tint               = if (isPinned) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
+                )
+            },
         )
     }
 }
@@ -745,16 +714,7 @@ private fun SchedContent(day: ScheduleDay, clockMin: Int, entranceTrigger: Any) 
             item { LiveBar(lesson = currentLesson, status = currentStatus) }
         }
 
-        item {
-            Text(
-                text = day.header,
-                color = c.textSub,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.07.sp,
-                modifier = Modifier.padding(start = 18.dp, top = 14.dp, bottom = 6.dp),
-            )
-        }
+        item { ScheduleSectionHeader(day.header) }
 
         // На "экран пар" попадают только двигаясь вперёд (выбрали группу) — назад
         // сюда не возвращаются, поэтому направление каскада всегда с правого края.
@@ -783,38 +743,42 @@ private data class LessonStatus(
 
 @Composable
 private fun LiveBar(lesson: LessonEntry, status: LessonStatus) {
-    val c = LocalAppColors.current
+    val scheme = MaterialTheme.colorScheme
     val animProg by animateFloatAsState(
         targetValue   = status.progressPct,
         animationSpec = tween(30_000, easing = LinearEasing),
         label         = "liveProgress",
     )
-    Column(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .background(c.surface)
             .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = scheme.primaryContainer,
+            contentColor   = scheme.onPrimaryContainer,
+        ),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text("▶ ${lesson.subject}", color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Text(status.remainText ?: "", color = c.textSub, fontSize = 11.sp)
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(3.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(c.surface3),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(animProg)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(c.accent),
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "▶ ${lesson.subject}",
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(status.remainText ?: "", style = MaterialTheme.typography.labelMedium)
+            }
+            LinearProgressIndicator(
+                progress   = { animProg },
+                modifier   = Modifier.fillMaxWidth().height(4.dp),
+                color      = scheme.primary,
+                trackColor = scheme.surfaceContainerHighest.copy(alpha = 0.6f),
             )
         }
     }
@@ -824,175 +788,112 @@ private fun LiveBar(lesson: LessonEntry, status: LessonStatus) {
 
 @Composable
 private fun PairCard(lesson: LessonEntry, status: LessonStatus) {
-    val c = LocalAppColors.current
-
     val scheme = MaterialTheme.colorScheme
-    val bgColor = when {
+    val containerColor = when {
         status.isNow  -> scheme.primaryContainer
         status.isNext -> scheme.tertiaryContainer
         else          -> scheme.surfaceContainer
     }
+    val contentColor = when {
+        status.isNow  -> scheme.onPrimaryContainer
+        status.isNext -> scheme.onTertiaryContainer
+        else          -> scheme.onSurface
+    }
+    val subColor = if (status.isNow || status.isNext) contentColor.copy(alpha = 0.75f) else scheme.onSurfaceVariant
 
-    Box(
+    val isWindow = lesson.isWindow
+
+    Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .padding(bottom = 8.dp)
-            .then(if (lesson.isWindow) Modifier.alpha(0.6f) else Modifier),
+            .then(if (isWindow) Modifier.alpha(0.6f) else Modifier),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = containerColor, contentColor = contentColor),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(MaterialTheme.shapes.large)
-                .background(bgColor),
-        ) {
-            if (lesson.isWindow) {
-                // Компактная карточка «Окно» — по правке дизайнера: раньше она
-                // рисовалась как настоящая пара (тот же layout, просто alpha+курсив)
-                // и занимала ту же высоту, хотя показывать там, по сути, нечего.
-                // Теперь — один ряд: номер пары, «Окно», и время, если оно известно.
-                //
-                // Важно: именно if/else, а не if{...; return@Row} — ранний выход
-                // из composable-лямбды внутри LazyColumn+AnimatedContent ловил
-                // ArrayIndexOutOfBoundsException в ComposerImpl.endGroup (рассинхрон
-                // slot table). Симметричные ветки одного if/else компилятор Compose
-                // обрабатывает штатно.
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
+        if (isWindow) {
+            // Компактная карточка «Окно»: один ряд — номер, «Окно» и время (если известно).
+            // Важно: именно if/else, а не ранний return из composable-лямбды — ранний
+            // выход внутри LazyColumn+AnimatedContent ронял slot table Compose.
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    text = lesson.num,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = subColor,
+                    modifier = Modifier.width(28.dp),
+                )
+                Text(
+                    text = "Окно",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontStyle = FontStyle.Italic,
+                    color = subColor,
+                    modifier = Modifier.weight(1f),
+                )
+                if (lesson.timeStart.isNotEmpty()) {
+                    Text(
+                        text = "${lesson.timeStart}–${lesson.timeEnd}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = subColor,
+                    )
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(
                         text = lesson.num,
-                        color = c.textSub,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 0.05.sp,
-                        modifier = Modifier.width(24.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = subColor,
+                        modifier = Modifier.width(28.dp).padding(top = 2.dp),
                     )
-                    Text(
-                        text = "Окно",
-                        color = c.textSub,
-                        fontSize = 13.sp,
-                        fontStyle = FontStyle.Italic,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (lesson.timeStart.isNotEmpty()) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (status.isNow || status.isNext) {
+                            LessonStatusBadge(isNow = status.isNow)
+                        }
                         Text(
-                            text = "${lesson.timeStart}–${lesson.timeEnd}",
-                            color = c.textSub,
-                            fontSize = 11.sp,
+                            text = lesson.subject,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = contentColor,
+                        )
+                    }
+                    if (status.remainText != null) {
+                        Text(
+                            text = status.remainText,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = subColor,
+                            modifier = Modifier.padding(top = 2.dp),
                         )
                     }
                 }
-            } else {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Text(
-                            text = lesson.num,
-                            color = c.textSub,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 0.05.sp,
-                            modifier = Modifier.width(24.dp).padding(top = 2.dp),
-                        )
 
-                        Column(modifier = Modifier.weight(1f)) {
-                            if (status.isNow || status.isNext) {
-                                val badgeColor = if (status.isNow) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
-                                val badgeText  = if (status.isNow) "▶ СЕЙЧАС" else "СЛЕДУЮЩАЯ"
-                                Box(
-                                    modifier = Modifier
-                                        .clip(AppRadius.capsule)
-                                        .background(badgeColor)
-                                        .padding(horizontal = 8.dp, vertical = 2.dp),
-                                ) {
-                                    Text(badgeText, color = if (status.isNow) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Spacer(Modifier.height(5.dp))
-                            }
-
-                            Text(
-                                text = lesson.subject,
-                                color = c.text,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontStyle = FontStyle.Normal,
-                                lineHeight = 19.sp,
-                            )
-                        }
-
-                        if (status.remainText != null) {
-                            Text(
-                                text = status.remainText,
-                                color = c.textSub,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(top = 3.dp),
-                            )
-                        }
+                Column(
+                    modifier = Modifier.padding(start = 44.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (lesson.timeStart.isNotEmpty()) {
+                        PairTimeRow(time = "${lesson.timeStart}–${lesson.timeEnd}", tag = "ПАРА", muted = false, contentColor = contentColor)
                     }
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 48.dp, end = 14.dp, bottom = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        if (lesson.timeStart.isNotEmpty()) {
-                            TimeRow(time = "${lesson.timeStart}–${lesson.timeEnd}", tag = "ПАРА", muted = false)
-                        }
-                        if (lesson.breakStart != null && lesson.breakEnd != null) {
-                            TimeRow(time = "${lesson.breakStart}–${lesson.breakEnd}", tag = "ПЕРЕМ", muted = true)
-                        }
+                    if (lesson.breakStart != null && lesson.breakEnd != null) {
+                        PairTimeRow(time = "${lesson.breakStart}–${lesson.breakEnd}", tag = "ПЕРЕМ", muted = true, contentColor = contentColor)
                     }
-
                     val detailParts = listOfNotNull(lesson.teacher, lesson.room)
                     if (detailParts.isNotEmpty()) {
                         Text(
                             text = detailParts.joinToString(" · "),
-                            color = c.textSub,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 48.dp, end = 14.dp, bottom = 12.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = subColor,
                         )
-                    } else {
-                        Spacer(Modifier.height(4.dp))
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun TimeRow(time: String, tag: String, muted: Boolean) {
-    val c = LocalAppColors.current
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            text = time,
-            color = if (muted) c.textSub else c.text,
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .background(c.surface3)
-                .padding(horizontal = 5.dp, vertical = 2.dp),
-        ) {
-            Text(text = tag, color = c.textSub, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.07.sp)
         }
     }
 }
@@ -1001,7 +902,7 @@ private fun TimeRow(time: String, tag: String, muted: Boolean) {
 
 @Composable
 private fun SchedLoading() {
-    val c = LocalAppColors.current
+    val scheme = MaterialTheme.colorScheme
     val alpha by rememberInfiniteTransition(label = "skel")
         .animateFloat(
             initialValue  = 1f,
@@ -1016,25 +917,25 @@ private fun SchedLoading() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 18.dp)
-            .padding(top = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
+            .padding(horizontal = 16.dp)
+            .padding(top = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         repeat(5) { i ->
             val a = (alpha - i * 0.08f).coerceIn(0.3f, 1f)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(c.surface.copy(alpha = a))
-                    .padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    .clip(MaterialTheme.shapes.large)
+                    .background(scheme.surfaceContainer.copy(alpha = a))
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(width = 24.dp, height = 40.dp).clip(RoundedCornerShape(4.dp)).background(c.surface2.copy(alpha = a)))
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(width = 130.dp, height = 12.dp).clip(RoundedCornerShape(4.dp)).background(c.surface2.copy(alpha = a)))
-                    Box(Modifier.size(width = 80.dp, height = 10.dp).clip(RoundedCornerShape(4.dp)).background(c.surface2.copy(alpha = a)))
+                Box(Modifier.size(width = 28.dp, height = 40.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.size(width = 130.dp, height = 12.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
+                    Box(Modifier.size(width = 80.dp, height = 10.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
                 }
             }
         }
@@ -1045,27 +946,27 @@ private fun SchedLoading() {
 
 @Composable
 private fun SchedOnPractice(headerText: String) {
-    val c = LocalAppColors.current
+    val scheme = MaterialTheme.colorScheme
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(CircleShape)
-                .background(c.todayAccent.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center,
-        ) { Text("🎓", fontSize = 28.sp) }
-        Spacer(Modifier.height(18.dp))
-        Text("Группа на практике", color = c.text, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Surface(shape = CircleShape, color = scheme.tertiaryContainer, modifier = Modifier.size(64.dp)) {
+            Box(contentAlignment = Alignment.Center) { Text("🎓", fontSize = 28.sp) }
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "Группа на практике",
+            style = MaterialTheme.typography.titleMedium,
+            color = scheme.onSurface,
+            textAlign = TextAlign.Center,
+        )
         Spacer(Modifier.height(8.dp))
         Text(
             text = "На эту дату ($headerText) у вашей группы нет занятий — она проходит производственную практику.",
-            color = c.textSub,
-            fontSize = 13.sp,
-            lineHeight = 19.sp,
+            style = MaterialTheme.typography.bodyMedium,
+            color = scheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 8.dp),
         )
@@ -1076,33 +977,9 @@ private fun SchedOnPractice(headerText: String) {
 
 @Composable
 private fun SchedError(message: String, onRetry: () -> Unit) {
-    val c = LocalAppColors.current
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Box(
-            modifier = Modifier.size(56.dp).clip(CircleShape).background(c.surface2),
-            contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Outlined.WifiOff, null, tint = c.textSub, modifier = Modifier.size(26.dp)) }
-        Spacer(Modifier.height(16.dp))
-        Text("Не удалось загрузить расписание", color = c.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(8.dp))
-        Text(message, color = c.textSub, fontSize = 12.sp, lineHeight = 17.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 12.dp))
-        Spacer(Modifier.height(20.dp))
-        Row(
-            modifier = Modifier
-                .clip(AppRadius.capsule)
-                .background(c.surface2)
-                .border(1.dp, c.border, AppRadius.capsule)
-                .clickable(onClick = onRetry)
-                .padding(horizontal = 20.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(Icons.Outlined.Refresh, null, tint = c.accent, modifier = Modifier.size(18.dp))
-            Text("Повторить", color = c.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        }
-    }
+    ScheduleErrorState(
+        title = "Не удалось загрузить расписание",
+        message = message,
+        onRetry = onRetry,
+    )
 }

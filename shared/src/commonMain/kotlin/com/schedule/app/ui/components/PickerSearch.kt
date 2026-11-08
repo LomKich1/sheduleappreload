@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -98,9 +99,10 @@ import kotlinx.coroutines.launch
 // Закрытие — крестик в поле или системный back — та же схема в обратную
 // сторону.
 //
-// Pull-to-search (как в Telegram): по умолчанию поле СКРЫТО (высота 0 у
-// зоны шапки). Оно выезжает из-под шапки, когда список у верхнего края
-// протягивают вниз (PullToSearchConnection ниже):
+// Pull-to-search (как в Telegram): по умолчанию поле ВИДНО сразу при заходе на
+// экран (reveal = 1). Оно прячется, когда список прокручивают вверх, и снова
+// выезжает из-под шапки, когда список у верхнего края протягивают вниз
+// (PullToSearchConnection ниже):
 //   • drag вниз у верха списка → reveal 0→1 (с сопротивлением), шапка
 //     и список едут вниз вместе с полем;
 //   • отпустили — доводка: ≥ половины (или fling вниз) → поле остаётся
@@ -108,7 +110,7 @@ import kotlinx.coroutines.launch
 //   • прокрутка списка вверх, пока поле выдвинуто → сначала сворачивает поле;
 //   • тап по выдвинутому полю → поиск (active), после чего поле «встаёт»
 //     на место шапки и жест игнорируется — строка зафиксирована;
-//   • закрытие поиска → поле убирается обратно (reveal → 0).
+//   • закрытие поиска → поле остаётся на месте (reveal = 1), как при заходе.
 
 val SEARCH_SHIFT = 20.dp
 const val SEARCH_ANIM_MS = 300
@@ -123,7 +125,7 @@ class PickerSearchState {
      * Pull-to-search: 0 — поле спрятано, 1 — полностью выдвинуто. Меняется
      * жестом (PullToSearchConnection), доводкой и закрытием поиска.
      */
-    var reveal by mutableStateOf(0f)
+    var reveal by mutableStateOf(1f)
         internal set
 
     fun open() {
@@ -145,8 +147,8 @@ class PickerSearchState {
 
 // ─── Pull-to-search: NestedScrollConnection ──────────────────────────────────
 
-/** Высота слота поля без нижнего отступа: 8.dp сверху + 42.dp поле. */
-val SEARCH_FIELD_SLOT = 50.dp
+/** Высота слота поля без нижнего отступа: 8.dp сверху + 48.dp поле (M3). */
+val SEARCH_FIELD_SLOT = 56.dp
 
 /** Нижний отступ зоны шапки ПОСЛЕ поля — его закрывает блюр (мягкая плашка). */
 val SEARCH_ZONE_BOTTOM_PAD = 14.dp
@@ -361,18 +363,17 @@ private fun PickerSearchField(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 18.dp, end = 18.dp, top = 8.dp)
-            .height(42.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+            .height(48.dp)
             .clip(shape)
-            .background(c.pillBg)
-            .border(1.dp, c.border, shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             // Пока поиск закрыт — тап по выдвинутому полю открывает его. Спрятанное
             // или выезжающее поле тапов не ловит (иначе перекроет кнопку «назад»).
             .then(
                 if (!active && search.reveal >= 0.98f) Modifier.clickable { search.open() }
                 else Modifier,
             )
-            .padding(start = 14.dp, end = 6.dp),
+            .padding(start = 16.dp, end = 8.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -380,20 +381,20 @@ private fun PickerSearchField(
                 imageVector        = Icons.Outlined.Search,
                 contentDescription = null,
                 tint               = c.textSub,
-                modifier           = Modifier.size(18.dp),
+                modifier           = Modifier.size(24.dp),
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(12.dp))
 
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (search.query.isEmpty()) {
-                    Text(text = "Поиск", color = c.textSub, fontSize = 15.sp)
+                    Text(text = "Поиск", color = c.textSub, fontSize = 16.sp)
                 }
                 BasicTextField(
                     value         = search.query,
                     onValueChange = { search.query = it },
                     enabled       = active,
                     singleLine    = true,
-                    textStyle     = TextStyle(color = c.text, fontSize = 15.sp),
+                    textStyle     = TextStyle(color = c.text, fontSize = 16.sp),
                     cursorBrush   = SolidColor(c.accent),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = {
@@ -411,7 +412,7 @@ private fun PickerSearchField(
             // и без неё). Закрывает поиск целиком.
             Box(
                 modifier = Modifier
-                    .size(30.dp)
+                    .size(40.dp)
                     .graphicsLayer { alpha = progress.value }
                     .clip(CircleShape)
                     .clickable(enabled = active) { search.close() },
@@ -421,7 +422,7 @@ private fun PickerSearchField(
                     imageVector        = Icons.Outlined.Close,
                     contentDescription = "Закрыть поиск",
                     tint               = c.textSub,
-                    modifier           = Modifier.size(18.dp),
+                    modifier           = Modifier.size(24.dp),
                 )
             }
         }
@@ -478,7 +479,7 @@ fun SearchResultsLayer(
                 .graphicsLayer { alpha = progress.value }
                 .nestedScroll(hideOnScroll)
                 .verticalScroll(rememberScrollState())
-                .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 16.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (query.isNotBlank() && matches.isEmpty()) {

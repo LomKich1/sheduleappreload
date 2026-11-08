@@ -234,7 +234,7 @@ fun PickerScaffold(
                         mode = mode,
                         onModeSelect = onModeSelect,
                         modeSwipeProgress = modeSwipeProgress,
-                        modifier = Modifier.padding(horizontal = 18.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp),
                     )
                 }
             }
@@ -252,7 +252,7 @@ fun PickerScaffold(
                     // onSizeChanged ПОСЛЕ инсетов и ДО padding: меряем тумблер
                     // вместе с его отступами, но без системного инсета.
                     .onSizeChanged { bottomChromePx.value = it.height }
-                    .padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 10.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
             ) {
                 PickerToggle(
                     hazeState = hazeState,
