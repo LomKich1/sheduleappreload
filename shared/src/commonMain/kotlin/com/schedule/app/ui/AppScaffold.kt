@@ -391,7 +391,8 @@ fun AppScaffold() {
             }
 
             composable(Screen.Settings.route) {
-                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))) {
+                // Инсеты применяет сам SettingsScreen — внутри свайпаемого слоя с фоном темы.
+                Box(Modifier.fillMaxSize()) {
                     SettingsScreen(
                         onBack = { navController.popBackStack() },
                         onNavigateToDebug = { navController.navigate(Screen.DebugSettings.route) },
@@ -401,7 +402,7 @@ fun AppScaffold() {
             }
 
             composable(Screen.DebugSettings.route) {
-                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))) {
+                Box(Modifier.fillMaxSize()) {
                     DebugSettingsScreen(
                         onBack = { navController.popBackStack() },
                     )

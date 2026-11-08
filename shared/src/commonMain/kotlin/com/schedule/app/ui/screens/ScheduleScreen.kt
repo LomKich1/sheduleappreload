@@ -27,7 +27,7 @@ import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.Icon
-import com.schedule.app.ui.components.PickerSkeletonRow
+import com.schedule.app.ui.components.CenteredLoading
 import com.schedule.app.ui.components.ScheduleErrorState
 import com.schedule.app.ui.components.PairTimeRow
 import com.schedule.app.ui.components.LessonStatusBadge
@@ -96,49 +96,8 @@ private const val SUBSCREEN_ANIM_MS = 280
 // ─── Скелетон для пикера группы — визуально идентичен GroupPickerScreen ───────
 
 @Composable
-private fun GroupPickerLoading(entranceTrigger: Any) {
-    val alpha by rememberInfiniteTransition(label = "groupSkel")
-        .animateFloat(
-            initialValue  = 1f,
-            targetValue   = 0.4f,
-            animationSpec = infiniteRepeatable(
-                animation  = tween(900, easing = EaseInOutQuad),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "a",
-        )
-
-    // Каскад "с правого края" — тот же приём, что и у карточек BellsScreen.
-    // entranceTrigger приходит снаружи (единый счётчик переходов), а не
-    // создаётся локально — иначе каждая перекомпозиция считалась бы новым запуском.
-    val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Spacer(Modifier.height(16.dp))
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            repeat(8) { i ->
-                CascadeEntranceItem(
-                    index      = i,
-                    triggerKey = entranceTrigger,
-                    enabled    = entranceEnabled,
-                    edge       = CascadeEdge.RIGHT,
-                ) {
-                    PickerSkeletonRow(
-                        alpha = (alpha - i * 0.06f).coerceIn(0.3f, 1f),
-                        textWidthDp = 90,
-                        showChevron = true,
-                    )
-                }
-            }
-        }
-    }
-}
+@Suppress("UNUSED_PARAMETER")
+private fun GroupPickerLoading(entranceTrigger: Any) { CenteredLoading() }
 
 // ─── ScheduleScreen ───────────────────────────────────────────────────────────
 //
@@ -901,46 +860,7 @@ private fun PairCard(lesson: LessonEntry, status: LessonStatus) {
 // ─── Скелетон загрузки ────────────────────────────────────────────────────────
 
 @Composable
-private fun SchedLoading() {
-    val scheme = MaterialTheme.colorScheme
-    val alpha by rememberInfiniteTransition(label = "skel")
-        .animateFloat(
-            initialValue  = 1f,
-            targetValue   = 0.4f,
-            animationSpec = infiniteRepeatable(
-                animation  = tween(900, easing = EaseInOutQuad),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "a",
-        )
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-            .padding(top = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        repeat(5) { i ->
-            val a = (alpha - i * 0.08f).coerceIn(0.3f, 1f)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(MaterialTheme.shapes.large)
-                    .background(scheme.surfaceContainer.copy(alpha = a))
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(width = 28.dp, height = 40.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(Modifier.size(width = 130.dp, height = 12.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
-                    Box(Modifier.size(width = 80.dp, height = 10.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
-                }
-            }
-        }
-    }
-}
+private fun SchedLoading() { CenteredLoading() }
 
 // ─── На практике ──────────────────────────────────────────────────────────────
 

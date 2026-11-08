@@ -73,7 +73,8 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .swipeToDismiss(dismissState)
-            .background(c.bg),
+            .background(c.bg)
+            .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.systemBars.only(androidx.compose.foundation.layout.WindowInsetsSides.Vertical)),
     ) {
         DebugSettingsHeader(onBack = { dismissState.dismiss() })
 

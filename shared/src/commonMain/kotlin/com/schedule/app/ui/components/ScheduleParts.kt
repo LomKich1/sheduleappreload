@@ -126,35 +126,3 @@ fun ScheduleErrorState(
         }
     }
 }
-
-/** Строка-скелетон списка групп / преподавателей. */
-@Composable
-fun PickerSkeletonRow(alpha: Float, textWidthDp: Int, showChevron: Boolean) {
-    val scheme = MaterialTheme.colorScheme
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(scheme.surfaceContainer.copy(alpha = alpha))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(40.dp).clip(CircleShape).background(scheme.surfaceContainerHighest.copy(alpha = alpha)))
-        Spacer(Modifier.width(16.dp))
-        Box(
-            Modifier
-                .size(width = textWidthDp.dp, height = 12.dp)
-                .clip(MaterialTheme.shapes.extraSmall)
-                .background(scheme.surfaceContainerHighest.copy(alpha = alpha)),
-        )
-        if (showChevron) {
-            Spacer(Modifier.weight(1f))
-            Box(
-                Modifier
-                    .size(width = 8.dp, height = 12.dp)
-                    .clip(MaterialTheme.shapes.extraSmall)
-                    .background(scheme.surfaceContainerHighest.copy(alpha = alpha)),
-            )
-        }
-    }
-}

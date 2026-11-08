@@ -15,6 +15,7 @@ import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import com.schedule.app.ui.components.CenteredLoading
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -230,55 +231,9 @@ private fun FilesList(
 
 @Composable
 private fun FilesLoading() {
-    val c = LocalAppColors.current
-    val alpha by rememberInfiniteTransition(label = "skeleton")
-        .animateFloat(
-            initialValue = 1f,
-            targetValue  = 0.4f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(900, easing = EaseInOutQuad),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "alpha",
-        )
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        repeat(5) { i ->
-            SkeletonCard(alpha = alpha, delay = i * 0.12f)
-        }
-    }
-}
-
-@Composable
-private fun SkeletonCard(alpha: Float, delay: Float) {
-    val scheme = MaterialTheme.colorScheme
-    // Небольшой сдвиг фазы между карточками
-    val a = (alpha - delay).coerceIn(0.3f, 1f)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(scheme.surfaceContainer.copy(alpha = a))
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Box(
-            Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(scheme.surfaceContainerHighest.copy(alpha = a))
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.size(width = 110.dp, height = 12.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
-            Box(Modifier.size(width = 60.dp, height = 10.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
-        }
-    }
+    // Скелетон-карточки не совпадали по высоте с настоящими — вместо них
+    // M3-индикатор загрузки по центру.
+    CenteredLoading()
 }
 
 // ─── Состояние: ошибка ────────────────────────────────────────────────────────

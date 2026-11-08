@@ -110,7 +110,10 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .swipeToDismiss(dismissState)
-                .background(MaterialTheme.colorScheme.background),
+                .background(MaterialTheme.colorScheme.background)
+                // Инсеты — ПОСЛЕ фона: цвет темы заливает и зону под статус-баром,
+                // и под жестовой полосой, и уезжает вместе с экраном при свайпе.
+                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical)),
         ) {
             TopAppBar(
                 title = { Text("Настройки") },
@@ -143,20 +146,6 @@ fun SettingsScreen(
                     Column {
                         SettingsSectionLabel("Группа")
                         SettingsListCard {
-                            ListItem(
-                                colors = transparentListItemColors(),
-                                leadingContent = { Icon(Icons.Outlined.Group, contentDescription = null) },
-                                headlineContent = {
-                                    Text(if (savedGroup.isBlank()) "Не выбрана" else savedGroup)
-                                },
-                                supportingContent = {
-                                    Text("Выбирается при открытии файла расписания — нажмите ✎ в шапке, чтобы сменить")
-                                },
-                            )
-                            HorizontalDivider(
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant,
-                            )
                             ListItem(
                                 colors = transparentListItemColors(),
                                 modifier = Modifier.clickable { AppPrefs.setRememberGroup(!rememberOn) },
