@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -546,8 +547,7 @@ private fun TeacherCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(AppRadius.card)
-            .background(c.surface)
-            .border(1.dp, c.border, AppRadius.card)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -663,38 +663,25 @@ private data class TeacherLessonStatus(
 private fun TeacherPairCard(lesson: TeacherLessonEntry, status: TeacherLessonStatus) {
     val c = LocalAppColors.current
 
-    val leftColor = when {
-        status.isNow  -> c.todayAccent
-        status.isNext -> Color(0xFF50C878)
-        else          -> c.accent
-    }
-    val bgColor = if (status.isNow) c.todayAccent.copy(alpha = 0.10f) else c.surface2
-    val borderColor = when {
-        status.isNow  -> c.todayAccent.copy(alpha = 0.30f)
-        status.isNext -> Color(0xFF50C878).copy(alpha = 0.30f)
-        else          -> c.surface3
+    val scheme = MaterialTheme.colorScheme
+    val bgColor = when {
+        status.isNow  -> scheme.primaryContainer
+        status.isNext -> scheme.tertiaryContainer
+        else          -> scheme.surfaceContainer
     }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp)
-            .padding(bottom = 9.dp),
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 8.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(AppRadius.card)
-                .background(bgColor)
-                .border(1.5.dp, borderColor, AppRadius.card),
+                .clip(MaterialTheme.shapes.large)
+                .background(bgColor),
         ) {
-            Box(
-                modifier = Modifier
-                    .width(3.dp)
-                    .fillMaxHeight()
-                    .background(leftColor),
-            )
-
             Column(modifier = Modifier.weight(1f)) {
                 Row(
                     modifier = Modifier
@@ -713,7 +700,7 @@ private fun TeacherPairCard(lesson: TeacherLessonEntry, status: TeacherLessonSta
 
                     Column(modifier = Modifier.weight(1f)) {
                         if (status.isNow || status.isNext) {
-                            val badgeColor = if (status.isNow) c.todayAccent else Color(0xFF50C878)
+                            val badgeColor = if (status.isNow) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
                             val badgeText  = if (status.isNow) "▶ СЕЙЧАС" else "СЛЕДУЮЩАЯ"
                             Box(
                                 modifier = Modifier
@@ -721,7 +708,7 @@ private fun TeacherPairCard(lesson: TeacherLessonEntry, status: TeacherLessonSta
                                     .background(badgeColor)
                                     .padding(horizontal = 8.dp, vertical = 2.dp),
                             ) {
-                                Text(badgeText, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text(badgeText, color = if (status.isNow) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                             Spacer(Modifier.height(5.dp))
                         }

@@ -14,6 +14,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -164,12 +171,10 @@ fun BellsScreen(entranceTrigger: Int = 0) {
 
         // ── Метка секции ──────────────────────────────────────────────────
         Text(
-            text = "ПАРЫ И ПЕРЕМЕНЫ",
-            color = c.textSub,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.08.sp,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
+            text = "Пары и перемены",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
 
         // ── Список пар ────────────────────────────────────────────────────
@@ -178,7 +183,7 @@ fun BellsScreen(entranceTrigger: Int = 0) {
         val entranceEnabled by AppPrefs.listEntranceAnim.collectAsState()
 
         LazyColumn(
-            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             itemsIndexed(periods, key = { index, _ -> index }) { index, _ ->
@@ -202,7 +207,7 @@ fun BellsScreen(entranceTrigger: Int = 0) {
                 }
             }
 
-            // Нижний отступ — чтобы последняя карточка не лезла под FloatingPillNav
+            // Небольшой нижний отступ под последней карточкой
             item { Spacer(Modifier.height(12.dp)) }
         }
     }
@@ -215,19 +220,16 @@ fun BellsScreen(entranceTrigger: Int = 0) {
 
 @Composable
 private fun LiveTimeLine(timeStr: String) {
-    val c = LocalAppColors.current
     Text(
         text = "сейчас $timeStr",
-        color = c.textSub,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier.padding(horizontal = 18.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp),
     )
 }
 
-// ─── Переключатель расписания ─────────────────────────────────────────────────
-// Активный сегодняшний день подсвечивается todayAccent вместо обычного accent.
-// Точка под ярлыком показывает «это сегодня» даже когда таб не выбран.
+// ─── Переключатель расписания (Material 3 SegmentedButton) ───────────────────
+// Сегодняшний день помечается точкой "•" в подписи, даже когда он не выбран.
 
 @Composable
 private fun BellDayTabs(
@@ -235,115 +237,19 @@ private fun BellDayTabs(
     todayType: BellDayType,
     onSelect: (BellDayType) -> Unit,
 ) {
-    val c = LocalAppColors.current
-    val itemXsPx = remember { mutableStateListOf(0f, 0f) }
-    val itemWsPx = remember { mutableStateListOf(0f, 0f) }
-    val selectedIndex = BellDayType.values().indexOf(selected)
-
-    // ── Целевой цвет индикатора: обычный акцент или today-акцент ──────────
-    val indicatorColor by animateColorAsState(
-        targetValue = if (selected == todayType) c.todayAccent.copy(alpha = 0.20f) else c.surface3,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "bellIndicatorColor",
-    )
-
-    // ── Анимация позиции/ширины индикатора ─────────────────────────────────
-    val springSpec = spring<Float>(
-        stiffness = Spring.StiffnessMediumLow,
-        dampingRatio = Spring.DampingRatioMediumBouncy,
-    )
-    val indicatorXPx by animateFloatAsState(
-        targetValue = itemXsPx.getOrElse(selectedIndex) { 0f },
-        animationSpec = springSpec,
-        label = "bellIndicatorX",
-    )
-    val indicatorWPx by animateFloatAsState(
-        targetValue = itemWsPx.getOrElse(selectedIndex) { 0f },
-        animationSpec = springSpec,
-        label = "bellIndicatorW",
-    )
-    val hasPositions = itemWsPx.any { it > 0f }
-
-    Box(
+    val types = BellDayType.values()
+    SingleChoiceSegmentedButtonRow(
         modifier = Modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-            .padding(horizontal = 18.dp)
-            .clip(AppRadius.capsule)
-            .background(c.surface2)
-            // Раньше контура тут не было — визуально капсула сливалась с фоном
-            // экрана сильнее, чем у ScheduleModeToggle (Ученики/Преподаватели),
-            // где точно такой же 1.dp border(c.border) уже был. Добавлено для
-            // единообразия, толщина и цвет 1:1 скопированы оттуда.
-            .border(1.dp, c.border, AppRadius.capsule)
-            .padding(4.dp),
+            .padding(horizontal = 16.dp),
     ) {
-        // ── Скользящий индикатор (слой ПОД табами) ─────────────────────────
-        if (hasPositions) {
-            Box(
-                modifier = Modifier
-                    .offset { IntOffset(indicatorXPx.roundToInt(), 0) }
-                    .fillMaxHeight()
-                    .width(with(LocalDensity.current) { indicatorWPx.toDp() })
-                    .clip(AppRadius.capsule)
-                    .background(indicatorColor),
-            )
-        }
-
-        Row {
-            BellDayType.values().forEachIndexed { idx, type ->
-                val isSelected = type == selected
-                val isToday = type == todayType
-
-                val txt by animateColorAsState(
-                    targetValue = when {
-                        isSelected && isToday -> c.todayAccent
-                        isSelected -> c.accent
-                        else -> c.textSub
-                    },
-                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                    label = "bellTabTxt",
-                )
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(AppRadius.capsule)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication        = null,
-                        ) { onSelect(type) }
-                        .padding(vertical = 10.dp)
-                        .onGloballyPositioned { coords ->
-                            itemXsPx[idx] = coords.positionInParent().x
-                            itemWsPx[idx] = coords.size.width.toFloat()
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                    ) {
-                        Text(
-                            text = type.label,
-                            color = txt,
-                            fontSize = 13.sp,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                        // Точка под ярлыком — «сегодня»
-                        if (isToday) {
-                            Box(
-                                modifier = Modifier
-                                    .size(4.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isSelected) c.todayAccent
-                                        else c.textSub.copy(alpha = 0.5f)
-                                    ),
-                            )
-                        }
-                    }
-                }
+        types.forEachIndexed { index, type ->
+            SegmentedButton(
+                selected = type == selected,
+                onClick = { onSelect(type) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = types.size),
+            ) {
+                Text(if (type == todayType) "${type.label} •" else type.label)
             }
         }
     }
@@ -357,106 +263,81 @@ private fun BellCard(
     isNow: Boolean,
     isNext: Boolean,
 ) {
-    val c = LocalAppColors.current
+    val scheme = MaterialTheme.colorScheme
 
-    // Статические цвета — без animateColorAsState.
-    // isNow/isNext меняются раз в 30 с (тик), мгновенная смена цвета незаметна.
-    // Убрав 4 Animatable × 6 карточек = 24 объекта, снижаем стоимость первой
-    // компоновки BellsScreen и убираем лаг при переключении вкладок.
-    val barColor    = when {
-        isNow  -> c.todayAccent
-        isNext -> Color(0xFF50C878)
-        else   -> c.accent.copy(alpha = 0.55f)
+    // Статические цвета — без animateColorAsState: isNow/isNext меняются раз
+    // в 30 с (тик), анимация тут не нужна и только тормозит первую композицию.
+    //  сейчас    → primaryContainer
+    //  следующая → tertiaryContainer
+    //  остальное → surfaceContainer
+    val containerColor = when {
+        isNow  -> scheme.primaryContainer
+        isNext -> scheme.tertiaryContainer
+        else   -> scheme.surfaceContainer
     }
-    val cardBg      = if (isNow) c.todayAccent.copy(alpha = 0.10f) else c.surface
-    val borderColor = when {
-        isNow  -> c.todayAccent.copy(alpha = 0.30f)
-        isNext -> Color(0xFF50C878).copy(alpha = 0.30f)
-        else   -> c.border
+    val contentColor = when {
+        isNow  -> scheme.onPrimaryContainer
+        isNext -> scheme.onTertiaryContainer
+        else   -> scheme.onSurface
     }
-    val timeColor   = if (isNow) c.todayAccent else c.text
+    val badgeBg = if (isNow) scheme.primary else scheme.tertiary
+    val badgeFg = if (isNow) scheme.onPrimary else scheme.onTertiary
 
-    // Правка дизайна: рамка и скругление приведены к тем же значениям, что
-    // и в FileCard на главном экране (1dp / 16dp вместо 1.5dp / 14dp) —
-    // раньше карточки пар выглядели чуть массивнее карточек файлов.
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(AppRadius.card)
-            .background(cardBg)
-            .border(1.dp, borderColor, AppRadius.card),
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor,
+            contentColor = contentColor,
+        ),
     ) {
-        // Левая цветная полоска — как в PairCard
-        Box(
-            modifier = Modifier
-                .width(3.dp)
-                .fillMaxHeight()
-                .background(barColor),
-        )
-
-        // Контент
         Row(
             modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 14.dp, vertical = 14.dp),
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(11.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Значок номера пары — 40dp, как круглая иконка в FileCard
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(barColor.copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center,
+            // Номер пары
+            Surface(
+                shape = CircleShape,
+                color = if (isNow || isNext) badgeBg else scheme.secondaryContainer,
+                modifier = Modifier.size(40.dp),
             ) {
-                Text(
-                    text = period.roman,
-                    color = barColor,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 0.sp,
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = period.roman,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (isNow || isNext) badgeFg else scheme.onSecondaryContainer,
+                    )
+                }
             }
 
-            // Основной блок: время + детали
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                // Строка 1: общий диапазон + значок статуса
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
                         text = "${period.totalStart} — ${period.totalEnd}",
-                        color = timeColor,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f),
                     )
                     if (isNow || isNext) {
-                        val badgeColor = if (isNow) c.todayAccent else Color(0xFF50C878)
-                        val badgeText  = if (isNow) "▶ СЕЙЧАС" else "СЛЕДУЮЩАЯ"
-                        Box(
-                            modifier = Modifier
-                                .clip(AppRadius.capsule)
-                                .background(badgeColor)
-                                .padding(horizontal = 8.dp, vertical = 3.dp),
-                        ) {
+                        Surface(shape = CircleShape, color = badgeBg) {
                             Text(
-                                text = badgeText,
-                                color = Color.White,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.05.sp,
+                                text = if (isNow) "Сейчас" else "Следующая",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = badgeFg,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                             )
                         }
                     }
                 }
 
-                // Строка 2: детали (полупары + перемена) — только если есть перемена
                 if (period.hasBreak) {
                     Text(
                         text = buildString {
@@ -464,26 +345,19 @@ private fun BellCard(
                             append("  ·  перем. ${period.breakMin} мин")
                             append("  ·  ${period.start2}–${period.end2}")
                         },
-                        color = c.textSub,
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = contentColor.copy(alpha = 0.75f),
                     )
-                }
-
-                // Строка 3: длительность (только для суббот и IV–VI — там нет перемены,
-                // но длительность пары больше стандартных 45 мин)
-                if (!period.hasBreak) {
-                    Text(
-                        text = "${period.durationMin} мин",
-                        color = c.textSub,
-                        fontSize = 11.sp,
-                    )
-                } else {
-                    // При наличии перемены выводим общую длительность после деталей
                     Text(
                         text = "итого ${period.durationMin} мин",
-                        color = c.textSub.copy(alpha = 0.7f),
-                        fontSize = 10.sp,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = contentColor.copy(alpha = 0.6f),
+                    )
+                } else {
+                    Text(
+                        text = "${period.durationMin} мин",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = contentColor.copy(alpha = 0.75f),
                     )
                 }
             }

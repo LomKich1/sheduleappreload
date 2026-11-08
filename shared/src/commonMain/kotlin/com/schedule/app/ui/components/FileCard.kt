@@ -1,90 +1,92 @@
 package com.schedule.app.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.schedule.app.data.model.ScheduleFile
-import com.schedule.app.ui.theme.AppRadius
-import com.schedule.app.ui.theme.LocalAppColors
 
-// ─── Карточка файла расписания ───────────────────────────────────────────────
-// Обычный файл: surface + border, иконка-документ, textSub дата, шеврон справа.
-// Файл "сегодня": todayBg + todayAccent-рамка, акцентная иконка, бейдж "Сегодня".
+// ─── Карточка файла расписания (Material 3 Card + ListItem) ───────────────────
+// Обычный файл: filled-карточка surfaceContainer, иконка в secondaryContainer.
+// Файл "сегодня": primaryContainer + бейдж "Сегодня".
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileCard(
     file: ScheduleFile,
     onClick: () -> Unit,
 ) {
-    val c = LocalAppColors.current
-    val bg = if (file.isToday) c.todayBg else c.surface
-    val borderColor = if (file.isToday) c.todayAccent else c.border
-    val iconTint = if (file.isToday) c.todayAccent else c.textSub
-    val titleColor = if (file.isToday) c.todayAccent else c.text
+    val scheme = MaterialTheme.colorScheme
+    val containerColor = if (file.isToday) scheme.primaryContainer else scheme.surfaceContainer
+    val contentColor = if (file.isToday) scheme.onPrimaryContainer else scheme.onSurface
+    val supportingColor = if (file.isToday) scheme.onPrimaryContainer else scheme.onSurfaceVariant
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(AppRadius.card)
-            .background(bg)
-            .border(1.dp, borderColor, AppRadius.card)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = containerColor),
     ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(if (file.isToday) c.todayAccent.copy(alpha = 0.18f) else c.surface2),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Description,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(20.dp),
-            )
-        }
-
-        Spacer(Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(file.dayLabel, color = titleColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            Text(file.dateLabel, color = c.textSub, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
-        }
-
-        if (file.isToday) {
-            Box(
-                modifier = Modifier
-                    .clip(AppRadius.capsule)
-                    .background(c.todayAccent)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                Text("Сегодня", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
-        } else {
-            Icon(
-                imageVector = Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                tint = c.textSub,
-                modifier = Modifier.size(18.dp),
-            )
-        }
+        ListItem(
+            colors = ListItemDefaults.colors(
+                containerColor = Color.Transparent,
+                headlineColor = contentColor,
+                supportingColor = supportingColor,
+            ),
+            leadingContent = {
+                Surface(
+                    shape = CircleShape,
+                    color = if (file.isToday) scheme.primary else scheme.secondaryContainer,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Outlined.Description,
+                            contentDescription = null,
+                            tint = if (file.isToday) scheme.onPrimary else scheme.onSecondaryContainer,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+            },
+            headlineContent = { Text(file.dayLabel, style = MaterialTheme.typography.titleMedium) },
+            supportingContent = { Text(file.dateLabel, style = MaterialTheme.typography.bodyMedium) },
+            trailingContent = {
+                if (file.isToday) {
+                    Surface(shape = CircleShape, color = scheme.primary) {
+                        Text(
+                            text = "Сегодня",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = scheme.onPrimary,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Outlined.ChevronRight,
+                        contentDescription = null,
+                        tint = scheme.onSurfaceVariant,
+                    )
+                }
+            },
+        )
     }
 }

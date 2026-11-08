@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -163,39 +163,24 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun DebugSettingsHeader(onBack: () -> Unit) {
-    val c = LocalAppColors.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(c.bg)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(androidx.compose.foundation.shape.CircleShape)
-                .background(c.surface2)
-                .clickable(onClick = onBack),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.ArrowBack,
-                contentDescription = "Назад",
-                tint = c.accent,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-        Text(
-            text = "🐞 Debug-настройки",
-            color = c.text,
-            fontSize = 19.sp,
-            fontWeight = FontWeight.Bold,
-        )
-    }
+    androidx.compose.material3.TopAppBar(
+        title = { Text("Debug-настройки") },
+        navigationIcon = {
+            androidx.compose.material3.IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "Назад",
+                )
+            }
+        },
+        windowInsets = WindowInsets(0),
+        colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
+        ),
+    )
 }
 
 // ─── Положение тумблера Ученики/Преподаватели ───────────────────────────────

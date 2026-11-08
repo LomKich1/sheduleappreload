@@ -449,23 +449,16 @@ fun ScheduleHeaderRow(
             // vertical = 12.dp — как в AppHeader (было 14.dp): вместе с фикс.
             // размером шрифта ниже это выравнивает высоту "чистой" шапки (без
             // подстрочника даты) с шапкой Files/Bells.
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(c.surface2)
-                .clickable(onClick = header.onBack),
-            contentAlignment = Alignment.Center,
-        ) {
+        // Material 3 IconButton вместо самописного круга с фоном.
+        androidx.compose.material3.IconButton(onClick = header.onBack) {
             Icon(
-                imageVector = Icons.Outlined.ArrowBack,
+                imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Outlined.ArrowBack,
                 contentDescription = "Назад",
-                tint = c.accent,
-                modifier = Modifier.size(18.dp),
+                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
             )
         }
 
@@ -473,7 +466,7 @@ fun ScheduleHeaderRow(
             val displayTitle = header.title.ifBlank { header.placeholder }
             FlipTransitionText(
                 text     = displayTitle,
-                color    = if (header.title.isBlank()) c.textSub else c.accent,
+                color    = if (header.title.isBlank()) c.textSub else c.text,
                 fontSize = header.filledFontSize,
             )
             Text(

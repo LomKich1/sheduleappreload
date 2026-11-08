@@ -13,7 +13,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
@@ -121,8 +123,8 @@ fun FilesScreen(
                     modifier      = Modifier.align(Alignment.TopCenter),
                     isRefreshing  = pullRefreshing,
                     state         = pullState,
-                    containerColor = LocalAppColors.current.surface,
-                    color         = LocalAppColors.current.accent,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color         = MaterialTheme.colorScheme.primary,
                 )
             },
         ) {
@@ -150,14 +152,12 @@ fun FilesScreen(
 
 @Composable
 private fun TodayDateLine() {
-    val c     = LocalAppColors.current
     val today = remember { formatTodayRu() }
     Text(
         text = today,
-        color = c.textSub,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier.padding(horizontal = 18.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp),
     )
 }
 
@@ -183,14 +183,11 @@ private fun formatTodayRu(): String {
 
 @Composable
 private fun SectionLabel() {
-    val c = LocalAppColors.current
     Text(
-        text = "ФАЙЛЫ РАСПИСАНИЯ",
-        color = c.textSub,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 0.08.sp,
-        modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
+        text = "Файлы расписания",
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
     )
 }
 
@@ -213,8 +210,8 @@ private fun FilesList(
     // к верху, независимо от количества файлов — по правке дизайнера.
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         itemsIndexed(files, key = { _, file -> file.name }) { index, file ->
             CascadeEntranceItem(
@@ -248,8 +245,8 @@ private fun FilesLoading() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         repeat(5) { i ->
             SkeletonCard(alpha = alpha, delay = i * 0.12f)
@@ -259,27 +256,27 @@ private fun FilesLoading() {
 
 @Composable
 private fun SkeletonCard(alpha: Float, delay: Float) {
-    val c = LocalAppColors.current
-    // Небольшой сдвиг фазы между карточками через offset на alpha
+    val scheme = MaterialTheme.colorScheme
+    // Небольшой сдвиг фазы между карточками
     val a = (alpha - delay).coerceIn(0.3f, 1f)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(c.surface.copy(alpha = a))
-            .padding(14.dp),
+            .clip(MaterialTheme.shapes.large)
+            .background(scheme.surfaceContainer.copy(alpha = a))
+            .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Box(
             Modifier
-                .size(38.dp)
+                .size(40.dp)
                 .clip(CircleShape)
-                .background(c.surface2.copy(alpha = a))
+                .background(scheme.surfaceContainerHighest.copy(alpha = a))
         )
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.size(width = 110.dp, height = 11.dp).clip(RoundedCornerShape(5.dp)).background(c.surface2.copy(alpha = a)))
-            Box(Modifier.size(width = 60.dp, height = 9.dp).clip(RoundedCornerShape(4.dp)).background(c.surface2.copy(alpha = a)))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.size(width = 110.dp, height = 12.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
+            Box(Modifier.size(width = 60.dp, height = 10.dp).clip(MaterialTheme.shapes.extraSmall).background(scheme.surfaceContainerHighest.copy(alpha = a)))
         }
     }
 }
@@ -288,7 +285,7 @@ private fun SkeletonCard(alpha: Float, delay: Float) {
 
 @Composable
 private fun FilesError(message: String, onRetry: () -> Unit) {
-    val c = LocalAppColors.current
+    val scheme = MaterialTheme.colorScheme
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -298,16 +295,16 @@ private fun FilesError(message: String, onRetry: () -> Unit) {
     ) {
         Box(
             modifier = Modifier
-                .size(56.dp)
+                .size(64.dp)
                 .clip(CircleShape)
-                .background(c.surface2),
+                .background(scheme.errorContainer),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Outlined.WifiOff,
                 contentDescription = null,
-                tint = c.textSub,
-                modifier = Modifier.size(26.dp),
+                tint = scheme.onErrorContainer,
+                modifier = Modifier.size(28.dp),
             )
         }
 
@@ -315,41 +312,30 @@ private fun FilesError(message: String, onRetry: () -> Unit) {
 
         Text(
             text = "Не удалось загрузить файлы",
-            color = c.text,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.titleMedium,
+            color = scheme.onSurface,
         )
 
         Spacer(Modifier.height(8.dp))
 
         Text(
             text = "Я.Диск и GitHub недоступны.\nПроверь подключение к интернету.",
-            color = c.textSub,
-            fontSize = 13.sp,
-            lineHeight = 19.sp,
+            style = MaterialTheme.typography.bodyMedium,
+            color = scheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(24.dp))
 
-        Row(
-            modifier = Modifier
-                .clip(AppRadius.capsule)
-                .background(c.surface2)
-                .border(1.dp, c.border, AppRadius.capsule)
-                .clickable(onClick = onRetry)
-                .padding(horizontal = 20.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        FilledTonalButton(onClick = onRetry) {
             Icon(
                 imageVector = Icons.Outlined.Refresh,
                 contentDescription = null,
-                tint = c.accent,
                 modifier = Modifier.size(18.dp),
             )
-            Text("Повторить", color = c.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(8.dp))
+            Text("Повторить")
         }
     }
 }

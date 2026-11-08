@@ -1,13 +1,38 @@
 package com.schedule.app.ui.theme
 
-import androidx.compose.foundation.LocalIndication
-import androidx.compose.material3.ripple
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.graphics.Color
 
-// ─── Цветовая схема ───────────────────────────────────────────────────────────
+// ─── Material 3 тема ──────────────────────────────────────────────────────────
+//
+//  Источник правды теперь — M3 ColorScheme (три схемы ниже). Старый класс
+//  AppColors / LocalAppColors СОХРАНЁН как тонкий слой совместимости: он
+//  строится из ColorScheme (см. AppColors.from), поэтому экраны, которые ещё
+//  читают c.bg / c.surface / c.accent, автоматически получают палитру M3.
+//  Новый код должен использовать MaterialTheme.colorScheme напрямую.
+//
+//  Соответствие старых токенов → токены M3:
+//    bg        → background
+//    surface   → surfaceContainerLow
+//    surface2  → surfaceContainerHigh
+//    surface3  → surfaceContainerHighest
+//    text      → onSurface
+//    textSub   → onSurfaceVariant
+//    accent    → primary          (onAccent → onPrimary)
+//    border    → outlineVariant
+//    pillBg    → surfaceContainer
+//    pillActive/pillActiveText → secondaryContainer / onSecondaryContainer
+//    todayAccent / todayBg     → tertiary / tertiary с прозрачностью
 
 data class AppColors(
     val bg: Color,
@@ -25,80 +50,150 @@ data class AppColors(
     val pillInactiveText: Color,
     val todayAccent: Color,
     val todayBg: Color,
+) {
+    companion object {
+        fun from(s: ColorScheme) = AppColors(
+            bg               = s.background,
+            surface          = s.surfaceContainerLow,
+            surface2         = s.surfaceContainerHigh,
+            surface3         = s.surfaceContainerHighest,
+            text             = s.onSurface,
+            textSub          = s.onSurfaceVariant,
+            accent           = s.primary,
+            onAccent         = s.onPrimary,
+            border           = s.outlineVariant,
+            pillBg           = s.surfaceContainer,
+            pillActive       = s.secondaryContainer,
+            pillActiveText   = s.onSecondaryContainer,
+            pillInactiveText = s.onSurfaceVariant,
+            todayAccent      = s.tertiary,
+            todayBg          = s.tertiary.copy(alpha = 0.10f),
+        )
+    }
+}
+
+// ─── Тёмная (M3 baseline, синий seed) ─────────────────────────────────────────
+
+val DarkScheme: ColorScheme = darkColorScheme(
+    primary                = Color(0xFFAAC7FF),
+    onPrimary              = Color(0xFF0A305F),
+    primaryContainer       = Color(0xFF284777),
+    onPrimaryContainer     = Color(0xFFD6E3FF),
+    inversePrimary         = Color(0xFF415F91),
+    secondary              = Color(0xFFBEC6DC),
+    onSecondary            = Color(0xFF283141),
+    secondaryContainer     = Color(0xFF3E4759),
+    onSecondaryContainer   = Color(0xFFDAE2F9),
+    tertiary               = Color(0xFFDEBCDF),
+    onTertiary             = Color(0xFF402843),
+    tertiaryContainer      = Color(0xFF583E5B),
+    onTertiaryContainer    = Color(0xFFFBD7FC),
+    background             = Color(0xFF111318),
+    onBackground           = Color(0xFFE2E2E9),
+    surface                = Color(0xFF111318),
+    onSurface              = Color(0xFFE2E2E9),
+    surfaceVariant         = Color(0xFF44474E),
+    onSurfaceVariant       = Color(0xFFC4C6D0),
+    surfaceTint            = Color(0xFFAAC7FF),
+    inverseSurface         = Color(0xFFE2E2E9),
+    inverseOnSurface       = Color(0xFF2F3036),
+    error                  = Color(0xFFFFB4AB),
+    onError                = Color(0xFF690005),
+    errorContainer         = Color(0xFF93000A),
+    onErrorContainer       = Color(0xFFFFDAD6),
+    outline                = Color(0xFF8E9099),
+    outlineVariant         = Color(0xFF44474E),
+    scrim                  = Color(0xFF000000),
+    surfaceBright          = Color(0xFF37393E),
+    surfaceDim             = Color(0xFF111318),
+    surfaceContainerLowest = Color(0xFF0C0E13),
+    surfaceContainerLow    = Color(0xFF191C20),
+    surfaceContainer       = Color(0xFF1D2024),
+    surfaceContainerHigh   = Color(0xFF282A2F),
+    surfaceContainerHighest= Color(0xFF33353A),
 )
 
-// ─── Тёмная (Android Dark) ────────────────────────────────────────────────────
-// Нейтральные тёмно-серые тона без фиолетового оттенка + синий акцент,
-// как в системных приложениях Android (Настройки, Messages, Phone).
+// ─── Светлая (M3 baseline, синий seed) ────────────────────────────────────────
 
-val DarkColors = AppColors(
-    bg             = Color(0xFF121212),   // Material Design dark baseline
-    surface        = Color(0xFF1E1E1E),
-    surface2       = Color(0xFF252525),
-    surface3       = Color(0xFF2E2E2E),
-    text           = Color(0xFFEEEEEE),
-    textSub        = Color(0xFF999999),   // было 0x757575 — не проходило WCAG 4.5:1
-                                           // (2.95:1 на surface3), теперь ~4.77-6.58:1
-    accent         = Color(0xFF90CAF9),   // Material Blue 200 — стандарт тёмной темы
-    // Раньше везде, где текст/иконка лежит НА заливке accent (кнопка "Сохранить",
-    // бегунок тумблера, тост), использовался жёстко Color.White — при светло-
-    // голубом accent контраст всего ~1.75:1 (заметно "выцветший" текст, ниже
-    // WCAG AA даже для крупного шрифта). onAccent — тёмный, даёт ~12:1.
-    onAccent       = Color(0xFF102030),
-    border         = Color(0xFF3A3A3A),
-    pillBg         = Color(0xFF1E1E1E),
-    pillActive     = Color(0xFF2D3E52),   // dark blue tint
-    pillActiveText = Color(0xFF90CAF9),
-    pillInactiveText = Color(0xFF606060),
-    todayAccent    = Color(0xFF64B5F6),   // Blue 300
-    todayBg        = Color(0x1A64B5F6),
+val LightScheme: ColorScheme = lightColorScheme(
+    primary                = Color(0xFF415F91),
+    onPrimary              = Color(0xFFFFFFFF),
+    primaryContainer       = Color(0xFFD6E3FF),
+    onPrimaryContainer     = Color(0xFF001B3E),
+    inversePrimary         = Color(0xFFAAC7FF),
+    secondary              = Color(0xFF565F71),
+    onSecondary            = Color(0xFFFFFFFF),
+    secondaryContainer     = Color(0xFFDAE2F9),
+    onSecondaryContainer   = Color(0xFF131C2B),
+    tertiary               = Color(0xFF705575),
+    onTertiary             = Color(0xFFFFFFFF),
+    tertiaryContainer      = Color(0xFFFAD8FD),
+    onTertiaryContainer    = Color(0xFF28132E),
+    background             = Color(0xFFF9F9FF),
+    onBackground           = Color(0xFF1A1B20),
+    surface                = Color(0xFFF9F9FF),
+    onSurface              = Color(0xFF1A1B20),
+    surfaceVariant         = Color(0xFFE0E2EC),
+    onSurfaceVariant       = Color(0xFF44474E),
+    surfaceTint            = Color(0xFF415F91),
+    inverseSurface         = Color(0xFF2F3036),
+    inverseOnSurface       = Color(0xFFF0F0F7),
+    error                  = Color(0xFFBA1A1A),
+    onError                = Color(0xFFFFFFFF),
+    errorContainer         = Color(0xFFFFDAD6),
+    onErrorContainer       = Color(0xFF410002),
+    outline                = Color(0xFF74777F),
+    outlineVariant         = Color(0xFFC4C6D0),
+    scrim                  = Color(0xFF000000),
+    surfaceBright          = Color(0xFFF9F9FF),
+    surfaceDim             = Color(0xFFD9D9E0),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow    = Color(0xFFF3F3FA),
+    surfaceContainer       = Color(0xFFEDEDF4),
+    surfaceContainerHigh   = Color(0xFFE7E8EE),
+    surfaceContainerHighest= Color(0xFFE2E2E9),
 )
 
-// ─── Светлая (Android Light) ──────────────────────────────────────────────────
-// Чистые белые и светло-серые поверхности + синий акцент (#1976D2),
-// как в светлой теме Google-приложений.
+// ─── Монохром / AMOLED (чёрный фон, серые тона) ───────────────────────────────
+// Ноль цвета — только градации серого, фон чисто чёрный.
 
-val LightColors = AppColors(
-    bg             = Color(0xFFF2F2F2),
-    surface        = Color(0xFFFFFFFF),
-    surface2       = Color(0xFFF5F5F5),
-    surface3       = Color(0xFFEEEEEE),
-    text           = Color(0xFF212121),   // Material Grey 900
-    textSub        = Color(0xFF757575),   // Material Grey 600
-    accent         = Color(0xFF1976D2),   // Material Blue 700
-    onAccent       = Color(0xFFFFFFFF),   // тёмный акцент — контраст с белым уже в норме (~4.6:1)
-    border         = Color(0xFFDEDEDE),
-    pillBg         = Color(0xFFFFFFFF),
-    pillActive     = Color(0xFFE3F2FD),   // Blue 50
-    pillActiveText = Color(0xFF1565C0),   // Blue 800
-    pillInactiveText = Color(0xFF9E9E9E),
-    todayAccent    = Color(0xFF1976D2),
-    todayBg        = Color(0x1A1976D2),
-)
-
-// ─── Монохром (AMOLED Mono) ───────────────────────────────────────────────────
-// Чистый чёрный фон + серые поверхности + почти белый акцент.
-// Ноль цвета — только градации серого. Идеально для AMOLED-экранов.
-
-val AmoledColors = AppColors(
-    bg             = Color(0xFF000000),
-    surface        = Color(0xFF0F0F0F),
-    surface2       = Color(0xFF1A1A1A),
-    surface3       = Color(0xFF232323),
-    text           = Color(0xFFF0F0F0),
-    textSub        = Color(0xFF909090),   // было 0x646464 — не проходило WCAG 4.5:1
-                                           // (2.66:1 на surface3), теперь ~4.92-6.58:1
-    accent         = Color(0xFFDEDEDE),   // почти белый — монохром
-    // Именно тут была жалоба: белый текст на 0xFFDEDEDE давал ~1.35:1 —
-    // кнопка "Сохранить" и бегунок тумблера визуально сливались с заливкой.
-    onAccent       = Color(0xFF0A0A0A),   // ~15.6:1
-    border         = Color(0xFF2C2C2C),
-    pillBg         = Color(0xFF0F0F0F),
-    pillActive     = Color(0xFF232323),
-    pillActiveText = Color(0xFFFFFFFF),
-    pillInactiveText = Color(0xFF4A4A4A),
-    todayAccent    = Color(0xFFAAAAAA),   // серый вместо цветного
-    todayBg        = Color(0x1AAAAAAA),
+val AmoledScheme: ColorScheme = darkColorScheme(
+    primary                = Color(0xFFE2E2E2),
+    onPrimary              = Color(0xFF1A1A1A),
+    primaryContainer       = Color(0xFF303030),
+    onPrimaryContainer     = Color(0xFFE6E6E6),
+    inversePrimary         = Color(0xFF474747),
+    secondary              = Color(0xFFC6C6C6),
+    onSecondary            = Color(0xFF2A2A2A),
+    secondaryContainer     = Color(0xFF2E2E2E),
+    onSecondaryContainer   = Color(0xFFE2E2E2),
+    tertiary               = Color(0xFFB5B5B5),
+    onTertiary             = Color(0xFF1F1F1F),
+    tertiaryContainer      = Color(0xFF3A3A3A),
+    onTertiaryContainer    = Color(0xFFE8E8E8),
+    background             = Color(0xFF000000),
+    onBackground           = Color(0xFFE6E6E6),
+    surface                = Color(0xFF000000),
+    onSurface              = Color(0xFFE6E6E6),
+    surfaceVariant         = Color(0xFF2A2A2A),
+    onSurfaceVariant       = Color(0xFFB0B0B0),
+    surfaceTint            = Color(0xFFE2E2E2),
+    inverseSurface         = Color(0xFFE6E6E6),
+    inverseOnSurface       = Color(0xFF1A1A1A),
+    error                  = Color(0xFFFFB4AB),
+    onError                = Color(0xFF690005),
+    errorContainer         = Color(0xFF93000A),
+    onErrorContainer       = Color(0xFFFFDAD6),
+    outline                = Color(0xFF7A7A7A),
+    outlineVariant         = Color(0xFF2E2E2E),
+    scrim                  = Color(0xFF000000),
+    surfaceBright          = Color(0xFF2A2A2A),
+    surfaceDim             = Color(0xFF000000),
+    surfaceContainerLowest = Color(0xFF000000),
+    surfaceContainerLow    = Color(0xFF0D0D0D),
+    surfaceContainer       = Color(0xFF141414),
+    surfaceContainerHigh   = Color(0xFF1C1C1C),
+    surfaceContainerHighest= Color(0xFF262626),
 )
 
 // ─── Enum тем ─────────────────────────────────────────────────────────────────
@@ -109,11 +204,18 @@ enum class ThemePreset(val label: String) {
     AMOLED("Монохром"),
 }
 
-fun colorsFor(preset: ThemePreset): AppColors = when (preset) {
-    ThemePreset.DARK   -> DarkColors
-    ThemePreset.LIGHT  -> LightColors
-    ThemePreset.AMOLED -> AmoledColors
+fun colorSchemeFor(preset: ThemePreset): ColorScheme = when (preset) {
+    ThemePreset.DARK   -> DarkScheme
+    ThemePreset.LIGHT  -> LightScheme
+    ThemePreset.AMOLED -> AmoledScheme
 }
+
+// Совместимость со старым кодом.
+fun colorsFor(preset: ThemePreset): AppColors = AppColors.from(colorSchemeFor(preset))
+
+val DarkColors   = AppColors.from(DarkScheme)
+val LightColors  = AppColors.from(LightScheme)
+val AmoledColors = AppColors.from(AmoledScheme)
 
 // ─── CompositionLocal ─────────────────────────────────────────────────────────
 
@@ -124,20 +226,24 @@ fun AppTheme(
     preset: ThemePreset = ThemePreset.DARK,
     content: @Composable () -> Unit,
 ) {
-    val colors = colorsFor(preset)
+    val scheme = colorSchemeFor(preset)
+    val appColors = remember(preset) { AppColors.from(scheme) }
 
-    // В приложении нет MaterialTheme (своя система цветов через LocalAppColors),
-    // поэтому раньше LocalIndication брал fallback-реализацию из чистого
-    // Foundation — сплошную заливку всей формы при нажатии, без анимации
-    // от точки касания. ripple() из material3 работает и без MaterialTheme —
-    // подключаем его явно, чтобы "выделение при нажатии" было настоящим
-    // анимированным кругом, идущим от места тапа (bounded=true по умолчанию).
-    // Цвет — из текста темы: тёмный риппл на светлой теме, светлый на тёмной/
-    // AMOLED, как и полагается по конвенции Material.
-    CompositionLocalProvider(
-        LocalAppColors provides colors,
-        LocalIndication provides ripple(color = colors.text),
+    // MaterialTheme сам выставляет ripple (LocalIndication), шрифты и формы M3.
+    // Surface задаёт фон и LocalContentColor: Text/Icon без явного цвета
+    // теперь красятся в onSurface, а не в чёрный.
+    MaterialTheme(
+        colorScheme = scheme,
+        typography  = AppTypography,
+        shapes      = AppShapes,
     ) {
-        content()
+        CompositionLocalProvider(LocalAppColors provides appColors) {
+            Surface(
+                modifier     = Modifier.fillMaxSize(),
+                color        = scheme.background,
+                contentColor = scheme.onBackground,
+                content      = content,
+            )
+        }
     }
 }

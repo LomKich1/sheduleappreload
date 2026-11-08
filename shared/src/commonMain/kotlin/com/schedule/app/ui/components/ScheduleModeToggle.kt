@@ -93,7 +93,7 @@ fun ScheduleModeToggle(
             .clip(AppRadius.capsule)
             .then(if (opaqueBackground) Modifier.background(c.pillBg) else Modifier)
             .then(hazeModifier)
-            .border(1.dp, c.border, AppRadius.capsule)
+            .border(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outline, AppRadius.capsule)
             .padding(4.dp),
     ) {
         val halfWidth = maxWidth / 2
@@ -195,5 +195,37 @@ private fun ModeSegment(
             fontSize   = 13.sp,
             fontWeight = FontWeight.SemiBold,
         )
+    }
+}
+
+
+// ─── ScheduleModeSegmented ────────────────────────────────────────────────────
+// Настоящая Material 3 SegmentedButton-группа (Ученики / Преподаватели).
+// Используется в настройках. ScheduleModeToggle выше остаётся только там, где
+// нужен живой прогресс свайпа (экран выбора группы/преподавателя).
+
+@androidx.compose.runtime.Composable
+fun ScheduleModeSegmented(
+    selected: ScheduleMode,
+    onSelect: (ScheduleMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val options = listOf(
+        ScheduleMode.STUDENT to "Ученики",
+        ScheduleMode.TEACHER to "Преподаватели",
+    )
+    androidx.compose.material3.SingleChoiceSegmentedButtonRow(modifier = modifier) {
+        options.forEachIndexed { index, (mode, label) ->
+            androidx.compose.material3.SegmentedButton(
+                selected = selected == mode,
+                onClick = { onSelect(mode) },
+                shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(
+                    index = index,
+                    count = options.size,
+                ),
+            ) {
+                Text(label)
+            }
+        }
     }
 }

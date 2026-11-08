@@ -1,86 +1,71 @@
 package com.schedule.app.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.schedule.app.ui.navigation.Screen
-import com.schedule.app.ui.theme.LocalAppColors
 
-// ─── Единая шапка приложения ──────────────────────────────────────────────────
+// ─── Единая шапка приложения (Material 3 TopAppBar) ───────────────────────────
 //
-//  Раньше FilesScreen и BellsScreen рисовали каждый свою собственную шапку
-//  ("Расписание" / "Расписание звонков" простым статичным текстом) — из-за
-//  этого при переключении вкладок одна шапка резко подменялась другой, без
-//  какой-либо анимации. Теперь шапка ОДНА, живёт на уровне AppScaffold (тот же
-//  приём, что уже применён в ScheduleHostScreen для заголовка группы/препода),
-//  а смена подписи "Расписание" ↔ "Звонки" идёт через FlipTransitionText —
-//  тот самый сплит-флап переворот букв, что и там.
-//
-//  Кнопка настроек теперь доступна с ОБЕИХ вкладок (раньше — только с Files,
-//  на Bells до неё нужно было сначала переключиться на Files).
+//  Одна шапка на уровне AppScaffold для Files/Bells; смена подписи
+//  "Расписание" ↔ "Звонки" идёт через FlipTransitionText.
+//  Кнопка настроек доступна с обеих вкладок.
+//  windowInsets = 0: вертикальные инсеты уже сняты родителем (AppScaffold).
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppHeader(
     activeRoute: String,
     onSettingsClick: () -> Unit,
 ) {
-    val c = LocalAppColors.current
     val title = if (activeRoute == Screen.Files.route) "Расписание" else "Звонки"
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(c.bg)
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                imageVector = CamekIcon,
-                contentDescription = null,
-                tint = c.text,
-                // эксперимент: уменьшил и сдвинул вправо, подальше от
-                // "зоны кнопки назад" в левом углу — смотрим, читается ли
-                // лучше или нужно возвращать как было.
-                modifier = Modifier
-                    .size(20.dp)
-                    .offset(x = 6.dp),
-            )
-            FlipTransitionText(
-                text = title,
-                color = c.text,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-
-        IconButton(
-            onClick = onSettingsClick,
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape),
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Menu,
-                contentDescription = "Настройки",
-                tint = c.accent,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-    }
+    TopAppBar(
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    imageVector = CamekIcon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(24.dp),
+                )
+                FlipTransitionText(
+                    text = title,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = MaterialTheme.typography.titleLarge.fontSize,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        },
+        actions = {
+            IconButton(onClick = onSettingsClick) {
+                Icon(
+                    imageVector = Icons.Outlined.Settings,
+                    contentDescription = "Настройки",
+                )
+            }
+        },
+        windowInsets = WindowInsets(0),
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.background,
+            actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+    )
 }

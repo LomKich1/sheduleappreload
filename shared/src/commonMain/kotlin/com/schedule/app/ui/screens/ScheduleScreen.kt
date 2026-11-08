@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -653,19 +654,17 @@ private fun GroupCard(
     onClick: () -> Unit,
 ) {
     val c           = LocalAppColors.current
-    val bg          = if (isPinned) c.todayAccent.copy(alpha = 0.09f) else c.surface
-    val borderColor = if (isPinned) c.todayAccent.copy(alpha = 0.32f) else c.border
-    val borderWidth = if (isPinned) 2.dp else 1.dp
-    val iconBg      = if (isPinned) c.todayAccent.copy(alpha = 0.18f) else c.surface2
-    val iconTint    = if (isPinned) c.todayAccent else c.textSub
-    val nameColor   = if (isPinned) c.todayAccent else c.text
+    val scheme      = MaterialTheme.colorScheme
+    val bg          = if (isPinned) scheme.primaryContainer else scheme.surfaceContainer
+    val iconBg      = if (isPinned) scheme.primary else scheme.secondaryContainer
+    val iconTint    = if (isPinned) scheme.onPrimary else scheme.onSecondaryContainer
+    val nameColor   = if (isPinned) scheme.onPrimaryContainer else scheme.onSurface
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(AppRadius.card)
             .background(bg)
-            .border(borderWidth, borderColor, AppRadius.card)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -703,7 +702,7 @@ private fun GroupCard(
         Icon(
             imageVector        = Icons.Outlined.ChevronRight,
             contentDescription = null,
-            tint               = if (isPinned) c.todayAccent else c.textSub,
+            tint               = if (isPinned) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
             modifier           = Modifier.size(18.dp),
         )
     }
@@ -827,43 +826,26 @@ private fun LiveBar(lesson: LessonEntry, status: LessonStatus) {
 private fun PairCard(lesson: LessonEntry, status: LessonStatus) {
     val c = LocalAppColors.current
 
-    val leftColor = when {
-        status.isNow    -> c.todayAccent
-        status.isNext   -> Color(0xFF50C878)
-        lesson.isWindow -> c.surface3
-        else            -> c.accent
-    }
+    val scheme = MaterialTheme.colorScheme
     val bgColor = when {
-        status.isNow -> c.todayAccent.copy(alpha = 0.10f)
-        else         -> c.surface2
-    }
-    val borderColor = when {
-        status.isNow  -> c.todayAccent.copy(alpha = 0.30f)
-        status.isNext -> Color(0xFF50C878).copy(alpha = 0.30f)
-        else          -> c.surface3
+        status.isNow  -> scheme.primaryContainer
+        status.isNext -> scheme.tertiaryContainer
+        else          -> scheme.surfaceContainer
     }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp)
-            .padding(bottom = 9.dp)
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 8.dp)
             .then(if (lesson.isWindow) Modifier.alpha(0.6f) else Modifier),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(AppRadius.card)
-                .background(bgColor)
-                .border(1.5.dp, borderColor, AppRadius.card),
+                .clip(MaterialTheme.shapes.large)
+                .background(bgColor),
         ) {
-            Box(
-                modifier = Modifier
-                    .width(3.dp)
-                    .fillMaxHeight()
-                    .background(leftColor),
-            )
-
             if (lesson.isWindow) {
                 // Компактная карточка «Окно» — по правке дизайнера: раньше она
                 // рисовалась как настоящая пара (тот же layout, просто alpha+курсив)
@@ -924,7 +906,7 @@ private fun PairCard(lesson: LessonEntry, status: LessonStatus) {
 
                         Column(modifier = Modifier.weight(1f)) {
                             if (status.isNow || status.isNext) {
-                                val badgeColor = if (status.isNow) c.todayAccent else Color(0xFF50C878)
+                                val badgeColor = if (status.isNow) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
                                 val badgeText  = if (status.isNow) "▶ СЕЙЧАС" else "СЛЕДУЮЩАЯ"
                                 Box(
                                     modifier = Modifier
@@ -932,7 +914,7 @@ private fun PairCard(lesson: LessonEntry, status: LessonStatus) {
                                         .background(badgeColor)
                                         .padding(horizontal = 8.dp, vertical = 2.dp),
                                 ) {
-                                    Text(badgeText, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text(badgeText, color = if (status.isNow) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
                                 Spacer(Modifier.height(5.dp))
                             }
