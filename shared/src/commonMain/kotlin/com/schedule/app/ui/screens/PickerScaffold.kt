@@ -124,12 +124,14 @@ fun PickerScaffold(
     modeSwipeProgress: Float,
     counterTranslationX: Float,
     modifier: Modifier = Modifier,
+    // false — широкий режим (ПК): оба вида на экране сразу, тумблер не нужен.
+    showModeToggle: Boolean = true,
     content: @Composable BoxScope.(PickerInsets) -> Unit,
 ) {
     val c = LocalAppColors.current
     val density = LocalDensity.current
     val placement by AppPrefs.scheduleTogglePlacement.collectAsState()
-    val toggleOnTop = placement == ScheduleTogglePlacement.TOP
+    val toggleOnTop = placement == ScheduleTogglePlacement.TOP && showModeToggle
 
     // Высота верхнего блока: live — как есть (меняется с pull-to-search и
     // схлопыванием шапки), rest — «покоящаяся», только когда поиск полностью
@@ -145,7 +147,7 @@ fun PickerScaffold(
     val pullToSearch = rememberPullToSearchConnection(search)
     // Высота КОНТЕНТА нижнего блока (тумблер + его отступы, без инсетов).
     val bottomChromePx = remember { mutableStateOf(0) }
-    LaunchedEffect(toggleOnTop) { if (toggleOnTop) bottomChromePx.value = 0 }
+    LaunchedEffect(toggleOnTop, showModeToggle) { if (toggleOnTop || !showModeToggle) bottomChromePx.value = 0 }
 
     val navInsets = WindowInsets.navigationBars
     val imeInsets = WindowInsets.ime
@@ -155,7 +157,7 @@ fun PickerScaffold(
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     val listTop = with(density) { restTopPx.value.toDp() }
-    val listBottom = if (toggleOnTop) {
+    val listBottom = if (toggleOnTop || !showModeToggle) {
         80.dp + navBottom
     } else {
         with(density) { bottomChromePx.value.toDp() } + navBottom + 8.dp
@@ -229,7 +231,7 @@ fun PickerScaffold(
         }
 
         // ── Нижний блок: тумблер при BOTTOM. Поиск его НЕ прячет ───────────
-        if (!toggleOnTop) {
+        if (!toggleOnTop && showModeToggle) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)

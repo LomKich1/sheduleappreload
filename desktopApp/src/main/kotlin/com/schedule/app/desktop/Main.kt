@@ -32,5 +32,7 @@ fun main() = application {
 
 private fun initialWindowState() = WindowState(
     position = WindowPosition.Aligned(androidx.compose.ui.Alignment.Center),
-    size = DpSize(420.dp, 860.dp), // по умолчанию похоже на пропорции телефона, окно можно растянуть
+    // Широкое окно: от 840.dp включается двухколоночная раскладка (см.
+    // WIDE_LAYOUT_MIN_WIDTH). Если сузить окно — вернётся телефонный вид.
+    size = DpSize(1280.dp, 800.dp),
 )

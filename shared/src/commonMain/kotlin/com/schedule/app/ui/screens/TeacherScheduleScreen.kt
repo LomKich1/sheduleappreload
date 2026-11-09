@@ -118,6 +118,10 @@ fun TeacherScheduleScreen(
     // в ScheduleHostScreen. Дефолт — только чтобы превью/одиночный вызов компилились.
     search: PickerSearchState = remember { PickerSearchState() },
     hazeState: HazeState = rememberHazeState(),
+    // Широкий режим (ПК): тумблер Ученики/Преподаватели скрыт, а кнопка
+    // «назад» в шапке пикера остаётся только у одной из двух колонок.
+    showModeToggle: Boolean = true,
+    showBackButton: Boolean = true,
 ) {
     val c        = LocalAppColors.current
     val uiState  by vm.uiState.collectAsState()
@@ -172,6 +176,7 @@ fun TeacherScheduleScreen(
             isPairsScreen = false,
             isLoading     = uiState is TeacherPickerUiState.Loading,
             progress      = progress,
+            showBack      = showBackButton,
             onBack        = onBack,
         )
 
@@ -191,6 +196,7 @@ fun TeacherScheduleScreen(
             onModeSelect        = onModeSelect,
             modeSwipeProgress   = modeSwipeProgress,
             counterTranslationX = counterTranslationX,
+            showModeToggle      = showModeToggle,
         ) { pad ->
             AnimatedContent(
                 targetState = uiState,

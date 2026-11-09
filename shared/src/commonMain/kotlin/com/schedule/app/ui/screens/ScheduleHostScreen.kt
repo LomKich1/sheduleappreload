@@ -39,6 +39,7 @@ import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.FlipTransitionText
+import com.schedule.app.ui.components.LocalWideLayout
 import com.schedule.app.ui.components.PickerSearchState
 import com.schedule.app.ui.components.SEARCH_ANIM_MS
 import com.schedule.app.ui.components.ScheduleMode
@@ -81,6 +82,8 @@ data class ScheduleHeaderInfo(
     // совпадала с остальным приложением.
     val filledFontSize: TextUnit = 17.sp,
     val onBack: () -> Unit = {},
+    // false — кнопка «назад» скрыта (правая колонка в широком режиме).
+    val showBack: Boolean = true,
 )
 
 // ─── ScheduleHostScreen ─────────────────────────────────────────────────────
@@ -105,6 +108,80 @@ data class ScheduleHeaderInfo(
 // ScheduleHeaderInfo/ScheduleHeaderRow) — хост их не рисует и не дублирует.
 @Composable
 fun ScheduleHostScreen(
+    file: ScheduleFile,
+    onBack: () -> Unit,
+    onDismissProgressChanged: (Float) -> Unit = {},
+) {
+    // Широкое окно (ПК) — две колонки рядом, узкое — прежний пейджер со свайпом.
+    if (LocalWideLayout.current) {
+        ScheduleHostSplit(file = file, onBack = onBack)
+    } else {
+        ScheduleHostPager(file = file, onBack = onBack, onDismissProgressChanged = onDismissProgressChanged)
+    }
+}
+
+// Широкий режим: «Ученики» слева, «Преподаватели» справа, оба видны всегда.
+// У каждой колонки своё независимое состояние: свой ViewModel, свой поиск и
+// свой HazeState (общий поиск/блюр имели смысл только для пейджера, где в
+// кадре одна половина). Группа слева и препод справа открываются независимо —
+// можно смотреть оба расписания одновременно.
+@Composable
+private fun ScheduleHostSplit(
+    file: ScheduleFile,
+    onBack: () -> Unit,
+) {
+    val c = LocalAppColors.current
+    val studentHaze = rememberHazeState()
+    val teacherHaze = rememberHazeState()
+    val studentSearch = remember(file.name) { PickerSearchState() }
+    val teacherSearch = remember(file.name) { PickerSearchState() }
+
+    // Сброс запроса после закрытия поиска — как в пейджере (см. ScheduleHostPager).
+    LaunchedEffect(studentSearch.active) {
+        if (!studentSearch.active) {
+            delay(SEARCH_ANIM_MS + 40L)
+            if (!studentSearch.active) studentSearch.query = ""
+        }
+    }
+    LaunchedEffect(teacherSearch.active) {
+        if (!teacherSearch.active) {
+            delay(SEARCH_ANIM_MS + 40L)
+            if (!teacherSearch.active) teacherSearch.query = ""
+        }
+    }
+
+    Row(modifier = Modifier.fillMaxSize().background(c.bg)) {
+        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            ScheduleScreen(
+                file           = file,
+                onBack         = onBack,
+                hazeState      = studentHaze,
+                search         = studentSearch,
+                showModeToggle = false,
+                showBackButton = true,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .fillMaxHeight()
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant),
+        )
+        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            TeacherScheduleScreen(
+                file           = file,
+                onBack         = onBack,
+                hazeState      = teacherHaze,
+                search         = teacherSearch,
+                showModeToggle = false,
+                showBackButton = false,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScheduleHostPager(
     file: ScheduleFile,
     onBack: () -> Unit,
     // Прогресс живого свайп-дисмисса всего экрана (0 — на месте, 1 — уехал) —
@@ -454,12 +531,16 @@ fun ScheduleHeaderRow(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         // Material 3 IconButton вместо самописного круга с фоном.
-        androidx.compose.material3.IconButton(onClick = header.onBack) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                contentDescription = "Назад",
-                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-            )
+        if (header.showBack) {
+            androidx.compose.material3.IconButton(onClick = header.onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "Назад",
+                    tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        } else {
+            Spacer(Modifier.width(12.dp))
         }
 
         Column(modifier = Modifier.weight(1f)) {

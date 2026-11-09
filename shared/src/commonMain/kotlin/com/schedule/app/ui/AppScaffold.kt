@@ -10,6 +10,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +37,9 @@ import com.schedule.app.data.prefs.AnimPrefs
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.AppHeader
+import com.schedule.app.ui.components.LocalWideLayout
+import com.schedule.app.ui.components.WIDE_LAYOUT_MIN_WIDTH
+import com.schedule.app.ui.components.WideAppHeader
 import com.schedule.app.ui.components.DismissDimScrim
 import com.schedule.app.ui.components.rememberSwipableProgress
 import com.schedule.app.ui.navigation.FloatingPillNav
@@ -62,6 +66,19 @@ private const val TABS_PLACEHOLDER = "tabs_placeholder"
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun AppScaffold() {
+    // Ширина окна решает раскладку: узкое (телефон) — как раньше, вкладки
+    // Files/Bells со свайпом; широкое (ПК) — обе колонки сразу, рядом.
+    // LocalWideLayout читают и экраны ниже по дереву (ScheduleHostScreen).
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val wide = maxWidth >= WIDE_LAYOUT_MIN_WIDTH
+        CompositionLocalProvider(LocalWideLayout provides wide) {
+            AppScaffoldBody(wide)
+        }
+    }
+}
+
+@Composable
+private fun AppScaffoldBody(wide: Boolean) {
     val c = LocalAppColors.current
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
@@ -123,7 +140,7 @@ fun AppScaffold() {
 
     // Системная кнопка «назад»: если открыта вкладка Bells и нет глубокого
     // экрана сверху — возвращаем на Files, а не выходим из приложения.
-    BackHandler(enabled = !deepScreenOpen && activeTab == Screen.Bells.route) {
+    BackHandler(enabled = !wide && !deepScreenOpen && activeTab == Screen.Bells.route) {
         switchTab(Screen.Files.route, animateEntrance = true)
     }
 
@@ -202,6 +219,30 @@ fun AppScaffold() {
                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))
                 .hazeSource(hazeState),
         ) {
+            if (wide) {
+                // ── ПК: Files и Bells рядом, свайпа/пилла нет ───────────────
+                WideAppHeader(onSettingsClick = { navController.navigate(Screen.Settings.route) })
+                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        FilesScreen(
+                            onFileClick = { file ->
+                                NavigationHolder.pendingFile = file
+                                navController.navigate(Screen.Schedule.route)
+                            },
+                            entranceTrigger = filesEntranceTrigger,
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .fillMaxHeight()
+                            .background(androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant),
+                    )
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        BellsScreen(entranceTrigger = bellsEntranceTrigger)
+                    }
+                }
+            } else {
             AppHeader(
                 activeRoute = activeTab,
                 onSettingsClick = { navController.navigate(Screen.Settings.route) },
@@ -296,6 +337,7 @@ fun AppScaffold() {
                     BellsScreen(entranceTrigger = bellsEntranceTrigger)
                 }
             }
+            } // else (узкое окно)
         }
 
         // ── Плавающий пилл-навигатор Files/Bells ────────────────────────────
@@ -313,7 +355,7 @@ fun AppScaffold() {
         // фон Schedule/Settings/DebugSettings, ровно синхронно с тем, как
         // они уезжают — что при живом драге, что при обычном tap-transition
         // самого NavHost (у него тот же slideOutHorizontally).
-        FloatingPillNav(
+        if (!wide) FloatingPillNav(
             currentRoute = activeTab,
             onNavigate = { route -> switchTab(route, animateEntrance = true) },
             progress = swipable.progress,
