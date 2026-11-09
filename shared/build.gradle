@@ -15,7 +15,9 @@ kotlin {
     }
     iosArm64()
     iosSimulatorArm64()
-    iosX64()
+    // iosX64 (Intel-симулятор) убран: Compose Multiplatform 1.12 и зависимости
+    // (haze, lifecycle, navigation) не публикуют под него артефакты —
+    // 'KMP Dependencies Resolution Failure ... Unresolved platforms: [iosX64]'.
 
     targets.withType(org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget).configureEach {
         binaries.framework {
@@ -28,7 +30,12 @@ kotlin {
         commonMain.dependencies {
             api(compose.runtime)
             api(compose.foundation)
-            api(compose.material3)
+            // Material3 берём явной альфой, а не алиасом compose.material3: в стабильной
+            // сборке Expressive API (LoadingIndicator, ExperimentalMaterial3ExpressiveApi)
+            // закрыт (internal) — отсюда ошибки компиляции в AppLoadingIndicator.kt.
+            // 1.12.0-alpha03 — именно та версия Material3, что перечислена в
+            // 'What's new in Compose Multiplatform 1.12.2' (на базе Jetpack Material3 1.5.0-alpha22).
+            api("org.jetbrains.compose.material3:material3:1.12.0-alpha03")
             api(compose.materialIconsExtended)
             api(compose.components.resources)
             api(compose.components.uiToolingPreview)
@@ -71,7 +78,7 @@ kotlin {
 
 android {
     namespace 'com.schedule.app.shared'
-    compileSdk 36
+    compileSdk 37
 
     defaultConfig { minSdk 26 }
 

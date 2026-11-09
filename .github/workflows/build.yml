@@ -235,6 +235,20 @@ jobs:
           done
           exit 1
 
+      # wixtoolset/wix3 качается с github.com и периодически даёт 504 (Gateway
+      # Time-out) — одна такая ошибка валила :downloadWix на windows-latest.
+      # Скачиваем заранее, с повторами; Gradle потом берёт готовый файл из кэша.
+      - name: Prefetch WiX (с повторами)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          for i in 1 2 3 4 5; do
+            ./gradlew downloadWix && exit 0
+            echo "Попытка $i не удалась, ждём $((i * 15)) c…"
+            sleep $((i * 15))
+          done
+          exit 1
+
       - name: Build desktop package
         shell: bash   # на windows-latest по умолчанию PowerShell, а ./gradlew — sh-скрипт
         run: ./gradlew :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.prepare.outputs.desktop-version }}.${{ github.run_number }}"

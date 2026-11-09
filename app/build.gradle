@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace 'com.schedule.app'
-    compileSdk 36
+    compileSdk 37
 
     // Версия читается из gradle.properties — менять только там.
     // Вынесено ДО defaultConfig: без явного = Groovy путает присвоение

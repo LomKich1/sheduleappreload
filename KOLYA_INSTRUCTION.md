@@ -8,7 +8,7 @@
 
 - исходный проект ScheduleApp без `.git`, кэшей и результатов сборки;
 - поддержка macOS через существующий Compose Desktop-модуль;
-- iOS-цели `iosArm64`, `iosSimulatorArm64` и `iosX64`;
+- iOS-цели `iosArm64` и `iosSimulatorArm64`;
 - Xcode-проект `iosApp/ScheduleApp.xcodeproj`;
 - iOS-реализации настроек, логирования и платформенных функций;
 - сетевой и JSON-код, перенесённый на кроссплатформенные библиотеки;
