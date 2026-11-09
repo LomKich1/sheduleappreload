@@ -136,6 +136,19 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      # services.gradle.org / github.com периодически отвечают 504 или таймаутом
+      # при скачивании дистрибутива wrapper'а — один такой сбой валил джобу.
+      # Прогреваем wrapper с повторами, до реальной сборки.
+      - name: Download Gradle distribution (с повторами)
+        shell: bash
+        run: |
+          for i in 1 2 3 4 5; do
+            ./gradlew --version && exit 0
+            echo "Попытка $i не удалась, ждём $((i * 15)) c…"
+            sleep $((i * 15))
+          done
+          exit 1
+
       # ── 7. Debug APK (всегда, без секретов) ──────────────────────────────
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-build-cache --rerun-tasks
@@ -209,6 +222,19 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      # services.gradle.org / github.com периодически отвечают 504 или таймаутом
+      # при скачивании дистрибутива wrapper'а — один такой сбой валил джобу.
+      # Прогреваем wrapper с повторами, до реальной сборки.
+      - name: Download Gradle distribution (с повторами)
+        shell: bash
+        run: |
+          for i in 1 2 3 4 5; do
+            ./gradlew --version && exit 0
+            echo "Попытка $i не удалась, ждём $((i * 15)) c…"
+            sleep $((i * 15))
+          done
+          exit 1
+
       - name: Build desktop package
         shell: bash   # на windows-latest по умолчанию PowerShell, а ./gradlew — sh-скрипт
         run: ./gradlew :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.prepare.outputs.desktop-version }}.${{ github.run_number }}"
@@ -236,6 +262,19 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
+
+      # services.gradle.org / github.com периодически отвечают 504 или таймаутом
+      # при скачивании дистрибутива wrapper'а — один такой сбой валил джобу.
+      # Прогреваем wrapper с повторами, до реальной сборки.
+      - name: Download Gradle distribution (с повторами)
+        shell: bash
+        run: |
+          for i in 1 2 3 4 5; do
+            ./gradlew --version && exit 0
+            echo "Попытка $i не удалась, ждём $((i * 15)) c…"
+            sleep $((i * 15))
+          done
+          exit 1
 
       # Собираем и симуляторный, и устройство-ориентированный Kotlin framework.
       - name: Build shared iOS frameworks
