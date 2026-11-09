@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import com.schedule.app.ui.components.wideContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -76,10 +77,14 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
     ) {
         DebugSettingsHeader(onBack = { dismissState.dismiss() })
 
+        Box(
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+            contentAlignment = androidx.compose.ui.Alignment.TopCenter,
+        ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .wideContentWidth()
+                .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 16.dp),
         ) {
             SettingsSectionLabel("Анимация вкладок")
@@ -158,6 +163,7 @@ fun DebugSettingsScreen(onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(80.dp))
+        }
         }
     }
 }

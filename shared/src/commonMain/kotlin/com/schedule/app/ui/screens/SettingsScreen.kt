@@ -54,6 +54,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import com.schedule.app.ui.components.wideContentWidth
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -176,10 +177,16 @@ fun SettingsScreen(
                 ),
             )
 
+            // Скролл — на весь экран (колесо мыши работает по всей ширине), а сам
+            // контент на ПК ограничен по ширине и стоит по центру.
+            Box(
+                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                contentAlignment = Alignment.TopCenter,
+            ) {
             Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                    .wideContentWidth()
+                    .fillMaxWidth()
                     .padding(horizontal = 16.dp),
             ) {
                 Spacer(Modifier.height(8.dp))
@@ -303,6 +310,7 @@ fun SettingsScreen(
                 }
 
                 Spacer(Modifier.height(80.dp))
+            }
             }
         }
 

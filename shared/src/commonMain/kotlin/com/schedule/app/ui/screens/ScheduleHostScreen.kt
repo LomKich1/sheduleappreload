@@ -40,6 +40,9 @@ import com.schedule.app.data.prefs.TabAnimMode
 import com.schedule.app.ui.components.CascadeEdge
 import com.schedule.app.ui.components.FlipTransitionText
 import com.schedule.app.ui.components.LocalWideLayout
+import com.schedule.app.ui.components.ScheduleErrorState
+import com.schedule.app.ui.components.blockTouches
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.schedule.app.ui.components.PickerSearchState
 import com.schedule.app.ui.components.SEARCH_ANIM_MS
 import com.schedule.app.ui.components.ScheduleMode
@@ -133,6 +136,18 @@ private fun ScheduleHostSplit(
     val c = LocalAppColors.current
     val studentHaze = rememberHazeState()
     val teacherHaze = rememberHazeState()
+
+    // ViewModel'и создаём здесь и отдаём в колонки: хосту нужно знать, не упала
+    // ли загрузка хотя бы у одной из них. Скачаться может только часть (например,
+    // группы есть, а преподы получили 429) — полусломанный экран хуже, поэтому
+    // при любой ошибке поверх обеих колонок показывается ОДНА кнопка «Повторить».
+    val groupVm: GroupPickerViewModel = viewModel { GroupPickerViewModel() }
+    val teacherVm: TeacherPickerViewModel = viewModel { TeacherPickerViewModel() }
+    val groupState by groupVm.uiState.collectAsState()
+    val teacherState by teacherVm.uiState.collectAsState()
+    val groupError = (groupState as? PickerUiState.Error)?.message
+    val teacherError = (teacherState as? TeacherPickerUiState.Error)?.message
+    val loadError = groupError ?: teacherError
     val studentSearch = remember(file.name) { PickerSearchState() }
     val teacherSearch = remember(file.name) { PickerSearchState() }
 
@@ -150,33 +165,59 @@ private fun ScheduleHostSplit(
         }
     }
 
-    Row(modifier = Modifier.fillMaxSize().background(c.bg)) {
+    Box(modifier = Modifier.fillMaxSize().background(c.bg)) {
+    Row(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
             ScheduleScreen(
                 file           = file,
                 onBack         = onBack,
+                vm             = groupVm,
                 hazeState      = studentHaze,
                 search         = studentSearch,
                 showModeToggle = false,
                 showBackButton = true,
             )
         }
-        Box(
-            modifier = Modifier
-                .width(1.dp)
-                .fillMaxHeight()
-                .background(androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant),
-        )
         Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
             TeacherScheduleScreen(
                 file           = file,
                 onBack         = onBack,
+                vm             = teacherVm,
                 hazeState      = teacherHaze,
                 search         = teacherSearch,
                 showModeToggle = false,
                 showBackButton = false,
             )
         }
+    }
+
+    if (loadError != null) {
+        // Закрывает обе колонки целиком (в т.ч. тапы), кроме стрелки «назад»
+        // слева — выйти с экрана можно и при ошибке.
+        Box(modifier = Modifier.fillMaxSize().background(c.bg)) {
+            // Блокировщик тапов — ОТДЕЛЬНЫМ слоем под кнопками: blockTouches на
+            // родителе съедал бы события раньше, чем они дойдут до «Повторить».
+            Box(modifier = Modifier.fillMaxSize().blockTouches(true))
+            ScheduleErrorState(
+                title   = "Не удалось загрузить расписание",
+                message = loadError,
+                onRetry = {
+                    if (groupError != null) groupVm.load(file)
+                    if (teacherError != null) teacherVm.load(file)
+                },
+            )
+            androidx.compose.material3.IconButton(
+                onClick = onBack,
+                modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(4.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "Назад",
+                    tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
     }
 }
 
@@ -540,7 +581,9 @@ fun ScheduleHeaderRow(
                 )
             }
         } else {
-            Spacer(Modifier.width(12.dp))
+            // Высота как у IconButton (48.dp) — иначе шапка без стрелки ниже, и
+            // поле поиска в соседней колонке стоит на другой высоте.
+            Spacer(Modifier.width(12.dp).height(48.dp))
         }
 
         Column(modifier = Modifier.weight(1f)) {

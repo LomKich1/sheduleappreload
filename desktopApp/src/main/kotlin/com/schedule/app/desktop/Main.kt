@@ -32,7 +32,8 @@ fun main() = application {
 
 private fun initialWindowState() = WindowState(
     position = WindowPosition.Aligned(androidx.compose.ui.Alignment.Center),
-    // Широкое окно: от 840.dp включается двухколоночная раскладка (см.
-    // WIDE_LAYOUT_MIN_WIDTH). Если сузить окно — вернётся телефонный вид.
-    size = DpSize(1280.dp, 800.dp),
+    // Минимально широкое окно: от 840.dp включается двухколоночная раскладка
+    // (см. WIDE_LAYOUT_MIN_WIDTH), 880.dp — с небольшим запасом. Высота чуть
+    // больше прежних 860.dp. Если сузить окно — вернётся телефонный вид.
+    size = DpSize(880.dp, 900.dp),
 )

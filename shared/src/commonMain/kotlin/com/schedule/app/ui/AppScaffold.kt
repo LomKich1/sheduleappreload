@@ -232,12 +232,6 @@ private fun AppScaffoldBody(wide: Boolean) {
                             entranceTrigger = filesEntranceTrigger,
                         )
                     }
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .fillMaxHeight()
-                            .background(androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant),
-                    )
                     Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                         BellsScreen(entranceTrigger = bellsEntranceTrigger)
                     }

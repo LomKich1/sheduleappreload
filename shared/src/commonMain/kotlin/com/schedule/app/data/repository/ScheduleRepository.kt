@@ -6,7 +6,10 @@ import com.schedule.app.data.remote.GitHubApi
 import com.schedule.app.data.remote.YandexDiskApi
 import com.schedule.app.util.scheduleFileFromName
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.Clock
 
 object ScheduleRepository {
 
@@ -102,10 +105,49 @@ object ScheduleRepository {
         throw Exception(errorMsg)
     }
 
+    // Экран файла запускает загрузку сразу у двух ViewModel (группы и преподы),
+    // причём это один и тот же файл. Две одновременные закачки с Я.Диска
+    // приводили к HTTP 429: одна из колонок оставалась без данных. Теперь закачки
+    // идут строго по очереди, а вторая берёт байты первой из короткого кеша
+    // (TTL небольшой — чтобы не отдать устаревший файл при обновлении).
+    // Ошибки не кешируются — «Повторить» качает заново.
+    private val downloadMutex = Mutex()
+    private var lastDownloadKey: String? = null
+    private var lastDownloadBytes: ByteArray? = null
+    private var lastDownloadAt: Long = 0L
+    private const val DOWNLOAD_REUSE_MS = 30_000L
+
     suspend fun downloadFile(
         publicKey: String,
         file: ScheduleFile,
         onProgress: (Float) -> Unit = {},
+    ): ByteArray = withContext(Dispatchers.Default) {
+        // Debug-файл лежит в памяти, качать нечего — и кешировать нельзя (его
+        // содержимое меняют прямо во время теста).
+        if (DebugFileStore.isDebugUrl(file.downloadUrl)) {
+            return@withContext downloadFileUncached(publicKey, file, onProgress)
+        }
+        val key = "$publicKey|${file.downloadUrl}|${file.sha}"
+        downloadMutex.withLock {
+            val now = Clock.System.now().toEpochMilliseconds()
+            val cached = lastDownloadBytes
+            if (cached != null && lastDownloadKey == key && now - lastDownloadAt < DOWNLOAD_REUSE_MS) {
+                Logger.d(TAG, "downloadFile() '${file.name}' → из недавнего кеша")
+                onProgress(1f)
+                return@withLock cached
+            }
+            val bytes = downloadFileUncached(publicKey, file, onProgress)
+            lastDownloadKey = key
+            lastDownloadBytes = bytes
+            lastDownloadAt = Clock.System.now().toEpochMilliseconds()
+            bytes
+        }
+    }
+
+    private suspend fun downloadFileUncached(
+        publicKey: String,
+        file: ScheduleFile,
+        onProgress: (Float) -> Unit,
     ): ByteArray = withContext(Dispatchers.Default) {
         val url = file.downloadUrl
         Logger.d(TAG, "downloadFile() '${file.name}' url='${url.take(60)}...'")
