@@ -128,15 +128,17 @@ jobs:
         run: |
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      # ── 6. Gradle 8.9 (без gradlew в репозитории) ─────────────────────────
-      - name: Set up Gradle 8.9
+      # ── 6. Gradle: берём версию из gradle-wrapper.properties ──────────────
+      # AGP 8.13.2 требует Gradle >= 8.13, а wrapper в репо уже на 8.14.3.
+      # Раньше тут был жёстко прописан gradle-version: '8.9' -> сборка падала
+      # с "Minimum supported Gradle version is 8.13. Current version is 8.9",
+      # а скачивание 8.9 ещё и ловило 504 от services.gradle.org.
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.9'
 
       # ── 7. Debug APK (всегда, без секретов) ──────────────────────────────
       - name: Build Debug APK
-        run: gradle assembleDebug --no-build-cache --rerun-tasks
+        run: ./gradlew assembleDebug --no-build-cache --rerun-tasks
 
       # ── 8. Signed Release APK (если keystore настроен) ───────────────────
       - name: Build signed Release APK
@@ -146,7 +148,7 @@ jobs:
           if [ -n "$KEYSTORE_B64" ]; then
             echo "🔑 Keystore найден — собираем Release APK"
             echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/release.jks"
-            gradle assembleRelease \
+            ./gradlew assembleRelease \
               -PKEYSTORE_PATH="$RUNNER_TEMP/release.jks" \
               -PKEYSTORE_PASSWORD="${{ secrets.KEYSTORE_PASSWORD }}" \
               -PKEY_ALIAS="${{ secrets.KEY_ALIAS }}" \
@@ -204,13 +206,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Gradle 8.9
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.9'
 
       - name: Build desktop package
-        run: gradle :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.prepare.outputs.desktop-version }}.${{ github.run_number }}"
+        shell: bash   # на windows-latest по умолчанию PowerShell, а ./gradlew — sh-скрипт
+        run: ./gradlew :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.prepare.outputs.desktop-version }}.${{ github.run_number }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -233,14 +234,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Gradle 8.9
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.9'
 
       # Собираем и симуляторный, и устройство-ориентированный Kotlin framework.
       - name: Build shared iOS frameworks
-        run: gradle :shared:linkDebugFrameworkIosSimulatorArm64 :shared:linkReleaseFrameworkIosArm64
+        run: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 :shared:linkReleaseFrameworkIosArm64
 
       # Это неподписанная сборка для симулятора. Подписанный .ipa для реального
       # iPhone появляется после настройки Apple Developer Team в Xcode.
