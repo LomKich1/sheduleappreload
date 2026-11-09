@@ -22,6 +22,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -54,6 +56,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import com.schedule.app.data.prefs.AppPrefs
 import com.schedule.app.ui.components.CascadeEdge
@@ -66,8 +70,12 @@ import com.schedule.app.ui.theme.AppTheme
 import com.schedule.app.ui.theme.ThemePreset
 import com.schedule.app.util.BackHandler
 import com.schedule.app.util.IsDebugBuild
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+// Сколько нужно удерживать «Сохранить», чтобы открылась пасхалка (CreditsDialog).
+private const val SECRET_HOLD_MS = 2000L
 
 // ─── SettingsScreen (Шаг 2.5) ─────────────────────────────────────────────────
 // Без отдельной ViewModel: экран не делает сетевых запросов, только читает/пишет
@@ -108,6 +116,33 @@ fun SettingsScreen(
     var showToast by remember { mutableStateOf(false) }
 
     val canSave = urlField.isNotBlank()
+
+    // Пасхалка: удержание «Сохранить» ~2 с открывает окно с авторами. Обычный тап
+    // сохраняет как раньше; если удержание сработало, отпускание кнопки
+    // (onClick) ничего не сохраняет и экран не закрывает.
+    var showCredits by remember { mutableStateOf(false) }
+    var secretFired by remember { mutableStateOf(false) }
+    val saveInteraction = remember { MutableInteractionSource() }
+    val haptics = LocalHapticFeedback.current
+    LaunchedEffect(saveInteraction) {
+        var hold: Job? = null
+        saveInteraction.interactions.collect { interaction ->
+            when (interaction) {
+                is PressInteraction.Press -> {
+                    secretFired = false
+                    hold?.cancel()
+                    hold = launch {
+                        delay(SECRET_HOLD_MS)
+                        secretFired = true
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showCredits = true
+                    }
+                }
+                is PressInteraction.Release,
+                is PressInteraction.Cancel -> hold?.cancel()
+            }
+        }
+    }
 
     val dismissState = rememberSwipeDismissState(onDismissed = onBack)
     BackHandler { dismissState.dismiss() }
@@ -251,11 +286,16 @@ fun SettingsScreen(
                 CascadeEntranceItem(index = 4, triggerKey = Unit, enabled = entranceAnimOn, edge = CascadeEdge.RIGHT) {
                     Button(
                         onClick = {
-                            AppPrefs.saveYandexUrl(urlField)
-                            showToast = true
-                            scope.launch { delay(900); dismissState.dismiss() }
+                            if (secretFired) {
+                                secretFired = false
+                            } else {
+                                AppPrefs.saveYandexUrl(urlField)
+                                showToast = true
+                                scope.launch { delay(900); dismissState.dismiss() }
+                            }
                         },
                         enabled = canSave,
+                        interactionSource = saveInteraction,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                     ) {
                         Text("Сохранить")
@@ -283,6 +323,10 @@ fun SettingsScreen(
                     Text("Настройки сохранены")
                 }
             }
+        }
+
+        if (showCredits) {
+            CreditsDialog(onDismiss = { showCredits = false })
         }
     }
 }
