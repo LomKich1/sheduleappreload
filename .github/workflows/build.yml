@@ -69,17 +69,13 @@ jobs:
           echo "v=$V" >> "$GITHUB_OUTPUT"
           echo "Версия: $V"
 
-          # Версия для desktop-пакетов (Exe/Msi/Dmg) ДОЛЖНА иметь ровно 3
-          # числовые части (MAJOR.MINOR.BUILD) — это требование самого
-          # Compose-плагина, а не наша прихоть. APP_VERSION уже 3 части
-          # ("1.0.1"), поэтому просто прицепить run_number сверху (получая
-          # "1.0.1.143") нельзя — 4 части ломают сборку и Windows, и Linux/
-          # macOS джобы разом, ещё на этапе конфигурации Gradle, до всякой
-          # реальной компиляции. Берём только MAJOR.MINOR из APP_VERSION и
-          # подставляем run_number как BUILD — растущий номер для MSI
-          # upgrade-детекции сохраняется, но формат остаётся валидным.
-          MAJOR_MINOR=$(echo "$V" | cut -d. -f1-2)
-          echo "desktop-v=${MAJOR_MINOR}" >> "$GITHUB_OUTPUT"
+          # Версия для desktop-пакетов (Exe/Msi/Dmg/Deb) — ровно APP_VERSION, чтобы
+          # установщики показывали ту же версию, что тег релиза и Android APK.
+          # Требование Compose-плагина: ровно 3 числовые части (MAJOR.MINOR.BUILD),
+          # поэтому APP_VERSION в gradle.properties должен быть вида 1.0.6.
+          # Уникальность версии между релизами гарантирует guard на тег ниже
+          # (раньше BUILD подменялся на github.run_number ради MSI upgrade-детекции).
+          echo "desktop-v=${V}" >> "$GITHUB_OUTPUT"
 
       # ── 3. Тег релиза не должен уже существовать ───────────────────────────
       # Каждый релиз теперь — отдельный тег v{APP_VERSION}, а не один
@@ -251,7 +247,7 @@ jobs:
 
       - name: Build desktop package
         shell: bash   # на windows-latest по умолчанию PowerShell, а ./gradlew — sh-скрипт
-        run: ./gradlew :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.prepare.outputs.desktop-version }}.${{ github.run_number }}"
+        run: ./gradlew :desktopApp:${{ matrix.task }} -PAPP_VERSION="${{ needs.prepare.outputs.desktop-version }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
