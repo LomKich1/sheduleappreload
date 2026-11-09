@@ -51,10 +51,8 @@ import com.schedule.app.ui.components.blockTouches
 import com.schedule.app.ui.components.rememberPullToSearchConnection
 import com.schedule.app.ui.theme.LocalAppColors
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.haze
-import dev.chrisbanes.haze.hazeChild
+import dev.chrisbanes.haze.hazeSource
+import com.schedule.app.ui.components.glassBlur
 import kotlin.math.roundToInt
 
 // ─── PickerScaffold ─────────────────────────────────────────────────────────
@@ -172,7 +170,7 @@ fun PickerScaffold(
         // ── Источник блюра ─────────────────────────────────────────────────
         // nestedScroll стоит ВЫШЕ списка: ловит оверскролл любого скролла внутри
         // (pull-to-search) и не мешает горизонтальному свайпу режимов.
-        Box(modifier = Modifier.fillMaxSize().nestedScroll(pullToSearch).haze(hazeState)) {
+        Box(modifier = Modifier.fillMaxSize().nestedScroll(pullToSearch).hazeSource(hazeState)) {
             content(insets)
         }
 
@@ -187,13 +185,10 @@ fun PickerScaffold(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .hazeChild(
+                    .glassBlur(
                         state = hazeState,
-                        style = HazeStyle(
-                            backgroundColor = c.bg,
-                            blurRadius = 20.dp,
-                            tint = HazeTint(c.surface.copy(alpha = 0.55f)),
-                        ),
+                        background = c.bg,
+                        tint = c.surface.copy(alpha = 0.55f),
                     )
                     .statusBarsPadding(),
             ) {
@@ -202,21 +197,13 @@ fun PickerScaffold(
                     progress      = searchProgress,
                     isVisibleHalf = isVisibleHalf,
                 ) {
-                    Column {
-                        ScheduleHeaderRow(
-                            header = header,
-                            opaqueBackground = false,
-                            applyStatusBarsPadding = false,
-                        )
-                        if (header.isLoading) {
-                            LinearProgressIndicator(
-                                progress   = { header.progress },
-                                modifier   = Modifier.fillMaxWidth().height(2.dp),
-                                color      = c.accent,
-                                trackColor = c.surface2,
-                            )
-                        }
-                    }
+                    // Полоса загрузки между шапкой и поиском убрана: состояние
+                    // загрузки теперь показывает индикатор по центру экрана.
+                    ScheduleHeaderRow(
+                        header = header,
+                        opaqueBackground = false,
+                        applyStatusBarsPadding = false,
+                    )
                 }
             }
 
@@ -280,13 +267,10 @@ private fun PickerToggle(
         progress = modeSwipeProgress,
         modifier = modifier,
         opaqueBackground = false,
-        hazeModifier = Modifier.hazeChild(
+        hazeModifier = Modifier.glassBlur(
             state = hazeState,
-            style = HazeStyle(
-                backgroundColor = c.bg,
-                blurRadius = 20.dp,
-                tint = HazeTint(c.pillBg.copy(alpha = 0.5f)),
-            ),
+            background = c.bg,
+            tint = c.pillBg.copy(alpha = 0.5f),
         ),
     )
 }

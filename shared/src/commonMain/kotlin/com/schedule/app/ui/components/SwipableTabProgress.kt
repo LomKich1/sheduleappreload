@@ -215,7 +215,12 @@ fun rememberSwipableProgress(
                     var settled = false
                     var totalDx = 0f
                     var totalDy = 0f
-                    val slop = viewConfiguration.touchSlop
+                    // На экране с оверскролл-дисмиссом (index 0) мёртвая зона —
+                    // общая для всех «свайпов назад» (см. SwipeBack), но не меньше
+                    // системного touchSlop.
+                    val slop = if (dismissEnabled && activeIndex == 0)
+                        maxOf(viewConfiguration.touchSlop, SwipeBack.DEAD_ZONE.toPx())
+                    else viewConfiguration.touchSlop
 
                     // Некламповая "сырая" позиция — стартует от текущего
                     // animatable.value и дальше двигается ТОЙ ЖЕ формулой, что
@@ -318,8 +323,8 @@ fun rememberSwipableProgress(
                         // Пороги — как у обычного fling-жеста: либо утащил
                         // за треть ширины, либо резко "стрельнул" пальцем,
                         // даже если сместился не сильно.
-                        val distanceThreshold = 0.35f
-                        val flickThresholdPxPerSec = 800f
+                        val distanceThreshold = SwipeBack.DISTANCE_FRACTION
+                        val flickThresholdPxPerSec = SwipeBack.FLICK_VELOCITY
 
                         val shouldAdvance = activeIndex == 0 && !dismissLocked &&
                             (movedFromActive > distanceThreshold || velocityPxPerSec < -flickThresholdPxPerSec)

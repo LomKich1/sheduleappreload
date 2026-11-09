@@ -50,7 +50,25 @@ import kotlin.math.abs
 // Общее с SwipableTabProgress — только сам принцип "дедзона → лок оси на
 // PointerEventPass.Initial → threshold ИЛИ velocity".
 
-private val DEAD_ZONE = 24.dp
+/**
+ * ЕДИНЫЕ параметры жеста «свайп назад» для ВСЕХ экранов (настройки, debug,
+ * расписание группы/преподавателя, оверскролл-дисмисс пикера в
+ * rememberSwipableProgress). Раньше у экранов они расходились: у
+ * swipeToDismiss мёртвая зона была 24dp, а у жеста в SwipableTabProgress —
+ * системный touchSlop (≈8dp), из-за чего «точка, после которой экран точно
+ * закроется» ощущалась по-разному. Взято среднее между ними.
+ *
+ *  • DEAD_ZONE — сколько пальцу надо пройти, прежде чем жест «запрётся» и
+ *    экран поедет за ним;
+ *  • DISTANCE_FRACTION — доля ширины, после которой отпускание закрывает экран;
+ *  • FLICK_VELOCITY — скорость, при которой экран закрывается и без нужной
+ *    дистанции (px/сек).
+ */
+object SwipeBack {
+    val DEAD_ZONE = 16.dp
+    const val DISTANCE_FRACTION = 0.35f
+    const val FLICK_VELOCITY = 800f
+}
 
 /**
  * Держит анимируемое смещение по X и позволяет закрыть экран либо жестом
@@ -158,7 +176,7 @@ fun Modifier.swipeToDismiss(state: SwipeDismissState, enabled: Boolean = true): 
         .onSizeChanged { state.widthPx = it.width.toFloat() }
         .graphicsLayer { translationX = state.offsetX.value }
         .pointerInput(state) {
-            val slop = DEAD_ZONE.toPx()
+            val slop = SwipeBack.DEAD_ZONE.toPx()
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 val pointerId = down.id
@@ -199,8 +217,8 @@ fun Modifier.swipeToDismiss(state: SwipeDismissState, enabled: Boolean = true): 
 
                 if (locked) {
                     val velocity          = velocityTracker.calculateVelocity().x
-                    val distanceThreshold = state.widthPx * 0.35f
-                    val flickThreshold    = 800f
+                    val distanceThreshold = state.widthPx * SwipeBack.DISTANCE_FRACTION
+                    val flickThreshold    = SwipeBack.FLICK_VELOCITY
                     val shouldDismiss = state.offsetX.value > distanceThreshold || velocity > flickThreshold
 
                     if (shouldDismiss) state.settleDismiss(velocity) else state.settleBack()

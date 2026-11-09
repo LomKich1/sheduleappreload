@@ -31,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
@@ -279,6 +280,16 @@ fun SearchHeaderZone(
     val shiftPx = with(LocalDensity.current) { SEARCH_SHIFT.toPx() }
     val bottomPadPx = with(LocalDensity.current) { SEARCH_ZONE_BOTTOM_PAD.toPx() }
 
+    // Когда поиск полностью открыт, шапка невидима (alpha = 0) и по высоте
+    // схлопнута — но её нодa с кнопкой «назад», кликабельным заголовком и
+    // перехватом касаний оставалась в дереве поверх зоны результатов. Теперь
+    // в этот момент шапка вообще убирается из композиции, поэтому перехватывать
+    // касания над первой карточкой результатов ей нечем. derivedStateOf —
+    // чтобы рекомпозиция шла только при смене флага, а не каждый кадр анимации.
+    val headerGone by remember(search, progress) {
+        derivedStateOf { search.active && progress.value >= 0.999f }
+    }
+
     Layout(
         modifier = modifier.fillMaxWidth(),
         content = {
@@ -291,7 +302,7 @@ fun SearchHeaderZone(
                     }
                     // Невидимая шапка не должна ловить тап по кнопке «назад».
                     .blockTouches(search.active),
-            ) { header() }
+            ) { if (!headerGone) header() }
 
             // Поле — вторым: рисуется поверх шапки, пока та гаснет. Пока оно
             // выезжает из-под шапки, рисуется только та его часть, что НИЖЕ

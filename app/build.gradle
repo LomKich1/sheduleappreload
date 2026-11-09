@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace 'com.schedule.app'
-    compileSdk 35
+    compileSdk 36
 
     // Версия читается из gradle.properties — менять только там.
     // Вынесено ДО defaultConfig: без явного = Groovy путает присвоение
@@ -78,10 +78,10 @@ dependencies {
     // Свой Compose BOM здесь больше не нужен — версии приходят из shared как api().
     implementation project(':shared')
 
-    implementation 'androidx.core:core-ktx:1.13.1'
-    implementation 'androidx.activity:activity-compose:1.9.0'
+    implementation 'androidx.core:core-ktx:1.18.0'
+    implementation 'androidx.activity:activity-compose:1.13.0'
 
-    // Версия должна совпадать с той, что тянет Compose Multiplatform 1.7.3 в :shared.
-    debugImplementation 'androidx.compose.ui:ui-tooling:1.9.0'
+    // Версия должна совпадать с той, что тянет Compose Multiplatform 1.12.2 в :shared (Jetpack Compose 1.12.1).
+    debugImplementation 'androidx.compose.ui:ui-tooling:1.12.1'
 }
 

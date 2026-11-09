@@ -40,10 +40,8 @@ import com.schedule.app.ui.theme.ThemePreset
 import com.schedule.app.util.BackHandler
 import com.schedule.app.util.PickedTextFile
 import com.schedule.app.util.rememberJsonFilePicker
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.haze
-import dev.chrisbanes.haze.hazeChild
+import dev.chrisbanes.haze.hazeSource
+import com.schedule.app.ui.components.glassBlur
 import dev.chrisbanes.haze.rememberHazeState
 import kotlin.math.roundToInt
 
@@ -358,7 +356,7 @@ private fun IsolatedHazeDiagnosticSection() {
                             listOf(Color(0xFFFF3D7F), Color(0xFF3D7FFF), Color(0xFFFFD23D)),
                         ),
                     )
-                    .haze(hazeState)
+                    .hazeSource(hazeState)
                     .padding(horizontal = 14.dp),
                 verticalArrangement = Arrangement.SpaceEvenly,
             ) {
@@ -379,13 +377,10 @@ private fun IsolatedHazeDiagnosticSection() {
                         .fillMaxWidth()
                         .height(80.dp)
                         .align(Alignment.BottomCenter)
-                        .hazeChild(
+                        .glassBlur(
                             state = hazeState,
-                            style = HazeStyle(
-                                backgroundColor = c.bg,
-                                blurRadius = 20.dp,
-                                tint = HazeTint(Color.Black.copy(alpha = 0.15f)),
-                            ),
+                            background = c.bg,
+                            tint = Color.Black.copy(alpha = 0.15f),
                         ),
                 )
             }

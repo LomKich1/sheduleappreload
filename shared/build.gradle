@@ -34,53 +34,44 @@ kotlin {
             api(compose.components.uiToolingPreview)
             api(compose.ui)
 
-            implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0"
-            implementation "org.jetbrains.kotlinx:kotlinx-datetime:0.6.2"
-            implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1"
-            implementation "io.ktor:ktor-client-core:3.1.3"
+            implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0"
+            implementation "org.jetbrains.kotlinx:kotlinx-datetime:0.8.0-0.6.x-compat"
+            implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0"
+            implementation "io.ktor:ktor-client-core:3.5.1"
 
-            api "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.9.4"
-            api "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4"
-            api "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.4"
-            // 2.9.2 publishes iOS klibs built with Kotlin 2.2.x; this project
-            // remains on Kotlin 2.1.20, so use the compatible 2.9.0 KMP release.
-            api "org.jetbrains.androidx.navigation:navigation-compose:2.9.0"
+            api "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.11.0"
+            api "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0"
+            api "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.11.0"
+            api "org.jetbrains.androidx.navigation:navigation-compose:2.10.0-rc01"
 
-            // Haze — realtime blur (frosted-glass) для Compose Multiplatform.
-            // ВАЖНО: намеренно НЕ последняя 2.0.0-beta0x — та тянет Kotlin 2.4.20
-            // и Compose Multiplatform 1.12.0, а проект запинен на Kotlin 2.1.20
-            // (см. комментарий у navigation-compose выше про iOS-клибы) и
-            // Compose 1.8.2. 1.6.0-beta02 — последняя версия СТАРОГО API
-            // (Modifier.haze + Modifier.hazeChild), собранная под compose.ui
-            // 1.7.3 / kotlin-stdlib 2.1.0 — совместима с нашим тулчейном без
-            // даунгрейда Kotlin. Если позже поднимем Kotlin до 2.4+ (когда и
-            // iOS-клибы это позволят) — можно мигрировать на Haze 2.0 и новый
-            // API (hazeSource/hazeBlur), см. https://chrisbanes.github.io/haze/migrating-2.0/
-            implementation "dev.chrisbanes.haze:haze:1.6.0-beta02"
-            implementation "dev.chrisbanes.haze:haze-materials:1.6.0-beta02"
+            // Haze 2.x — realtime blur (frosted-glass). Блюр вынесен в отдельный
+            // модуль haze-blur; API: Modifier.hazeSource() на источнике и
+            // Modifier.hazeBlur(input, style) на плашке поверх него.
+            implementation "dev.chrisbanes.haze:haze:2.1.0"
+            implementation "dev.chrisbanes.haze:haze-blur:2.1.0"
 
         }
         androidMain.dependencies {
-            implementation "androidx.core:core-ktx:1.13.1"
-            implementation "androidx.activity:activity-compose:1.9.0"
-            implementation "io.ktor:ktor-client-okhttp:3.1.3"
+            implementation "androidx.core:core-ktx:1.18.0"
+            implementation "androidx.activity:activity-compose:1.13.0"
+            implementation "io.ktor:ktor-client-okhttp:3.5.1"
         }
         desktopMain {
             dependencies {
                 implementation(compose.desktop.common)
-                implementation "org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0"
-                implementation "io.ktor:ktor-client-okhttp:3.1.3"
+                implementation "org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0"
+                implementation "io.ktor:ktor-client-okhttp:3.5.1"
             }
         }
         iosMain.dependencies {
-            implementation "io.ktor:ktor-client-darwin:3.1.3"
+            implementation "io.ktor:ktor-client-darwin:3.5.1"
         }
     }
 }
 
 android {
     namespace 'com.schedule.app.shared'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig { minSdk 26 }
 

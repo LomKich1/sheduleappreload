@@ -12,6 +12,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 
 // ─── Material 3 тема ──────────────────────────────────────────────────────────
 //
@@ -196,18 +197,141 @@ val AmoledScheme: ColorScheme = darkColorScheme(
     surfaceContainerHighest= Color(0xFF262626),
 )
 
+// ─── Цветные тёмные темы по трём опорным цветам ───────────────────────────────
+//
+//  Для каждой темы задано три цвета: Primary (акцент), Background (фон) и
+//  Surface (карточки). Остальные роли M3 (контейнеры, on-цвета, outline,
+//  градация surfaceContainer*) строятся из них в darkSchemeFrom — в HSL,
+//  с тем же оттенком, что у акцента/фона.
+
+private fun hslColor(h: Float, s: Float, l: Float): Color {
+    val hh = (((h % 360f) + 360f) % 360f) / 360f
+    val ss = s.coerceIn(0f, 1f)
+    val ll = l.coerceIn(0f, 1f)
+    if (ss == 0f) return Color(ll, ll, ll)
+    val q = if (ll < 0.5f) ll * (1f + ss) else ll + ss - ll * ss
+    val p = 2f * ll - q
+    fun channel(t0: Float): Float {
+        var t = t0
+        if (t < 0f) t += 1f
+        if (t > 1f) t -= 1f
+        return when {
+            t < 1f / 6f -> p + (q - p) * 6f * t
+            t < 1f / 2f -> q
+            t < 2f / 3f -> p + (q - p) * (2f / 3f - t) * 6f
+            else        -> p
+        }
+    }
+    return Color(channel(hh + 1f / 3f), channel(hh), channel(hh - 1f / 3f))
+}
+
+/** [hue (0..360), saturation (0..1), lightness (0..1)] */
+private fun Color.toHsl(): FloatArray {
+    val r = red; val g = green; val b = blue
+    val max = maxOf(r, g, b)
+    val min = minOf(r, g, b)
+    val l = (max + min) / 2f
+    if (max == min) return floatArrayOf(0f, 0f, l)
+    val d = max - min
+    val s = if (l > 0.5f) d / (2f - max - min) else d / (max + min)
+    val h = when (max) {
+        r -> (g - b) / d + (if (g < b) 6f else 0f)
+        g -> (b - r) / d + 2f
+        else -> (r - g) / d + 4f
+    } / 6f * 360f
+    return floatArrayOf(h, s, l)
+}
+
+private fun darkSchemeFrom(primary: Color, background: Color, surface: Color): ColorScheme {
+    val ph = primary.toHsl()
+    val h = ph[0]
+    val s = ph[1]
+    val bh = background.toHsl()[0]
+
+    val onSurface = hslColor(bh, 0.10f, 0.90f)
+    val onSurfaceVariant = hslColor(bh, 0.08f, 0.76f)
+    val outline = hslColor(bh, 0.06f, 0.56f)
+    val outlineVariant = lerp(surface, onSurface, 0.20f)
+
+    return darkColorScheme(
+        primary                 = primary,
+        onPrimary               = hslColor(h, s * 0.90f, 0.16f),
+        primaryContainer        = hslColor(h, s * 0.55f, 0.30f),
+        onPrimaryContainer      = hslColor(h, s, 0.90f),
+        inversePrimary          = hslColor(h, s * 0.80f, 0.40f),
+        secondary               = hslColor(h, s * 0.30f, 0.78f),
+        onSecondary             = hslColor(h, s * 0.30f, 0.17f),
+        secondaryContainer      = hslColor(h, s * 0.22f, 0.27f),
+        onSecondaryContainer    = hslColor(h, s * 0.40f, 0.90f),
+        tertiary                = hslColor(h + 55f, s * 0.45f, 0.80f),
+        onTertiary              = hslColor(h + 55f, s * 0.45f, 0.18f),
+        tertiaryContainer       = hslColor(h + 55f, s * 0.30f, 0.28f),
+        onTertiaryContainer     = hslColor(h + 55f, s * 0.50f, 0.90f),
+        background              = background,
+        onBackground            = onSurface,
+        surface                 = background,
+        onSurface               = onSurface,
+        surfaceVariant          = lerp(surface, onSurface, 0.16f),
+        onSurfaceVariant        = onSurfaceVariant,
+        surfaceTint             = primary,
+        inverseSurface          = onSurface,
+        inverseOnSurface        = background,
+        error                   = Color(0xFFFFB4AB),
+        onError                 = Color(0xFF690005),
+        errorContainer          = Color(0xFF93000A),
+        onErrorContainer        = Color(0xFFFFDAD6),
+        outline                 = outline,
+        outlineVariant          = outlineVariant,
+        scrim                   = Color.Black,
+        surfaceBright           = lerp(surface, onSurface, 0.10f),
+        surfaceDim              = background,
+        surfaceContainerLowest  = lerp(background, Color.Black, 0.35f),
+        surfaceContainerLow     = lerp(background, surface, 0.50f),
+        surfaceContainer        = surface,
+        surfaceContainerHigh    = lerp(surface, onSurface, 0.07f),
+        surfaceContainerHighest = lerp(surface, onSurface, 0.14f),
+    )
+}
+
+private val EmbermireScheme   = darkSchemeFrom(Color(0xFFF5B09C), Color(0xFF231B1A), Color(0xFF2E2524))
+private val VelvetRoseScheme  = darkSchemeFrom(Color(0xFFEEB0CB), Color(0xFF231A20), Color(0xFF2F2329))
+private val MistyWaveScheme   = darkSchemeFrom(Color(0xFF96E5E3), Color(0xFF1A1F22), Color(0xFF232A2E))
+private val GlacierScheme     = darkSchemeFrom(Color(0xFF94D3EE), Color(0xFF1B1F24), Color(0xFF242930))
+private val GreenDuskScheme   = darkSchemeFrom(Color(0xFFE2E27C), Color(0xFF211F17), Color(0xFF2B2920))
+private val UrbanGrayScheme   = darkSchemeFrom(Color(0xFFC9C6C9), Color(0xFF1B1B1D), Color(0xFF262628))
+private val SilentDawnScheme  = darkSchemeFrom(Color(0xFF88D89C), Color(0xFF18201B), Color(0xFF222B25))
+private val SkyScheme         = darkSchemeFrom(Color(0xFF58C4DC), Color(0xFF1A1C20), Color(0xFF24262B))
+
 // ─── Enum тем ─────────────────────────────────────────────────────────────────
+// Значения сохраняются в настройках по имени (AppPrefs) — существующие имена
+// DARK / LIGHT / AMOLED не менять.
 
 enum class ThemePreset(val label: String) {
     DARK("Тёмная"),
     LIGHT("Светлая"),
     AMOLED("Монохром"),
+    EMBERMIRE("Эмбермайр"),
+    VELVET_ROSE("Бархатная роза"),
+    MISTY_WAVE("Туманная волна"),
+    GLACIER("Ледник"),
+    GREEN_DUSK("Зелёные сумерки"),
+    URBAN_GRAY("Городской серый"),
+    SILENT_DAWN("Безмолвный рассвет"),
+    SKY("Голубая"),
 }
 
 fun colorSchemeFor(preset: ThemePreset): ColorScheme = when (preset) {
-    ThemePreset.DARK   -> DarkScheme
-    ThemePreset.LIGHT  -> LightScheme
-    ThemePreset.AMOLED -> AmoledScheme
+    ThemePreset.DARK        -> DarkScheme
+    ThemePreset.LIGHT       -> LightScheme
+    ThemePreset.AMOLED      -> AmoledScheme
+    ThemePreset.EMBERMIRE   -> EmbermireScheme
+    ThemePreset.VELVET_ROSE -> VelvetRoseScheme
+    ThemePreset.MISTY_WAVE  -> MistyWaveScheme
+    ThemePreset.GLACIER     -> GlacierScheme
+    ThemePreset.GREEN_DUSK  -> GreenDuskScheme
+    ThemePreset.URBAN_GRAY  -> UrbanGrayScheme
+    ThemePreset.SILENT_DAWN -> SilentDawnScheme
+    ThemePreset.SKY         -> SkyScheme
 }
 
 // Совместимость со старым кодом.

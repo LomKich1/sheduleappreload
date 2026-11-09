@@ -24,10 +24,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.util.lerp
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.haze
-import dev.chrisbanes.haze.hazeChild
+import dev.chrisbanes.haze.hazeSource
+import com.schedule.app.ui.components.glassBlur
 import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.ui.graphics.Color
 import androidx.navigation.compose.NavHost
@@ -202,7 +200,7 @@ fun AppScaffold() {
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))
-                .haze(hazeState),
+                .hazeSource(hazeState),
         ) {
             AppHeader(
                 activeRoute = activeTab,
@@ -422,13 +420,10 @@ fun AppScaffold() {
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))
-                    .hazeChild(
+                    .glassBlur(
                         state = hazeState,
-                        style = HazeStyle(
-                            backgroundColor = c.bg,
-                            blurRadius = 20.dp,
-                            tint = HazeTint(Color.Black.copy(alpha = 0.35f)),
-                        ),
+                        background = c.bg,
+                        tint = Color.Black.copy(alpha = 0.35f),
                     ),
             )
         }

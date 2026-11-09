@@ -1,6 +1,20 @@
 package com.schedule.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,8 +37,6 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -179,12 +191,13 @@ fun SettingsScreen(
                                 colors = transparentListItemColors(),
                                 leadingContent = { Icon(Icons.Outlined.Palette, contentDescription = null) },
                                 headlineContent = { Text("Тема оформления") },
-                                trailingContent = {
-                                    ThemeMenuButton(
-                                        selected = theme,
-                                        onSelect = { AppPrefs.setTheme(it) },
-                                    )
-                                },
+                            )
+                            ThemeMenuButton(
+                                selected = theme,
+                                onSelect = { AppPrefs.setTheme(it) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
                             )
                         }
                     }
@@ -274,48 +287,139 @@ fun SettingsScreen(
     }
 }
 
-// ─── Выбор темы: кнопка + мини-меню (DropdownMenu) ────────────────────────────
-// Кнопка показывает название текущей темы. По нажатию раскрывается маленькое
-// выпадающее меню прямо под ней (НЕ новый экран) со списком тем по названиям;
-// у выбранной — галочка. Тема применяется сразу, меню закрывается.
+// ─── Выбор темы: кнопка + «приклеенное» мини-меню ────────────────────────────
+//
+//  Кнопка на всю ширину карточки показывает название текущей темы. По нажатию
+//  под ней раскрывается мини-меню (НЕ новый экран) со списком тем по названиям:
+//    • меню ровно по ширине кнопки и прилегает к её нижнему краю без зазора;
+//    • пока меню открыто, нижние углы кнопки плавно становятся прямыми, а у
+//      меню прямые верхние и скруглённые нижние — получается единая форма;
+//    • стрелка на кнопке поворачивается: ▼ закрыто → ▲ открыто;
+//    • у выбранной темы стоит галочка, последняя строка скруглена вместе с меню.
+//  Меню самописное (Popup): стандартный DropdownMenu не умеет прилегать к
+//  якорю и менять форму кнопки.
+
+private val MENU_BUTTON_HEIGHT = 48.dp
+private val MENU_CORNER = 24.dp
 
 @Composable
 private fun ThemeMenuButton(
     selected: ThemePreset,
     onSelect: (ThemePreset) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var buttonSize by remember { mutableStateOf(IntSize.Zero) }
+    val density = LocalDensity.current
+    val scheme = MaterialTheme.colorScheme
 
-    // Box — якорь: DropdownMenu позиционируется относительно него.
-    Box {
-        FilledTonalButton(onClick = { expanded = true }) {
-            Text(selected.label)
-            Spacer(Modifier.width(4.dp))
+    // Нижние углы кнопки: скруглены, пока меню закрыто; прямые, пока открыто.
+    val bottomCorner by animateDpAsState(
+        targetValue = if (expanded) 0.dp else MENU_CORNER,
+        animationSpec = tween(200),
+        label = "themeButtonCorner",
+    )
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(250),
+        label = "themeArrow",
+    )
+
+    // Popup живёт, пока играет анимация закрытия (иначе он исчез бы мгновенно).
+    val menuState = remember { MutableTransitionState(false) }
+    menuState.targetState = expanded
+
+    Box(modifier = modifier) {
+        FilledTonalButton(
+            onClick = { expanded = !expanded },
+            shape = RoundedCornerShape(
+                topStart = MENU_CORNER,
+                topEnd = MENU_CORNER,
+                bottomEnd = bottomCorner,
+                bottomStart = bottomCorner,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(MENU_BUTTON_HEIGHT)
+                .onSizeChanged { buttonSize = it },
+        ) {
+            Text(
+                text = selected.label,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.weight(1f),
+            )
             Icon(
                 imageVector = Icons.Outlined.ArrowDropDown,
-                contentDescription = "Выбрать тему",
-                modifier = Modifier.size(20.dp),
+                contentDescription = if (expanded) "Свернуть список тем" else "Выбрать тему",
+                modifier = Modifier.size(24.dp).rotate(arrowRotation),
             )
         }
 
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            ThemePreset.values().forEach { preset ->
-                DropdownMenuItem(
-                    text = { Text(preset.label) },
-                    onClick = {
-                        onSelect(preset)
-                        expanded = false
-                    },
-                    trailingIcon = {
-                        if (preset == selected) {
-                            Icon(Icons.Outlined.Check, contentDescription = "Выбрано")
+        if (menuState.currentState || menuState.targetState) {
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = IntOffset(0, buttonSize.height),
+                onDismissRequest = { expanded = false },
+                properties = PopupProperties(focusable = true),
+            ) {
+                AnimatedVisibility(
+                    visibleState = menuState,
+                    enter = fadeIn(tween(120)) + expandVertically(expandFrom = Alignment.Top, animationSpec = tween(220)),
+                    exit = fadeOut(tween(120)) + shrinkVertically(shrinkTowards = Alignment.Top, animationSpec = tween(180)),
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(
+                            topStart = 0.dp,
+                            topEnd = 0.dp,
+                            bottomStart = MENU_CORNER,
+                            bottomEnd = MENU_CORNER,
+                        ),
+                        color = scheme.secondaryContainer,
+                        contentColor = scheme.onSecondaryContainer,
+                        modifier = Modifier.width(with(density) { buttonSize.width.toDp() }),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .heightIn(max = 288.dp)
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                            ThemePreset.values().forEach { preset ->
+                                ThemeMenuItem(
+                                    label = preset.label,
+                                    isSelected = preset == selected,
+                                    onClick = {
+                                        onSelect(preset)
+                                        expanded = false
+                                    },
+                                )
+                            }
                         }
-                    },
-                )
+                    }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun ThemeMenuItem(label: String, isSelected: Boolean, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .background(if (isSelected) scheme.onSecondaryContainer.copy(alpha = 0.10f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+        )
+        if (isSelected) {
+            Icon(Icons.Outlined.Check, contentDescription = "Выбрано", modifier = Modifier.size(20.dp))
         }
     }
 }
