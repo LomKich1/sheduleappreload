@@ -129,12 +129,12 @@ jobs:
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       # ── 6. Gradle: берём версию из gradle-wrapper.properties ──────────────
-      # AGP 8.13.2 требует Gradle >= 8.13, а wrapper в репо уже на 8.14.3.
+      # AGP 9.1.0 требует Gradle >= 9.3.1 — берём версию из wrapper'а в репо (9.3.1).
       # Раньше тут был жёстко прописан gradle-version: '8.9' -> сборка падала
       # с "Minimum supported Gradle version is 8.13. Current version is 8.9",
       # а скачивание 8.9 ещё и ловило 504 от services.gradle.org.
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
 
       # services.gradle.org / github.com периодически отвечают 504 или таймаутом
       # при скачивании дистрибутива wrapper'а — один такой сбой валил джобу.
@@ -220,7 +220,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
 
       # services.gradle.org / github.com периодически отвечают 504 или таймаутом
       # при скачивании дистрибутива wrapper'а — один такой сбой валил джобу.
@@ -275,7 +275,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
 
       # services.gradle.org / github.com периодически отвечают 504 или таймаутом
       # при скачивании дистрибутива wrapper'а — один такой сбой валил джобу.
@@ -301,7 +301,7 @@ jobs:
           xcodebuild -project iosApp/ScheduleApp.xcodeproj -scheme ScheduleApp
           -configuration Debug -sdk iphonesimulator
           -derivedDataPath "$RUNNER_TEMP/ScheduleApp-derived" build
-          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=NO
 
       - name: Upload iPhone Simulator app
         uses: actions/upload-artifact@v4
